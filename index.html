@@ -15,55 +15,63 @@
 
   /* ===== HUD ===== */
   .hud{ position:absolute; inset:0; pointer-events:none; z-index:10; }
-  .top{ position:absolute; left:10px; right:10px; top:calc(8px + env(safe-area-inset-top)); display:flex; gap:10px; align-items:center; }
-  .pill{ background:var(--pill); border-radius:999px; padding:6px 12px; font-weight:700; font-size:14px; box-shadow:0 4px 12px rgba(0,0,0,.25); }
-  .grow{ flex:1; display:flex; align-items:center; gap:8px; }
-  .gauge{ height:12px; background:#303847; border:1px solid #475268; border-radius:999px; overflow:hidden; width:100%; }
-  .gauge i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#29d,#6ef); }
+  .top{ position:absolute; left:10px; right:10px; top:calc(8px + env(safe-area-inset-top)); display:flex; gap:10px; align-items:center}
+  .pill{ background:var(--pill); border-radius:999px; padding:6px 12px; font-weight:700; font-size:14px; box-shadow:0 4px 12px rgba(0,0,0,.25) }
+  .grow{ flex:1; display:flex; align-items:center; gap:8px }
+  .gauge{ height:12px; background:#303847; border:1px solid #475268; border-radius:999px; overflow:hidden; width:100% }
+  .gauge i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#29d,#6ef) }
 
   .bottom{ position:absolute; left:10px; right:10px; bottom:calc(14px + env(safe-area-inset-bottom));
-           display:grid; grid-template-columns:1fr 64px 64px 1fr; gap:10px; pointer-events:none; }
+           display:grid; grid-template-columns:1fr 64px 64px 1fr; gap:10px; pointer-events:none }
   .bbtn{ pointer-events:auto; background:var(--btn2); border:1px solid #333c4c; border-radius:16px;
-         padding:14px 12px; font-weight:900; text-align:center; box-shadow:0 10px 22px rgba(0,0,0,.35); }
-  .bbtn:active{ transform:translateY(1px); }
-  .slot{ pointer-events:auto; height:56px; border-radius:12px; border:1px dashed #666; background:rgba(255,255,255,.06); display:grid; place-items:center; }
-  .slot img{ max-width:90%; max-height:90%; image-rendering:pixelated; }
-  .slot.empty{ opacity:.35; }
-  .hidden{ display:none !important; }
+         padding:14px 12px; font-weight:900; text-align:center; box-shadow:0 10px 22px rgba(0,0,0,.35) }
+  .bbtn:active{ transform:translateY(1px) }
+  .slot{ pointer-events:auto; height:56px; border-radius:12px; border:1px dashed #666; background:rgba(255,255,255,.06); display:grid; place-items:center }
+  .slot img{ max-width:90%; max-height:90%; image-rendering:pixelated }
+  .slot.empty{ opacity:.35 }
+  .hidden{ display:none !important }
 
-  .center{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+  .center{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none }
   .panel{ pointer-events:auto; width:min(94%,560px); background:rgba(15,18,26,.92); border:1px solid #2a3242;
-          border-radius:18px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
-  .panel h1,.panel h2{ margin:8px 0 14px; }
-  .row{ display:flex; gap:10px; flex-wrap:wrap; }
-  .btn{ pointer-events:auto; background:var(--btn); border:1px solid #323a49; border-radius:14px; padding:12px 16px; font-weight:800; }
-  .btn:active{ transform:translateY(1px); }
-  .ok{ background:#133; border-color:#1f6; }
-  .danger{ background:#2a1516; border-color:#a33; }
-  .charWrap{ display:flex; gap:10px; }
+          border-radius:18px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.6) }
+  .panel h1,.panel h2{ margin:8px 0 14px }
+  .row{ display:flex; gap:10px; flex-wrap:wrap }
+  .btn{ pointer-events:auto; background:var(--btn); border:1px solid #323a49; border-radius:14px; padding:12px 16px; font-weight:800 }
+  .btn:active{ transform:translateY(1px) }
+  .ok{ background:#133; border-color:#1f6 }
+  .danger{ background:#2a1516; border-color:#a33 }
+  .charWrap{ display:flex; gap:10px }
   .card{ flex:1 1 48%; background:rgba(255,255,255,.04); border:1px solid #2c3444; border-radius:14px; padding:10px;
-         display:grid; place-items:center; }
-  .card img{ width:110px; height:auto; image-rendering:pixelated; }
-  .sel{ outline:3px solid #2bd36b; }
+         display:grid; place-items:center }
+  .card img{ width:110px; height:auto; image-rendering:pixelated }
+  .sel{ outline:3px solid #2bd36b }
 
   .count{ position:absolute; inset:0; display:grid; place-items:center; font-size:60px; font-weight:900;
-          text-shadow:0 4px 16px #000; pointer-events:none; }
-  /* ロゴはきっちり中央。サイズは幅の50%（最大420px） */
-  .cutin{ position:absolute; left:50%; top:35%; transform:translate(-50%,-50%); pointer-events:none; }
-  .cutin img{ width:min(50vw, 420px); height:auto; display:block; opacity:0; animation:cut 2s ease forwards; image-rendering:pixelated; }
-  @keyframes cut{ 0%{opacity:0; transform:translate(-50%,-44%) scale(.98)}
-                  15%{opacity:1; transform:translate(-50%,-50%) scale(1)}
-                  85%{opacity:1}
-                  100%{opacity:0; transform:translate(-50%,-56%) scale(1.02)} }
+          text-shadow:0 4px 16px #000; pointer-events:none }
+
+  /* カットインはきっちり中央。幅の50%（最大420px） */
+  .cutin{ position:absolute; left:50%; top:35%; transform:translate(-50%,-50%); pointer-events:none }
+  .cutin img{ width:min(50vw, 420px); height:auto; display:block; opacity:0; animation:cut 2s ease forwards; image-rendering:pixelated }
+  @keyframes cut{
+    0%{opacity:0; transform:translate(-50%,-44%) scale(.98)}
+    15%{opacity:1; transform:translate(-50%,-50%) scale(1)}
+    85%{opacity:1}
+    100%{opacity:0; transform:translate(-50%,-56%) scale(1.02)}
+  }
 
   .toast{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; font-weight:900; text-align:center;
-          white-space:pre-line; text-shadow:0 2px 8px #000; animation:fade 1.8s ease forwards; pointer-events:none; }
+          white-space:pre-line; text-shadow:0 2px 8px #000; animation:fade 1.8s ease forwards; pointer-events:none }
   @keyframes fade{ 0%{opacity:0} 20%{opacity:1} 80%{opacity:1} 100%{opacity:0} }
+
   .result{ position:absolute; left:50%; top:40%; transform:translate(-50%,-50%); background:rgba(0,0,0,.65); border:1px solid #444;
            border-radius:14px; padding:10px 14px; font-weight:900; opacity:0; animation:res 2s ease forwards; white-space:pre-line;
-           text-align:center; pointer-events:none; }
-  @keyframes res{ 0%{opacity:0; transform:translate(-50%,-46%)} 20%{opacity:1; transform:translate(-50%,-50%)}
-                  80%{opacity:1} 100%{opacity:0; transform:translate(-50%,-54%)} }
+           text-align:center; pointer-events:none }
+  @keyframes res{
+    0%{opacity:0; transform:translate(-50%,-46%)}
+    20%{opacity:1; transform:translate(-50%,-50%)}
+    80%{opacity:1}
+    100%{opacity:0; transform:translate(-50%,-54%)}
+  }
 </style>
 </head>
 <body>
@@ -200,6 +208,7 @@
   const slotEls=[document.getElementById('slot1'),document.getElementById('slot2')];
   const btnJump=document.getElementById('btnJump');
   const btnBoost=document.getElementById('btnBoost');
+
   function show(el){el.classList.remove('hidden');}
   function hide(el){el.classList.add('hidden');}
   function t(){return performance.now();}
@@ -265,7 +274,7 @@
     },700);
   }
 
-  /* ===== 入力 ===== */
+  /* ===== 入力／アイテムスロット ===== */
   btnJump.addEventListener('touchstart',e=>{e.preventDefault();doJump();},{passive:false});
   btnJump.addEventListener('mousedown',e=>{e.preventDefault();doJump();});
   btnBoost.addEventListener('touchstart',e=>{e.preventDefault();tryBoost();},{passive:false});
@@ -275,8 +284,8 @@
     if(e.code==='ShiftLeft'||e.code==='ShiftRight'){e.preventDefault();tryBoost();}
     if(e.code==='Digit1'){useItem(0);} if(e.code==='Digit2'){useItem(1);}
   });
-  const slots=[null,null];
-  const slotEls=[document.getElementById('slot1'),document.getElementById('slot2')];
+
+  const slots=[null,null]; // ★ここだけで宣言（重複なし）
   slotEls[0].addEventListener('click',()=>useItem(0));
   slotEls[1].addEventListener('click',()=>useItem(1));
   slotEls.forEach((el,i)=>el.addEventListener('touchstart',e=>{e.preventDefault();useItem(i);},{passive:false}));
@@ -346,7 +355,7 @@
     const r=Math.random();
     if(r<0.22){
       world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, w:120, h:48, jumpPad:true});
-      // 看板は別スケジュール。ここでは出さない（被り防止）
+      // 看板は低頻度の独立スケジュールにて生成（重ならない）
     }else if(r<0.60){
       world.obstacles.push({type:'corn', img:IM.corn, x, w:56, h:56});
     }else{
@@ -433,11 +442,9 @@
 
     // ヴィランの位置制御（追い越されない）
     if(viran && state===ST.RUN){
-      // 画面右寄りにクランプ
-      const minX = world.scrollX + W*0.72;
+      const minX = world.scrollX + W*0.72;       // 画面右7割以右にクランプ
       viran.x = Math.max(viran.x + world.speed*0.4, minX);
-      // ゆるく上下調整
-      viran.y += (seamY()-260 - viran.y)*0.02;
+      viran.y += (seamY()-260 - viran.y)*0.02;   // 上下追従
       // 発射間隔は遅め＆tama.png を使用
       if(t()>viran.nxt && viran.shoots<viran.max){
         fireball(viran.x-40, viran.y+30);
@@ -447,7 +454,7 @@
       if(viran.shoots>=viran.max && t()>viran.nxt+900){ viran=null; }
     }
 
-    // 障害物
+    // 障害物（接地や当たり）
     let topY=gy - player.h;
     for(const o of world.obstacles){
       const ox=o.x-world.scrollX;
@@ -458,9 +465,8 @@
         else if(o.phase===2){ o.h-=1.2; if(o.h<=20){ o.h=20; o.phase=0; o.timer=0; } }
       }
       const oh=(o.h||20);
-      const oy = (o.type==='dokan')? gy-oh : gy-oh;
+      const oy = gy-oh;
 
-      // AABB
       if(AABB(player.x,player.y,player.w,player.h, ox,oy, o.w,oh)){
         if(state===ST.COUNT || world.meters<world.safeUntilMeters){ /* 無効 */ }
         else if(o.type==='corn'){ hit(1); }
