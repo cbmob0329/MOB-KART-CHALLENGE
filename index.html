@@ -13,9 +13,9 @@
     font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif
   }
 
-  /* 画面中央に“スマホサイズのステージ”を固定表示 */
-  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
-  #stage{position:relative}
+  /* 画面中央に“スマホサイズのステージ”を配置。JSで scale を当てて常に画面内に収める */
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden}
+  #stage{position:relative; transform-origin: center center;}
 
   #cv{
     position:relative; z-index:0;
@@ -141,7 +141,7 @@
 
 <script>
 (() => {
-  /* ===== ステージ：PCでもスマホ縦長で固定表示 ===== */
+  /* ===== ステージ：PCでもスマホ縦長で固定表示（スケールで画面に収める） ===== */
   const DESIGN_W = 414, DESIGN_H = 896;   // iPhone 11/12/13 相当
   const FORCE_PHONE = true;
 
@@ -150,12 +150,15 @@
   const cx = cv.getContext('2d');
   let W = DESIGN_W, H = DESIGN_H, DPR = Math.min(2, devicePixelRatio||1);
 
+  function applyScale(){
+    // iOS Safari 対策：visualViewport を使って見えている実高さでスケール
+    const vw = window.innerWidth;
+    const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    const scale = Math.min(vw / DESIGN_W, vh / DESIGN_H);
+    stage.style.transform = `scale(${scale})`;
+  }
   function fit(){
-    if (FORCE_PHONE) {
-      W = DESIGN_W; H = DESIGN_H;
-    } else {
-      W = innerWidth; H = innerHeight;
-    }
+    W = DESIGN_W; H = DESIGN_H;
     stage.style.width  = W + 'px';
     stage.style.height = H + 'px';
     cv.style.width  = W + 'px';
@@ -163,8 +166,10 @@
     cv.width  = Math.round(W * DPR);
     cv.height = Math.round(H * DPR);
     cx.setTransform(DPR,0,0,DPR,0,0);
+    applyScale();
   }
   addEventListener('resize', fit, {passive:true});
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', applyScale, {passive:true});
   fit();
 
   /* ===== 画像ファイル ===== */
@@ -244,7 +249,8 @@
   function hide(el){el.classList.add('hidden');}
 
   /* ===== World / Player ===== */
-  function groundY(){ return Math.floor(H*0.64); } // ★ 道路（基準）を上へ
+  // 「境界Y（seam）」を唯一の基準にして、畑の下端＝道路上端＝接地面に統一
+  function seamY(){ return Math.floor(H*0.64); } // 道路の上端（＝接地面）
   function t(){ return performance.now(); }
   function rnd(a,b){ return Math.floor(a + Math.random()*(b-a+1)); }
 
@@ -257,14 +263,14 @@
     coins:0,
     boostGauge:0, boostFillMs:10000, boostReady:false, boosting:false, boostUntil:0,
     inv:false, invUntil:0,
-    safeUntilMeters:180,  // ★ スタート直後の無敵距離を少し延長
+    safeUntilMeters:180,
     signs:[], obstacles:[], items:[], fires:[], hazards:[],
     nextObsX:0, nextItemX:0,
     nextViranAt:rnd(400,700)
   };
 
   const player={
-    x: Math.floor(W*0.22), y:0, w:48, h:54, vy:0, onGround:false, // 縦長比率
+    x: Math.floor(W*0.22), y:0, w:48, h:54, vy:0, onGround:false,
     jumps:2, maxJumps:2, wingsUntil:0,
     sprite:'orange', gold:false
   };
@@ -305,11 +311,11 @@
     world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+520;          // ★ 初期障害物はさらに遠く
+    world.nextObsX=W+520;          // 初期障害物は十分先
     world.nextItemX=W+1600;        // アイテムはレア
     world.nextViranAt=rnd(400,700);
 
-    player.x=Math.floor(W*0.22); player.y=groundY()-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
+    player.x=Math.floor(W*0.22); player.y=seamY()-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
 
     slots[0]=null; slots[1]=null; refreshSlots();
     refreshHUD();
@@ -355,7 +361,7 @@
           const dx=(o.x - (world.scrollX + player.x)); if(dx>0 && dx<dxMin){dxMin=dx; target=o;}
         }
       }
-      if(target){ Object.assign(target,{type:'jumpdai', img:IM.jumpdai, w:120, h:40, jumpPad:true}); spawnSign(target.x - rnd(360,500)); showToast('ジャンプ台に変化！'); }
+      if(target){ Object.assign(target,{type:'jumpdai', img:IM.jumpdai, w:120, h:48, jumpPad:true}); spawnSignNearJump(target.x); showToast('ジャンプ台に変化！'); }
       else{ showToast('近くに対象なし'); }
     }
     slots[i]=null; refreshSlots();
@@ -381,32 +387,39 @@
 
   /* ===== スポーン ===== */
   function spawnObstacle(x){
-    // 通常演出でもジャンプ台が登場（20%）
+    // 通常演出：ジャンプ台の出現率 22%（出たら看板もセット）
     const r=Math.random();
-    if(r<0.20){
-      world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, w:120, h:40, jumpPad:true});
+    if(r<0.22){
+      world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, w:120, h:48, jumpPad:true});
+      spawnSignNearJump(x); // ★ 看板はジャンプ台とセットのみ
     }else if(r<0.60){
       world.obstacles.push({type:'corn', img:IM.corn, x, w:56, h:56});
     }else{
       world.obstacles.push({type:'dokan', img:IM.dokan, x, w:60, h:20, phase:0, timer:0, maxH:96});
     }
-    // 右端の外から自然に入る「先読み看板」
-    const sx = x - rnd(350,500);
-    if (sx > world.scrollX + W) spawnSign(sx);
-    else spawnSign(world.scrollX + W + 40);
   }
-  function spawnSign(x){
+
+  // 看板はジャンプ台の“少し手前”に、必ず画面右外から入るよう配置
+  function spawnSignNearJump(jumpX){
+    const aheadMin = 350, aheadMax = 500;
+    let sx = jumpX - rnd(aheadMin, aheadMax);
+    const mustBeRightOf = world.scrollX + W + 80; // 右端の外
+    if (sx <= mustBeRightOf) sx = mustBeRightOf;
+    world.signs.push({ img: pickSign(), x: sx, w: 300, h: 220 }); // ★ 大きい看板
+  }
+  function pickSign(){
     const n=rnd(1,6);
-    world.signs.push({ img:IM['kanban'+n], x, w:220, h:160 }); // ★ 大きく
+    return IM['kanban'+n];
   }
+
   function spawnItem(x){
     const r=Math.random(); const type = r<.34?'tsubasa': r<.67?'jump':'en';
-    world.items.push({type, icon:IM[type==='tsubasa'?'tsubasa':type==='jump'?'jump':'en'], x, y:groundY()-160-rnd(0,80), w:44, h:44, vy:Math.random()<.5?0.3:-0.3});
+    world.items.push({type, icon:IM[type==='tsubasa'?'tsubasa':type==='jump'?'jump':'en'], x, y:seamY()-160-rnd(0,80), w:44, h:44, vy:Math.random()<.5?0.3:-0.3});
   }
 
   /* ===== ヴィラン ===== */
   let viran=null;
-  function callViran(){ showCutin('viranop'); viran={x:world.scrollX+W+140, y:groundY()-260, tick:0, shoots:0, max:rnd(5,7), nxt:800}; }
+  function callViran(){ showCutin('viranop'); viran={x:world.scrollX+W+140, y:seamY()-260, tick:0, shoots:0, max:rnd(5,7), nxt:800}; }
   function fireball(x,y){ world.fires.push({x,y,w:26,h:26,vy:1.2}); }
 
   /* ===== ループ ===== */
@@ -449,12 +462,12 @@
       world.nextItemX += rnd(2200,3400);
     }
     if(Math.random()<0.0035){
-      const bx=world.scrollX+W+80, y=groundY()-rnd(120,230), n=rnd(1,3);
+      const bx=world.scrollX+W+80, y=seamY()-rnd(120,230), n=rnd(1,3);
       for(let k=0;k<n;k++){ world.items.push({type:'coin', icon:IM.coin, x:bx+k*46, y, w:30, h:30, vy:0}); }
     }
 
     // 物理
-    const gy=groundY();
+    const gy=seamY();
     player.vy += world.gravity; player.y += player.vy;
 
     // 障害物
@@ -476,8 +489,9 @@
           const fromTop=(player.y+player.h) <= (oy+10) && (player.y+player.h) >= (oy-14);
           if(fromTop){ topY=Math.min(topY, oy-player.h); } else { hit(1); }
         }else if(o.jumpPad){
-          // ★ 加速＋大ジャンプ
-          player.vy = -22;
+          // ★ 加速＋大ジャンプ（確実に体感できる強さ）
+          player.vy = -24;
+          player.onGround = false;
           world.speed = Math.min(world.maxSpeed, world.baseSpeed*2.0);
           world.boosting = true;
           world.boostUntil = t() + 1000;
@@ -522,7 +536,7 @@
 
     // ヴィラン
     if(viran && state===ST.RUN){
-      viran.tick+=dt; viran.x+=2.2; viran.y += (groundY()-260-viran.y)*0.02;
+      viran.tick+=dt; viran.x+=2.2; viran.y += (seamY()-260-viran.y)*0.02;
       if(viran.shoots<viran.max && viran.tick>viran.nxt){ viran.shoots++; viran.nxt+=rnd(600,900); fireball(viran.x-40, viran.y+30); }
       if(viran.shoots>=viran.max && viran.tick>viran.nxt+800){ viran=null; }
     }
@@ -557,14 +571,14 @@
     // 空 → 畑 →（看板など）→ 道路 → プレイヤー
     if(IM.sora) drawTiled(IM.sora,0,0.12,H);
 
-    const gy=groundY();
-    // 畑（下端が gy に一致）
+    const gy=seamY();
+    // 畑：下端が gy に一致
     if(IM.hatake){
       const fieldH = Math.max(Math.floor(H*0.23), 90);
       drawTiled(IM.hatake, gy - fieldH, 0.55, fieldH);
     }
 
-    // 看板（フェードなし・自然にスクロールイン）
+    // 看板（ジャンプ台とセットでのみ存在／自然にスクロールイン）
     for(const s of world.signs){
       const x=s.x-world.scrollX, y=gy - s.h - 10;
       cx.drawImage(s.img, x, y, s.w, s.h);
@@ -588,8 +602,8 @@
       else if(o.jumpPad){ cx.drawImage(IM.jumpdai,x,gy-o.h,o.w,o.h); }
     }
 
-    // 道路（+6px かぶせて隙間を完全に消す）
-    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+6);
+    // 道路（+10px かぶせて隙間を完全に消す）
+    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+10);
 
     // プレイヤー
     const px=player.x, py=player.y;
