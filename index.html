@@ -49,7 +49,7 @@
   .cutin img{ width:min(80vw,520px); height:auto; display:block; opacity:0; animation:cut 2s ease forwards; image-rendering:pixelated; }
   @keyframes cut{ 0%{opacity:0; transform:translateY(16px) scale(.98);} 15%{opacity:1; transform:translateY(0) scale(1);} 85%{opacity:1;} 100%{opacity:0; transform:translateY(-8px) scale(1.02);} }
 
-  .toast{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; font-weight:900; text-shadow:0 2px 8px #000; animation:fadeMsg 1.8s ease forwards; }
+  .toast{ position:absolute; inset:0; display:grid; place-items:center; font-size:26px; font-weight:900; text-align:center; white-space:pre-line; text-shadow:0 2px 8px #000; animation:fadeMsg 1.8s ease forwards; }
   @keyframes fadeMsg{ 0%{opacity:0} 20%{opacity:1} 80%{opacity:1} 100%{opacity:0} }
 </style>
 </head>
@@ -78,7 +78,7 @@
 
     <!-- 中央UI -->
     <div class="center">
-      <!-- OP（起動時） -->
+      <!-- OP（起動時：黒背景＋ロゴ＋選択だけ） -->
       <div class="panel" id="panelOP">
         <h1>ゲームを開始しますか？</h1>
         <div class="row">
@@ -87,8 +87,8 @@
         </div>
       </div>
 
-      <!-- キャラクター選択 -->
-      <div class="panel hidden" id="panelChar" style="background:url('sora.png') center/cover no-repeat;">
+      <!-- キャラクター選択（背景はcanvasでsoraを描く。ここは透過パネル） -->
+      <div class="panel hidden" id="panelChar" style="background:rgba(15,18,26,.92);">
         <h2>キャラクター選択</h2>
         <div class="charWrap">
           <div class="card sel" data-char="orange">
@@ -154,7 +154,7 @@
       i.onload=()=>{IM[key]=i; ok();};
       i.onerror=()=>{ const c=document.createElement('canvas'); c.width=128; c.height=128;
         const x=c.getContext('2d'); x.fillStyle='#444'; x.fillRect(0,0,128,128); x.strokeStyle='#999'; x.strokeRect(0,0,128,128);
-        x.fillStyle='#fff'; x.font='12px sans-serif'; x.fillText(key,6,18); IM[key]=c; ok(); };
+        x.fillStyle='#fff'; x.font='12px sans-serif'; x.fillText(key,6,18); IM[key]=c; ok(); console.warn('missing image:',key, src); };
       i.src=src;
     });
   }
@@ -177,22 +177,25 @@
   const cutinBox = document.getElementById('cutin');
   const cutinImg = document.getElementById('cutinImg');
 
+  // ===== 状態 =====
+  const ST = { TITLE:0, CHARSEL:1, COUNT:2, RUN:3, OVER:4, MENU:5, QUIT:6 };
+  let state = ST.TITLE;
+
   // OP → キャラ選択
-  document.getElementById('opYes').onclick = ()=>{ show(panelChar); hide(panelOP); };
-  document.getElementById('opNo').onclick  = ()=>{ hide(panelOP); show(panelQuit); };
+  document.getElementById('opYes').onclick = ()=>{ state=ST.CHARSEL; show(panelChar); hide(panelOP); };
+  document.getElementById('opNo').onclick  = ()=>{ hide(panelOP); show(panelQuit); state=ST.QUIT; };
 
   let selected='orange';
   panelChar.addEventListener('click', e=>{
-    const card=e.target.closest('.card');
-    if(!card) return;
+    const card=e.target.closest('.card'); if(!card) return;
     selected=card.dataset.char;
     panelChar.querySelectorAll('.card').forEach(el=>el.classList.toggle('sel', el.dataset.char===selected));
   });
-  document.getElementById('charBack').onclick = ()=>{ hide(panelChar); show(panelOP); };
+  document.getElementById('charBack').onclick = ()=>{ hide(panelChar); show(panelOP); state=ST.TITLE; };
   document.getElementById('charStart').onclick= ()=>{ startCountdown(selected); };
-  document.getElementById('menuChar').onclick = ()=>{ show(panelChar); hide(panelMenu); };
+  document.getElementById('menuChar').onclick = ()=>{ show(panelChar); hide(panelMenu); state=ST.CHARSEL; };
   document.getElementById('menuStart').onclick= ()=>{ hide(panelMenu); startCountdown(selected); };
-  document.getElementById('menuQuit').onclick = ()=>{ hide(panelMenu); show(panelQuit); };
+  document.getElementById('menuQuit').onclick = ()=>{ hide(panelMenu); show(panelQuit); state=ST.QUIT; };
 
   function show(el){ el.classList.remove('hidden'); }
   function hide(el){ el.classList.add('hidden'); }
@@ -200,7 +203,7 @@
   // ===== ゲーム世界 =====
   const world = {
     scrollX:0,
-    baseSpeed: 3.8,         // ★ 2. 速度を下げる（以前よりゆっくり）
+    baseSpeed: 3.8,         // ゆっくり目
     speed:    3.8,
     maxSpeed: 8.5,
     gravity:  0.72,
@@ -209,7 +212,7 @@
     coins:    0,
     boostGauge:0, boostFillMs:10000, boostReady:false, boosting:false, boostUntil:0,
     inv:false, invUntil:0,
-    safeUntilMeters: 150,   // ★ 5. スタート直後の安全地帯（障害物ダメージなし＆湧きにくい）
+    safeUntilMeters: 150,   // スタート安全地帯
     nextObsX: 0,
     nextItemX: 0,
     signs:[], obstacles:[], items:[], fires:[], hazards:[],
@@ -235,19 +238,18 @@
     if(e.code==='KeyA'){ tapAccel(); }
   });
 
-  function tapAccel(){ if(state==='RUN'){ world.speed=Math.min(world.maxSpeed, world.speed+0.6); } }
+  function tapAccel(){ if(state===ST.RUN){ world.speed=Math.min(world.maxSpeed, world.speed+0.6); } }
 
   // カウントダウン
-  let state='IDLE';
   function startCountdown(sel){
     hide(panelOP); hide(panelChar); hide(panelMenu); hide(panelQuit);
     player.sprite=sel||'orange';
     resetRun();
-    let n=3; countEl.textContent=n; show(countEl); state='COUNT';
+    let n=3; countEl.textContent=n; show(countEl); state=ST.COUNT;
     const timer=setInterval(()=>{
       n--; if(n>0){ countEl.textContent=n; }
       else if(n===0){ countEl.textContent='GO'; }
-      else{ clearInterval(timer); hide(countEl); state='RUN'; }
+      else{ clearInterval(timer); hide(countEl); state=ST.RUN; }
     },700);
   }
 
@@ -257,9 +259,9 @@
     world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX = W + 480;          // ★ スタート直後は障害物を画面外に（安全に加速できる）
+    world.nextObsX = W + 480;          // スタート直後は画面外から
     world.nextItemX= W + 800;
-    world.safeUntilMeters = 150;       // ★ 150mまではダメージ無効＆湧きを抑制
+    world.safeUntilMeters = 150;
     world.nextViranAt = rand(500,1000);
     player.x=W*0.25; player.y=groundY()-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
     refreshHUD();
@@ -272,14 +274,14 @@
 
   // ===== ジャンプ/ブースト =====
   function doJump(){
-    if(state!=='RUN') return;
+    if(state!==ST.RUN) return;
     if(player.onGround || player.jumps<player.maxJumps){
       player.vy=-14; player.onGround=false; player.jumps++;
       updateJumpPill();
     }
   }
   function tryBoost(){
-    if(state!=='RUN') return;
+    if(state!==ST.RUN) return;
     const free = t() < (world.boostFreeUntil||0);
     if(world.boosting && t()<world.boostUntil) return;
     if(world.boostReady || free){
@@ -289,13 +291,11 @@
     }
   }
 
-  // ===== アイテム（今回はUI3ボタンなので内部保持のみ） =====
+  // ===== アイテム（内部効果のみ） =====
   function addItem(type){
-    // ここでは即時発動ではなく、取得演出に留める例。必要ならスロットUIを足す。
     if(type==='tsubasa'){ player.maxJumps=4; player.wingsUntil=t()+5000; showToast('4段ジャンプ！(5s)'); updateJumpPill(); }
     if(type==='en'){ world.boostFreeUntil=t()+5000; showToast('ブースト使い放題！(5s)'); }
     if(type==='jump'){
-      // 一番近い障害物をジャンプ台に
       let target=null, dxMin=1e9;
       for(const o of world.obstacles){
         if(o.type==='corn'||o.type==='dokan'){
@@ -341,41 +341,37 @@
 
   // ===== ループ =====
   let last = performance.now();
+  ready.then(()=>{ show(panelOP); requestAnimationFrame(loop); });
+
   function loop(now){
     const dt = Math.min(32, now-last); last=now;
-
-    // 背景＆ゲーム更新
     update(dt);
     render();
-
     requestAnimationFrame(loop);
   }
 
   function update(dt){
-    // 状態遷移
-    if(state==='RUN'){
+    if(state===ST.RUN){
       world.scrollX += world.speed;
-      world.meters  += world.speed*0.06; // おおよその換算
+      world.meters  += world.speed*0.06;
       // ブースト
       if(!(t()<(world.boostFreeUntil||0)) && !world.boosting){
         world.boostGauge += dt;
         if(world.boostGauge>=world.boostFillMs){ world.boostGauge=world.boostFillMs; world.boostReady=true; }
       }
       if(world.boosting && t()>world.boostUntil){ world.boosting=false; world.speed=world.baseSpeed; }
-      // 無敵（★ 3. 5秒で終了 → 元の姿へ）
+      // 無敵：5秒で自動解除（元の姿に）
       if(world.inv && t()>world.invUntil){ world.inv=false; player.gold=false; }
-      // 4段ジャンプの期限
+      // 4段ジャンプ期限
       if(player.maxJumps>2 && t()>player.wingsUntil){ player.maxJumps=2; updateJumpPill(); }
-
-      // Viran出現
+      // ヴィラン
       if(world.meters >= world.nextViranAt){ callViran(); world.nextViranAt += rand(500,1000); }
     }
 
-    // スポーン（★ 4. コイン少なめ）
+    // スポーン（コイン少なめ）
     const right = world.scrollX + W + 60;
     if(world.nextObsX < right){
-      // 安全地帯中は発生頻度を抑える
-      if(world.meters > world.safeUntilMeters-20) spawnObstacle(world.nextObsX);
+      if(state!==ST.COUNT && world.meters > world.safeUntilMeters-20) spawnObstacle(world.nextObsX);
       if(Math.random()<0.25) spawnSign(world.nextObsX-160);
       world.nextObsX += rand(360,560);
     }
@@ -383,7 +379,6 @@
       spawnItem(world.nextItemX);
       world.nextItemX += rand(900,1400);
     }
-    // コイン列（頻度↓・個数↓）
     if(Math.random()<0.008){
       const bx = world.scrollX + W + 80;
       const y  = groundY() - rand(120,230);
@@ -396,7 +391,7 @@
     player.vy += world.gravity; player.y += player.vy;
 
     // 障害物
-    let topY = gy - player.h, onPlat=false;
+    let topY = gy - player.h;
     for(const o of world.obstacles){
       const ox = o.x - world.scrollX;
       if(o.type==='dokan'){
@@ -405,15 +400,15 @@
         else if(o.phase===1){ if(o.timer>2000){ o.phase=2; } }
         else if(o.phase===2){ o.h-=1.2; if(o.h<=20){ o.h=20; o.phase=0; o.timer=0; } }
       }
-
       const oy = (o.type==='dokan') ? gy - (o.h||20) : gy - o.h;
+
       if(AABB(player.x,player.y,player.w,player.h, ox,oy, o.w,(o.h||20))){
-        if(world.meters < world.safeUntilMeters){ /* 安全地帯：ダメージ無効 */ }
-        else if(o.type==='corn'){ damage(1); }
+        if(state===ST.COUNT || world.meters < world.safeUntilMeters){
+          // カウントダウン中＆安全地帯はダメージ無効
+        }else if(o.type==='corn'){ damage(1); }
         else if(o.type==='dokan'){
           const fromTop = (player.y+player.h) <= (oy+10) && (player.y+player.h) >= (oy-14);
-          if(fromTop){ topY=Math.min(topY, oy-player.h); onPlat=true; }
-          else{ damage(1); }
+          if(fromTop){ topY=Math.min(topY, oy-player.h); } else { damage(1); }
         } else if(o.jumpPad){
           player.vy=-18; world.speed=Math.min(world.maxSpeed, world.baseSpeed*1.9); world.boosting=true; world.boostUntil=t()+800;
         }
@@ -443,7 +438,10 @@
       const ix=it.x-world.scrollX, iy=it.y;
       if(AABB(player.x,player.y,player.w,player.h, ix,iy,it.w,it.h)){
         if(it.type==='coin'){
-          world.coins++; if(world.coins%10===0){ world.inv=true; world.invUntil=t()+5000; player.gold=true; showCutin('mutekiop'); }
+          world.coins++;
+          if(world.coins%10===0){
+            world.inv=true; world.invUntil=t()+5000; player.gold=true; showCutin('mutekiop');
+          }
         }else{
           addItem(it.type);
         }
@@ -452,7 +450,7 @@
     }
 
     // Viran 本体
-    if(viran){
+    if(viran && state===ST.RUN){
       viran.tick+=dt; viran.x+=2.2; const targetY=groundY()-260; viran.y += (targetY-viran.y)*0.02;
       if(viran.shoots<viran.max && viran.tick>viran.nxt){ viran.shoots++; viran.nxt+=rand(600,900); fireball(viran.x-40, viran.y+30); }
       if(viran.shoots>=viran.max && viran.tick>viran.nxt+800){ viran=null; }
@@ -462,17 +460,16 @@
   }
 
   function damage(n){
-    if(world.inv) return;
+    if(world.inv || state!==ST.RUN) return;
     world.hearts -= n;
     if(world.hearts<=0){ world.hearts=0; gameOver(); }
     else { showToast('ダメージ！'); }
   }
 
   function gameOver(){
-    state='OVER';
-    // 中央にカットイン表示（距離）
+    state=ST.OVER;
     showToast(`ゲームオーバー\n距離 ${Math.floor(world.meters)} m`);
-    setTimeout(()=>{ show(panelMenu); }, 2000);
+    setTimeout(()=>{ show(panelMenu); state=ST.MENU; }, 2000);
   }
 
   // ===== 当たり判定 =====
@@ -480,30 +477,47 @@
     return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;
   }
 
-  // ===== 描画 =====
+  // ===== タイル描画 =====
   function drawTiled(img, y, speedFactor, drawH){
     const iw = img.width||256;
-    const scale = Math.max(W/iw, 1) * 0.6;           // 横にゆるく伸ばす
+    const scale = Math.max(W/iw, 1) * 0.6;
     const w = iw*scale;
     const x0 = -((world.scrollX*speedFactor)%w);
     for(let x=x0-w; x<W+w; x+=w){ cx.drawImage(img, x, y, w, drawH||img.height*scale); }
   }
 
+  // ===== 描画（状態ごとに切替） =====
   function render(){
     cx.clearRect(0,0,W,H);
 
-    // 背景（空）
+    if(state===ST.TITLE){
+      // ★ OP：真っ黒背景＋ロゴだけ
+      cx.fillStyle="#000"; cx.fillRect(0,0,W,H);
+      const s = Math.min(W*0.8, 600);
+      cx.globalAlpha=0.95;
+      cx.drawImage(IM.op, (W-s)/2, (H-s)/2 - 80, s, s);
+      cx.globalAlpha=1;
+      return;
+    }
+
+    if(state===ST.CHARSEL){
+      // ★ キャラ選択：空だけ描く
+      if(IM.sora){ cx.drawImage(IM.sora, 0, 0, W, H); }
+      return;
+    }
+
+    // ★ COUNT/RUN/OVER/MENU 中は空＋畑＋道路
     if(IM.sora){ drawTiled(IM.sora, 0, 0.12, H); }
 
     const gy = groundY();
 
-    // 畑（★ 1. 道路に密着）
+    // 畑（道路に密着）
     if(IM.hatake){
-      const targetH = Math.min(150, Math.floor(H*0.22)); // 端末に合わせて高さ可変
+      const targetH = Math.min(150, Math.floor(H*0.22));
       drawTiled(IM.hatake, gy - targetH, 0.55, targetH);
     }
 
-    // 看板（背景側）
+    // 看板（背景）
     for(const s of world.signs){
       const x = s.x - world.scrollX;
       cx.drawImage(s.img, x, gy - s.h - 10, s.w, s.h);
@@ -533,7 +547,7 @@
       else{ cx.drawImage(o.img, x, gy-o.h, o.w, o.h); }
     }
 
-    // 道路（★ 畑とピッタリ接続）
+    // 道路
     if(IM.doro){ drawTiled(IM.doro, gy, 1.0, H-gy+12); }
 
     // プレイヤー
@@ -546,14 +560,6 @@
       cx.drawImage(IM[player.sprite], px, py, player.w, player.h);
     }
   }
-
-  // ===== 起動 =====
-  ready.then(()=>{
-    // OPを表示 → 「はい」でキャラ選択（★ 6. 起動時は OP → キャラ選択）
-    show(panelOP);
-    requestAnimationFrame(loop);
-  });
-
 })();
 </script>
 </body>
