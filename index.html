@@ -12,21 +12,26 @@
     margin:0;height:100%;background:#000;color:#fff;
     font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif
   }
+
   /* 画面中央に“スマホサイズのステージ”を固定表示 */
   #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000}
-  #stage{position:relative; /* width/height はJSで 414x896 に設定 */ }
+  #stage{position:relative}
 
-  #cv{display:block;touch-action:none;background:#000;border:1px solid #1b1f27;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+  #cv{
+    position:relative; z-index:0;
+    display:block;touch-action:none;background:#000;
+    border:1px solid #1b1f27;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.6)
+  }
 
   /* ===== HUD（ステージ相対） ===== */
-  .hud{position:absolute;inset:0;pointer-events:none}
+  .hud{position:absolute;inset:0;pointer-events:none;z-index:10}
   .top{position:absolute;left:10px;right:10px;top:8px;display:flex;gap:10px;align-items:center}
   .pill{background:var(--pill);border-radius:999px;padding:6px 12px;font-weight:700;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,.25)}
   .grow{flex:1;display:flex;align-items:center;gap:8px}
   .gauge{height:12px;background:#303847;border:1px solid #475268;border-radius:999px;overflow:hidden;width:100%}
   .gauge i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#29d,#6ef)}
 
-  .bottom{position:absolute;left:10px;right:10px;bottom:12px;display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;pointer-events:none}
+  .bottom{position:absolute;left:10px;right:10px;bottom:20px;display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;pointer-events:none}
   .bbtn{pointer-events:auto;background:var(--btn2);border:1px solid #333c4c;border-radius:16px;padding:14px 12px;font-weight:900;text-align:center;box-shadow:0 10px 22px rgba(0,0,0,.35)}
   .bbtn:active{transform:translateY(1px)}
   .slot{pointer-events:auto;height:56px;border-radius:12px;border:1px dashed #666;background:rgba(255,255,255,.06);display:grid;place-items:center}
@@ -47,14 +52,14 @@
   .card img{width:110px;height:auto;image-rendering:pixelated}
   .sel{outline:3px solid #2bd36b}
 
-  .count{position:absolute;inset:0;display:grid;place-items:center;font-size:60px;font-weight:900;text-shadow:0 4px 16px #000}
+  .count{position:absolute;inset:0;display:grid;place-items:center;font-size:60px;font-weight:900;text-shadow:0 4px 16px #000;pointer-events:none}
   .cutin{position:absolute;inset:auto 50% 40% 50%;transform:translate(-50%,0);pointer-events:none}
   .cutin img{width:min(80vw,520px);height:auto;display:block;opacity:0;animation:cut 2s ease forwards;image-rendering:pixelated}
   @keyframes cut{0%{opacity:0;transform:translateY(16px) scale(.98)}15%{opacity:1;transform:translateY(0) scale(1)}85%{opacity:1}100%{opacity:0;transform:translateY(-8px) scale(1.02)}}
 
-  .toast{position:absolute;inset:0;display:grid;place-items:center;font-size:26px;font-weight:900;text-align:center;white-space:pre-line;text-shadow:0 2px 8px #000;animation:fade 1.8s ease forwards}
+  .toast{position:absolute;inset:0;display:grid;place-items:center;font-size:26px;font-weight:900;text-align:center;white-space:pre-line;text-shadow:0 2px 8px #000;animation:fade 1.8s ease forwards;pointer-events:none}
   @keyframes fade{0%{opacity:0}20%{opacity:1}80%{opacity:1}100%{opacity:0}}
-  .result{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);border:1px solid #444;border-radius:14px;padding:10px 14px;font-weight:900;opacity:0;animation:res 2s ease forwards;white-space:pre-line;text-align:center}
+  .result{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);border:1px solid #444;border-radius:14px;padding:10px 14px;font-weight:900;opacity:0;animation:res 2s ease forwards;white-space:pre-line;text-align:center;pointer-events:none}
   @keyframes res{0%{opacity:0;transform:translate(-50%,-46%)}20%{opacity:1;transform:translate(-50%,-50%)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-54%)}}
 </style>
 </head>
@@ -136,9 +141,9 @@
 
 <script>
 (() => {
-  /* ===== ステージサイズ：PCでもスマホ縦長で固定表示 ===== */
+  /* ===== ステージ：PCでもスマホ縦長で固定表示 ===== */
   const DESIGN_W = 414, DESIGN_H = 896;   // iPhone 11/12/13 相当
-  const FORCE_PHONE = true;               // 常にスマホサイズで表示
+  const FORCE_PHONE = true;
 
   const stage = document.getElementById('stage');
   const cv = document.getElementById('cv');
@@ -148,17 +153,13 @@
   function fit(){
     if (FORCE_PHONE) {
       W = DESIGN_W; H = DESIGN_H;
-      stage.style.width  = W + 'px';
-      stage.style.height = H + 'px';
-      cv.style.width  = W + 'px';
-      cv.style.height = H + 'px';
     } else {
       W = innerWidth; H = innerHeight;
-      stage.style.width  = W + 'px';
-      stage.style.height = H + 'px';
-      cv.style.width  = W + 'px';
-      cv.style.height = H + 'px';
     }
+    stage.style.width  = W + 'px';
+    stage.style.height = H + 'px';
+    cv.style.width  = W + 'px';
+    cv.style.height = H + 'px';
     cv.width  = Math.round(W * DPR);
     cv.height = Math.round(H * DPR);
     cx.setTransform(DPR,0,0,DPR,0,0);
@@ -219,7 +220,7 @@
   const ST={TITLE:0,CHARSEL:1,COUNT:2,RUN:3,OVER:4,MENU:5,QUIT:6};
   let state=ST.TITLE;
 
-  // OP → キャラ選択（カウントダウン中/プレイ中は押しても無効）
+  // OP → キャラ選択（COUNT/RUN中は無効）
   document.getElementById('opYes').onclick=()=>{
     if(state!==ST.TITLE) return;
     state=ST.CHARSEL; show(panelChar); hide(panelOP);
@@ -243,7 +244,7 @@
   function hide(el){el.classList.add('hidden');}
 
   /* ===== World / Player ===== */
-  function groundY(){ return Math.floor(H*0.70); } // ★ 道路（基準）を上へ
+  function groundY(){ return Math.floor(H*0.64); } // ★ 道路（基準）を上へ
   function t(){ return performance.now(); }
   function rnd(a,b){ return Math.floor(a + Math.random()*(b-a+1)); }
 
@@ -256,14 +257,14 @@
     coins:0,
     boostGauge:0, boostFillMs:10000, boostReady:false, boosting:false, boostUntil:0,
     inv:false, invUntil:0,
-    safeUntilMeters:150,
+    safeUntilMeters:180,  // ★ スタート直後の無敵距離を少し延長
     signs:[], obstacles:[], items:[], fires:[], hazards:[],
     nextObsX:0, nextItemX:0,
-    nextViranAt:rnd(400,700), // ★ 早めに出現
+    nextViranAt:rnd(400,700)
   };
 
   const player={
-    x: Math.floor(W*0.22), y:0, w:48, h:54, vy:0, onGround:false, // ★縦長比率
+    x: Math.floor(W*0.22), y:0, w:48, h:54, vy:0, onGround:false, // 縦長比率
     jumps:2, maxJumps:2, wingsUntil:0,
     sprite:'orange', gold:false
   };
@@ -285,7 +286,6 @@
 
   /* ===== Start / Reset ===== */
   function startCountdown(sel){
-    // UIの一括初期化（COUNT/RUN中にOPが出ないように）
     hide(panelOP);hide(panelChar);hide(panelMenu);hide(panelQuit);
     hide(resultMsg);resultMsg.textContent='';
     player.sprite=sel||'orange';
@@ -305,10 +305,9 @@
     world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+420;          // 初期障害物は少し先
+    world.nextObsX=W+520;          // ★ 初期障害物はさらに遠く
     world.nextItemX=W+1600;        // アイテムはレア
     world.nextViranAt=rnd(400,700);
-    world.safeUntilMeters=150;
 
     player.x=Math.floor(W*0.22); player.y=groundY()-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
 
@@ -356,7 +355,7 @@
           const dx=(o.x - (world.scrollX + player.x)); if(dx>0 && dx<dxMin){dxMin=dx; target=o;}
         }
       }
-      if(target){ Object.assign(target,{type:'jumpdai', img:IM.jumpdai, w:120, h:40, jumpPad:true}); spawnSign(target.x-rnd(360,420)); showToast('ジャンプ台に変化！'); }
+      if(target){ Object.assign(target,{type:'jumpdai', img:IM.jumpdai, w:120, h:40, jumpPad:true}); spawnSign(target.x - rnd(360,500)); showToast('ジャンプ台に変化！'); }
       else{ showToast('近くに対象なし'); }
     }
     slots[i]=null; refreshSlots();
@@ -386,24 +385,21 @@
     const r=Math.random();
     if(r<0.20){
       world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, w:120, h:40, jumpPad:true});
-      spawnSign(x - rnd(360, 450)); // 先読み看板
     }else if(r<0.60){
-      world.obstacles.push({type:'corn', img:IM.corn, x, w:56, h:56}); // 少し大きめ
-      spawnSign(x - rnd(360, 450));
+      world.obstacles.push({type:'corn', img:IM.corn, x, w:56, h:56});
     }else{
       world.obstacles.push({type:'dokan', img:IM.dokan, x, w:60, h:20, phase:0, timer:0, maxH:96});
-      spawnSign(x - rnd(360, 450));
     }
+    // 右端の外から自然に入る「先読み看板」
+    const sx = x - rnd(350,500);
+    if (sx > world.scrollX + W) spawnSign(sx);
+    else spawnSign(world.scrollX + W + 40);
   }
   function spawnSign(x){
     const n=rnd(1,6);
-    world.signs.push({
-      img:IM['kanban'+n], x, w:180, h:130, // ★ 大きく
-      spawn:t() // ★ フェードイン用
-    });
+    world.signs.push({ img:IM['kanban'+n], x, w:220, h:160 }); // ★ 大きく
   }
   function spawnItem(x){
-    // アイテムはかなりレア
     const r=Math.random(); const type = r<.34?'tsubasa': r<.67?'jump':'en';
     world.items.push({type, icon:IM[type==='tsubasa'?'tsubasa':type==='jump'?'jump':'en'], x, y:groundY()-160-rnd(0,80), w:44, h:44, vy:Math.random()<.5?0.3:-0.3});
   }
@@ -420,7 +416,7 @@
   function loop(now){
     const dt = Math.min(32, now-last); last=now;
     update(dt);
-    render(now);
+    render();
     requestAnimationFrame(loop);
   }
 
@@ -437,7 +433,6 @@
       if(world.inv && t()>world.invUntil){ world.inv=false; player.gold=false; }
       if(player.maxJumps>2 && t()>player.wingsUntil){ player.maxJumps=2; jumpPill.textContent=`ジャンプ ×${player.maxJumps}`; }
 
-      // ヴィラン確実出現
       if(!viran && world.meters >= world.nextViranAt){
         callViran(); world.nextViranAt += rnd(500,900);
       }
@@ -451,9 +446,8 @@
     }
     if(world.nextItemX < right){
       spawnItem(world.nextItemX);
-      world.nextItemX += rnd(2200,3400); // さらにレア化
+      world.nextItemX += rnd(2200,3400);
     }
-    // コイン：激レア（単体～小列）
     if(Math.random()<0.0035){
       const bx=world.scrollX+W+80, y=groundY()-rnd(120,230), n=rnd(1,3);
       for(let k=0;k<n;k++){ world.items.push({type:'coin', icon:IM.coin, x:bx+k*46, y, w:30, h:30, vy:0}); }
@@ -482,8 +476,11 @@
           const fromTop=(player.y+player.h) <= (oy+10) && (player.y+player.h) >= (oy-14);
           if(fromTop){ topY=Math.min(topY, oy-player.h); } else { hit(1); }
         }else if(o.jumpPad){
-          player.vy=-18; world.speed=Math.min(world.maxSpeed, world.baseSpeed*1.9);
-          world.boosting=true; world.boostUntil=t()+800;
+          // ★ 加速＋大ジャンプ
+          player.vy = -22;
+          world.speed = Math.min(world.maxSpeed, world.baseSpeed*2.0);
+          world.boosting = true;
+          world.boostUntil = t() + 1000;
         }
       }
     }
@@ -517,7 +514,7 @@
             world.inv=true; world.invUntil=t()+5000; player.gold=true; showCutin('mutekiop');
           }
         }else{
-          addItem(it.type); // 満杯時は拒否
+          addItem(it.type);
         }
         world.items.splice(i,1);
       }else if(ix<-140){ world.items.splice(i,1); }
@@ -543,18 +540,16 @@
     for(let x=x0-w;x<W+w;x+=w){ cx.drawImage(img,x,y,w,drawH||img.height*scale); }
   }
 
-  function render(now){
+  function render(){
     cx.clearRect(0,0,W,H);
 
     if(state===ST.TITLE){
-      // OP：黒背景＋ロゴ
       cx.fillStyle="#000"; cx.fillRect(0,0,W,H);
       const s=Math.min(W*0.8,600); cx.globalAlpha=.95;
       cx.drawImage(IM.op,(W-s)/2,(H-s)/2-80,s,s); cx.globalAlpha=1;
       return;
     }
     if(state===ST.CHARSEL){
-      // キャラ選択：空のみ
       if(IM.sora) cx.drawImage(IM.sora,0,0,W,H);
       return;
     }
@@ -563,19 +558,16 @@
     if(IM.sora) drawTiled(IM.sora,0,0.12,H);
 
     const gy=groundY();
-    // 畑（可変高さ、後で道路をわずかにかぶせて隙間ゼロに）
+    // 畑（下端が gy に一致）
     if(IM.hatake){
-      const fieldH = Math.max( Math.floor(H*0.22), 80 ); // ★ だいたい22%（端末により可変）
+      const fieldH = Math.max(Math.floor(H*0.23), 90);
       drawTiled(IM.hatake, gy - fieldH, 0.55, fieldH);
     }
 
-    // 看板（フェードイン演出）
+    // 看板（フェードなし・自然にスクロールイン）
     for(const s of world.signs){
       const x=s.x-world.scrollX, y=gy - s.h - 10;
-      const life = Math.min(1, (now - (s.spawn||0)) / 200); // 200msフェード
-      cx.save(); cx.globalAlpha = life;
       cx.drawImage(s.img, x, y, s.w, s.h);
-      cx.restore();
     }
 
     // アイテム・コイン
@@ -596,8 +588,8 @@
       else if(o.jumpPad){ cx.drawImage(IM.jumpdai,x,gy-o.h,o.w,o.h); }
     }
 
-    // 道路（最後に +4px かぶせて隙間を完全に消す）
-    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+4);
+    // 道路（+6px かぶせて隙間を完全に消す）
+    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+6);
 
     // プレイヤー
     const px=player.x, py=player.y;
