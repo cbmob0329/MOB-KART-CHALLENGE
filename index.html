@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>MOB チャリ走カー（仮）</title>
+<style>
+  :root {
+    --ui-bg:#0d0d0f; --ui-fg:#fff; --ui-accent:#13c4ff; --ui-dim:#888;
+    --btn-bg:#1b1b20; --btn-fg:#fff; --btn-act:#2bd36b;
+  }
+  html,body { margin:0; padding:0; height:100%; background:#000; color:#fff; }
+  #gameWrap { position:fixed; inset:0; display:flex; flex-direction:column; background:#000; }
+  #canvas { width:100%; height:100%; display:block; touch-action:none; background:#000; }
+  /* モバイルUI */
+  .hud { position:fixed; inset:0; pointer-events:none; }
+  .topbar{ position:absolute; top:8px; left:8px; right:8px; display:flex; gap:8px; align-items:center; justify-content:space-between; pointer-events:none;}
+  .hearts{ display:flex; gap:6px; }
+  .heart{ width:22px; height:20px; display:inline-block; }
+  .meters{ font-weight:700; background:rgba(0,0,0,.4); padding:4px 8px; border-radius:8px; pointer-events:none; }
+  .boostWrap{ display:flex; align-items:center; gap:6px; pointer-events:auto; }
+  .gauge{ width:120px; height:10px; background:#333; border-radius:999px; overflow:hidden; border:1px solid #666; }
+  .gauge>i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#1ee,#4f8); }
+  .controls{ position:absolute; left:0; right:0; bottom:10px; display:flex; justify-content:space-between; gap:10px; padding:0 10px; pointer-events:none; }
+  .btn{ pointer-events:auto; user-select:none; -webkit-user-select:none;
+        background:var(--btn-bg); color:var(--btn-fg);
+        border:1px solid #333; border-radius:16px; padding:12px 14px; font-weight:700;
+        min-width:110px; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  .btn:active{ transform:translateY(1px); background:#222; }
+  .btnAccent{ border-color:#2b8; }
+  .itemBar{ display:flex; gap:8px; }
+  .slot{ width:56px; height:56px; border-radius:12px; border:1px dashed #666; background:rgba(255,255,255,.06); display:flex; align-items:center; justify-content:center; pointer-events:auto; }
+  .slot img{ max-width:90%; max-height:90%; image-rendering:pixelated; }
+  .disabled{ opacity:.4; pointer-events:none; }
+  /* 画面内のセンターUI */
+  .centerUI{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:auto; }
+  .panel{ background:rgba(10,10,14,.88); border:1px solid #2b2b35; border-radius:16px; padding:16px; width:min(90vw,560px); box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .panel h1,.panel h2,.panel h3{ margin:0 0 12px; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap; }
+  .opt{ flex:1 1 auto; min-width:110px; }
+  .charSel{ display:flex; gap:10px; }
+  .char{ flex:1 1 48%; border:1px solid #333; border-radius:14px; padding:10px; background:rgba(255,255,255,.04); display:grid; place-items:center; }
+  .char img{ width:120px; height:auto; image-rendering:pixelated; }
+  .cutin{ position:absolute; inset:auto 50% 40% 50%; transform:translate(-50%,0); background:rgba(0,0,0,.0); padding:0; pointer-events:none; }
+  .cutin img{ width:min(80vw,520px); height:auto; display:block; opacity:0; animation:cut 2s ease forwards; image-rendering:pixelated; }
+  @keyframes cut{ 0%{opacity:0; transform:translateY(16px) scale(.98);} 15%{opacity:1; transform:translateY(0) scale(1);} 85%{opacity:1;} 100%{opacity:0; transform:translateY(-8px) scale(1.02);} }
+  .fadeCenter{ position:absolute; inset:0; display:grid; place-items:center; font-size:28px; font-weight:900; text-shadow:0 2px 6px #000; animation:fadeMsg 2s ease forwards; }
+  @keyframes fadeMsg{ 0%{opacity:0} 20%{opacity:1} 80%{opacity:1} 100%{opacity:0} }
+  .countdown{ position:absolute; inset:0; display:grid; place-items:center; font-size:64px; font-weight:900; text-shadow:0 4px 16px #000; }
+  .hidden{ display:none !important; }
+  /* iOS notch セーフ */
+  .safe{ padding-left: max(10px, env(safe-area-inset-left));
+         padding-right:max(10px, env(safe-area-inset-right));
+         padding-bottom:max(10px, env(safe-area-inset-bottom)); }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="canvas"></canvas>
+
+  <!-- HUD -->
+  <div class="hud">
+    <div class="topbar safe">
+      <div class="hearts" id="hearts"></div>
+      <div class="meters" id="meters">0 m｜0 coin</div>
+      <div class="boostWrap">
+        <div class="gauge"><i id="boostFill"></i></div>
+        <div class="btn btnAccent opt" id="btnBoost">BOOST</div>
+      </div>
+    </div>
+
+    <div class="controls safe">
+      <div class="btn opt" id="btnJump">JUMP</div>
+      <div class="itemBar">
+        <div class="slot" id="slot1" title="Item Slot 1"></div>
+        <div class="slot" id="slot2" title="Item Slot 2"></div>
+      </div>
+    </div>
+
+    <!-- 画面中央UI（タイトル/選択/ポーズ/ゲームオーバー後メニューなど） -->
+    <div class="centerUI" id="centerUI">
+      <div class="panel" id="titlePanel">
+        <h1>ゲームを開始しますか？</h1>
+        <div class="row">
+          <div class="btn opt" id="btnTitleYes">はい</div>
+          <div class="btn opt" id="btnTitleNo">いいえ</div>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="charPanel" style="background-image:url('sora.png'); background-size:cover; background-position:center;">
+        <h2>キャラクター選択</h2>
+        <div class="charSel">
+          <div class="char" data-char="orange">
+            <img src="orange.png" alt="MOBオレンジ">
+            <div>MOBオレンジ</div>
+          </div>
+          <div class="char" data-char="VR">
+            <img src="VR.png" alt="MOBVR">
+            <div>MOBVR</div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div class="btn opt" id="btnCharStart">スタート</div>
+          <div class="btn opt" id="btnBackTitle">戻る</div>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="postGamePanel">
+        <h2>どうする？</h2>
+        <div class="row">
+          <div class="btn opt" id="btnPostChar">キャラ選択</div>
+          <div class="btn opt" id="btnPostStart">スタート</div>
+          <div class="btn opt" id="btnPostQuit">やめる</div>
+        </div>
+      </div>
+
+      <div class="panel hidden" id="quitPanel">
+        <h3>アプリを終了しました</h3>
+        <div style="color:#bbb">このタブを閉じてください。</div>
+      </div>
+    </div>
+
+    <div class="countdown hidden" id="countdown">3</div>
+    <div class="cutin hidden" id="cutin"><img id="cutinImg" src="" alt=""></div>
+    <div class="fadeCenter hidden" id="bigMsg"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ===== 基本セットアップ =====
+  const cvs = document.getElementById('canvas');
+  const ctx = cvs.getContext('2d');
+  let W=window.innerWidth, H=window.innerHeight;
+  const DPR = Math.min(2, window.devicePixelRatio||1);
+  function resize(){
+    W=window.innerWidth; H=window.innerHeight;
+    cvs.width = Math.floor(W*DPR);
+    cvs.height= Math.floor(H*DPR);
+    cvs.style.width = W+'px';
+    cvs.style.height= H+'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ===== 画像読み込み（足りない画像はダミー描画） =====
+  const files = {
+    doro:'doro.png', hatake:'hatake.png', sora:'sora.png', op:'op.png',
+    orange:'orange.png', VR:'VR.png',
+    corn:'corn.png', dokan:'dokan.png', jumpdai:'jumpdai.png',
+    kanban1:'kanban1.png', kanban2:'kanban2.png', kanban3:'kanban3.png',
+    kanban4:'kanban4.png', kanban5:'kanban5.png', kanban6:'kanban6.png',
+    coin:'coin.png', gold:'gold.png', hoshi1:'hoshi1.png', hoshi2:'hoshi2.png', mutekiop:'mutekiop.png',
+    viranop:'viran op.png', viran:'viran.png', tama:'tama.png',
+    tsubasa:'tsubasa.png', jump:'jump.png', en:'en.png'
+  };
+  const IM = {};
+  function loadImage(key, src){
+    return new Promise(res=>{
+      const img = new Image();
+      img.onload=()=>res(IM[key]=img);
+      img.onerror=()=>{ // ダミー
+        const c = document.createElement('canvas');
+        c.width=128; c.height=128;
+        const x=c.getContext('2d');
+        x.fillStyle='#444'; x.fillRect(0,0,128,128);
+        x.strokeStyle='#999'; x.strokeRect(0,0,128,128);
+        x.fillStyle='#fff'; x.font='12px sans-serif';
+        x.fillText(key, 6, 18);
+        IM[key]=c; res(c);
+      };
+      img.src = src;
+    });
+  }
+  const loadAll = Promise.all(Object.entries(files).map(([k,v])=>loadImage(k,v)));
+
+  // ===== ゲーム状態 =====
+  const STATE = { TITLE:0, CHARSEL:1, COUNTDOWN:2, RUN:3, GAMEOVER:4, POSTMENU:5, QUIT:6 };
+  let state = STATE.TITLE;
+
+  // UI refs
+  const centerUI = document.getElementById('centerUI');
+  const titlePanel = document.getElementById('titlePanel');
+  const charPanel  = document.getElementById('charPanel');
+  const postGamePanel = document.getElementById('postGamePanel');
+  const quitPanel  = document.getElementById('quitPanel');
+  const btnTitleYes = document.getElementById('btnTitleYes');
+  const btnTitleNo  = document.getElementById('btnTitleNo');
+  const btnCharStart= document.getElementById('btnCharStart');
+  const btnBackTitle= document.getElementById('btnBackTitle');
+  const btnPostChar = document.getElementById('btnPostChar');
+  const btnPostStart= document.getElementById('btnPostStart');
+  const btnPostQuit = document.getElementById('btnPostQuit');
+  const btnJump     = document.getElementById('btnJump');
+  const btnBoost    = document.getElementById('btnBoost');
+  const slot1       = document.getElementById('slot1');
+  const slot2       = document.getElementById('slot2');
+  const heartsEl    = document.getElementById('hearts');
+  const metersEl    = document.getElementById('meters');
+  const boostFill   = document.getElementById('boostFill');
+  const countdownEl = document.getElementById('countdown');
+  const cutinBox    = document.getElementById('cutin');
+  const cutinImg    = document.getElementById('cutinImg');
+  const bigMsg      = document.getElementById('bigMsg');
+
+  function show(el){ el.classList.remove('hidden'); }
+  function hide(el){ el.classList.add('hidden'); }
+
+  function setState(s){
+    state = s;
+    // 切替UI
+    hide(titlePanel); hide(charPanel); hide(postGamePanel); hide(quitPanel);
+    if(s===STATE.TITLE){ show(titlePanel); }
+    if(s===STATE.CHARSEL){ show(charPanel); }
+    if(s===STATE.POSTMENU){ show(postGamePanel); }
+    if(s===STATE.QUIT){ show(quitPanel); }
+    centerUI.classList.toggle('hidden', !(s===STATE.TITLE || s===STATE.CHARSEL || s===STATE.POSTMENU || s===STATE.QUIT));
+  }
+
+  // ===== プレイヤー/世界 =====
+  const world = {
+    scrollX:0, speed: 6, baseSpeed:6, maxSpeed:12, gravity: 0.7, air:0.92,
+    groundY(){ return Math.floor(H*0.78); }, // 地面ベースライン
+    meters:0,
+    coins:0,
+    invincible:false, invUntil:0,
+    boostGauge:0, boostReady:false, boosting:false, boostUntil:0, boostFillTime:10_000, boostDuration:2500,
+    hearts:5,
+    distanceForViran: randomInt(500,1000), // 次のヴィラン距離
+    fireballs:[],
+    hazards:[], // 火の玉残骸
+    obstacles:[],
+    items:[],
+    signs:[],
+    nextObstacleX: 800,
+    nextItemX: 1200,
+  };
+
+  const player = {
+    x: W*0.25, y:0, w:64, h:48, vy:0,
+    onGround:false,
+    maxJumps:2, jumpCount:0,
+    facing:1,
+    sprite:'orange',
+    goldMode:false,
+    wingsUntil:0,
+  };
+
+  // ===== 入力 =====
+  let key = {};
+  window.addEventListener('keydown', (e)=>{ key[e.code]=true; if(['Space','ArrowUp'].includes(e.code)) e.preventDefault(); });
+  window.addEventListener('keyup', (e)=>{ key[e.code]=false; });
+
+  btnJump.addEventListener('touchstart', (e)=>{ e.preventDefault(); doJump(); }, {passive:false});
+  btnJump.addEventListener('mousedown', (e)=>{ e.preventDefault(); doJump(); });
+
+  btnBoost.addEventListener('touchstart', (e)=>{ e.preventDefault(); tryBoost(); }, {passive:false});
+  btnBoost.addEventListener('mousedown', (e)=>{ e.preventDefault(); tryBoost(); });
+
+  slot1.addEventListener('click', ()=>useItem(0));
+  slot2.addEventListener('click', ()=>useItem(1));
+  slot1.addEventListener('touchstart', (e)=>{e.preventDefault(); useItem(0);}, {passive:false});
+  slot2.addEventListener('touchstart', (e)=>{e.preventDefault(); useItem(1);}, {passive:false});
+
+  // ===== UIハンドラ =====
+  btnTitleYes.onclick = ()=>{ setState(STATE.CHARSEL); };
+  btnTitleNo.onclick  = ()=>{ setState(STATE.QUIT); stopLoop=true; };
+
+  let selectedChar = 'orange';
+  charPanel.addEventListener('click', (e)=>{
+    const c = e.target.closest('.char');
+    if(c){ selectedChar = c.dataset.char; outlineSel(); }
+  });
+  function outlineSel(){
+    const cards = [...charPanel.querySelectorAll('.char')];
+    cards.forEach(el=>{
+      el.style.outline = (el.dataset.char===selectedChar)?'3px solid #2bd36b':'none';
+    });
+  }
+  btnBackTitle.onclick = ()=>{ setState(STATE.TITLE); };
+  btnCharStart.onclick = ()=>{ startFromCharSel(); };
+
+  btnPostChar.onclick = ()=>{ setState(STATE.CHARSEL); };
+  btnPostStart.onclick= ()=>{ hide(postGamePanel); centerUI.classList.add('hidden'); countdownStart(); };
+  btnPostQuit.onclick = ()=>{ setState(STATE.QUIT); stopLoop=true; };
+
+  function startFromCharSel(){
+    centerUI.classList.add('hidden');
+    countdownStart();
+  }
+
+  // ===== カウントダウン =====
+  function countdownStart(){
+    setState(STATE.COUNTDOWN);
+    resetWorldForRun();
+    let count = 3;
+    countdownEl.textContent = count;
+    show(countdownEl);
+    const timer = setInterval(()=>{
+      count--;
+      if(count>0){ countdownEl.textContent = count; }
+      else if(count===0){ countdownEl.textContent = 'GO'; }
+      else{
+        clearInterval(timer);
+        hide(countdownEl);
+        setState(STATE.RUN);
+      }
+    }, 700);
+  }
+
+  // ===== リセット =====
+  function resetWorldForRun(){
+    world.scrollX=0; world.speed=world.baseSpeed; world.meters=0; world.coins=0;
+    world.invincible=false; world.invUntil=0;
+    world.boostGauge=0; world.boostReady=false; world.boosting=false; world.boostUntil=0;
+    world.hearts=5;
+    world.hazards.length=0; world.fireballs.length=0; world.obstacles.length=0; world.items.length=0; world.signs.length=0;
+    world.nextObstacleX = 600;
+    world.nextItemX = 1200;
+    world.distanceForViran = randomInt(500,1000);
+    player.sprite = selectedChar;
+    player.x=W*0.25; player.y=world.groundY()-player.h; player.vy=0; player.onGround=true; player.jumpCount=0; player.maxJumps=2; player.wingsUntil=0; player.goldMode=false;
+    updateHUD();
+  }
+
+  // ===== 便利関数 =====
+  function randomInt(a,b){ return Math.floor(a + Math.random()*(b-a+1)); }
+  function now(){ return performance.now(); }
+
+  // ===== ジャンプ & ブースト =====
+  function doJump(){
+    if(state!==STATE.RUN) return;
+    if(player.onGround || player.jumpCount < player.maxJumps){
+      player.vy = -14;
+      player.onGround=false;
+      player.jumpCount++;
+    }
+  }
+  function tryBoost(){
+    if(state!==STATE.RUN) return;
+    const t = now();
+    if(world.invincible){  // 無敵中もOK（要求通りブースト中ジャンプ可、併用OK）
+      // そのまま許可（使い放題状態は別アイテム判定で付与）
+    }
+    if(world.boosting && t < world.boostUntil) return; // 既にブースト中
+    if(world.boostReady || t < world.boostUntilUseFree){ // gauge ready or 無制限中
+      startBoost(world.boostDuration);
+    }
+  }
+  function startBoost(dur){
+    world.boosting = true;
+    world.boostUntil = now() + (dur||2000);
+    world.speed = Math.min(world.maxSpeed, world.baseSpeed*1.8);
+    if(world.boostReady){ world.boostReady=false; world.boostGauge=0; }
+  }
+
+  // ===== アイテム管理 =====
+  const slots = [null,null]; // {type:'tsubasa'|'jump'|'en', icon:IM key}
+  function addItem(type){
+    const iconKey = (type==='tsubasa'?'tsubasa': type==='jump'?'jump':'en');
+    const item = {type, icon:IM[iconKey], iconKey};
+    if(!slots[0]){ slots[0]=item; refreshSlots(); return true; }
+    if(!slots[1]){ slots[1]=item; refreshSlots(); return true; }
+    return false; // 2枠満杯
+  }
+  function useItem(idx){
+    if(state!==STATE.RUN) return;
+    const it = slots[idx];
+    if(!it) return;
+    if(it.type==='tsubasa'){
+      player.maxJumps = 4;
+      player.wingsUntil = now()+5000;
+      flashMsg('4段ジャンプ！ (5s)');
+    }else if(it.type==='jump'){
+      // 最も近い障害物をジャンプ台に差し替え
+      let target = null, minDx=1e9;
+      for(const o of world.obstacles){
+        if(o.type==='corn' || o.type==='dokan'){
+          const dx = (o.x - (world.scrollX + player.x));
+          if(dx>0 && dx<minDx){ minDx=dx; target=o; }
+        }
+      }
+      if(target){
+        target.type='jumpdai'; target.img=IM.jumpdai; target.w=120; target.h=40; target.jumpPad=true;
+        // 看板を前に追加
+        spawnSign(target.x-180);
+        flashMsg('ジャンプ台に変化！');
+      }else{
+        flashMsg('近くに対象なし');
+      }
+    }else if(it.type==='en'){
+      world.boostUntilUseFree = now()+5000; // 5秒使い放題
+      flashMsg('ブースト使い放題！ (5s)');
+    }
+    slots[idx]=null; refreshSlots();
+  }
+  function refreshSlots(){
+    [slot1,slot2].forEach((el,i)=>{
+      el.innerHTML='';
+      if(!slots[i]){ el.classList.add('disabled'); return; }
+      el.classList.remove('disabled');
+      const im = document.createElement('img');
+      im.src = files[slots[i].iconKey] || '';
+      im.alt = slots[i].type;
+      el.appendChild(im);
+    });
+  }
+
+  // ===== HUD描画 =====
+  function drawHeart(x,y, filled=true){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.beginPath();
+    ctx.moveTo(0,8);
+    ctx.bezierCurveTo(0,-2,14,-2,14,8);
+    ctx.bezierCurveTo(14,16,7,18,7,22);
+    ctx.bezierCurveTo(7,18,0,16,0,8);
+    ctx.closePath();
+    ctx.fillStyle = filled?'#ff4466':'rgba(255,255,255,.2)';
+    ctx.strokeStyle='#000';
+    ctx.lineWidth=1.5;
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+  function updateHUD(){
+    // hearts
+    heartsEl.innerHTML='';
+    for(let i=0;i<5;i++){
+      const span = document.createElement('span'); span.className='heart';
+      // canvasで描いた方が綺麗だが、ここは簡易にSVG
+      span.innerHTML = `<svg width="22" height="20" viewBox="0 0 14 22">
+        <path d="M0,8 C0,-2 14,-2 14,8 C14,16 7,18 7,22 C7,18 0,16 0,8 Z" fill="${i<world.hearts?'#ff4466':'rgba(255,255,255,.2)'}" stroke="#000" stroke-width="1"/>
+      </svg>`;
+      heartsEl.appendChild(span);
+    }
+    metersEl.textContent = `${Math.floor(world.meters)} m｜${world.coins} coin`;
+    boostFill.style.width = `${Math.min(100, (world.boostGauge/world.boostFillTime)*100)}%`;
+    btnBoost.classList.toggle('btnAccent', world.boostReady|| (now() < (world.boostUntilUseFree||0)));
+  }
+
+  function flashMsg(text){
+    bigMsg.textContent = text;
+    bigMsg.classList.remove('hidden');
+    setTimeout(()=>bigMsg.classList.add('hidden'), 1800);
+  }
+
+  function showCutin(imgKey){
+    cutinImg.src = files[imgKey] || '';
+    cutinBox.classList.remove('hidden');
+    setTimeout(()=>cutinBox.classList.add('hidden'), 2000);
+  }
+
+  // ===== スポーン =====
+  function spawnObstacle(x){
+    // ランダム：コーン or 土管
+    const t = (Math.random()<0.55)?'corn':'dokan';
+    if(t==='corn'){
+      world.obstacles.push({type:'corn', img:IM.corn, x, y:0, w:48, h:48, damage:1});
+    }else{
+      world.obstacles.push({type:'dokan', img:IM.dokan, x, y:0, w:60, h:20, phase:0, timer:0, maxHeight:90, damage:1, stand:true});
+    }
+  }
+  function spawnSign(x){
+    const n = randomInt(1,6);
+    world.signs.push({img:IM['kanban'+n], x, y:0, w:80, h:60});
+  }
+  function spawnItem(x){
+    const r = Math.random();
+    const type = r<0.34?'tsubasa': (r<0.67?'jump':'en');
+    world.items.push({type, icon:IM[ type==='tsubasa'?'tsubasa': type==='jump'?'jump':'en' ], x, y:world.groundY()-160 - Math.random()*80, w:44, h:44, vy: Math.random()<.5?0.3:-0.3});
+  }
+
+  function maybeSpawn(){
+    const rightEdge = world.scrollX + W + 80;
+    if(world.nextObstacleX < rightEdge){
+      spawnObstacle(world.nextObstacleX);
+      // 看板（ジャンプ台の時は別で出すので、通常時はたまに）
+      if(Math.random()<0.3) spawnSign(world.nextObstacleX-160);
+      world.nextObstacleX += randomInt(300, 520);
+    }
+    if(world.nextItemX < rightEdge){
+      spawnItem(world.nextItemX);
+      world.nextItemX += randomInt(800, 1300);
+    }
+  }
+
+  // ===== 当たり判定 =====
+  function AABB(ax,ay,aw,ah, bx,by,bw,bh){
+    return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;
+  }
+
+  // ===== ランタイム更新・描画 =====
+  let last = performance.now();
+  let stopLoop=false;
+
+  function gameLoop(t){
+    if(stopLoop) return;
+    const dt = Math.min(32, t-last); last=t;
+
+    if(state===STATE.RUN || state===STATE.COUNTDOWN){
+      update(dt);
+      render();
+    }else{
+      // タイトル/選択/メニュー時も背景演出だけ描画
+      render();
+    }
+    requestAnimationFrame(gameLoop);
+  }
+
+  function update(dt){
+    // 背景スクロール（RUN時のみ進む）
+    if(state===STATE.RUN){
+      world.scrollX += world.speed;
+      world.meters += world.speed*0.06; // ざっくり換算
+      // ブーストゲージ
+      if(!world.boosting && !(now() < (world.boostUntilUseFree||0))){
+        world.boostGauge += dt;
+        if(world.boostGauge >= world.boostFillTime){ world.boostReady=true; world.boostGauge=world.boostFillTime; }
+      }
+      // ブースト継続
+      if(world.boosting && now()>world.boostUntil){
+        world.boosting=false; world.speed=world.baseSpeed;
+      }
+      // 無敵
+      if(world.invincible && now()>world.invUntil){ world.invincible=false; player.goldMode=false; }
+      // 4段ジャンプ戻し
+      if(player.maxJumps>2 && now()>player.wingsUntil){ player.maxJumps=2; }
+
+      // ヴィラン出現管理
+      if(world.meters >= world.distanceForViran){
+        spawnViran();
+        world.distanceForViran += randomInt(500,1000);
+      }
+    }
+
+    // 入力（PC）
+    if(state===STATE.RUN){
+      if(key.Space || key.ArrowUp) doJump();
+      if(key.ShiftLeft || key.ShiftRight) tryBoost();
+    }
+
+    // スポーン
+    maybeSpawn();
+
+    // プレイヤー物理
+    const ground = world.groundY();
+    player.vy += world.gravity;
+    player.y += player.vy;
+    // 地形（ジャンプ台や土管の上）
+    let onPlatform=false, topY=ground - player.h;
+    for(const o of world.obstacles){
+      const ox = o.x - world.scrollX, oy = ground - o.h;
+      if(o.type==='dokan'){
+        // 土管の伸縮
+        o.timer += dt;
+        if(o.phase===0){ // 低い→伸びる
+          o.h += 0.9;
+          if(o.h >= o.maxHeight){ o.h=o.maxHeight; o.phase=1; o.timer=0; }
+        }else if(o.phase===1){ // 伸び切って2秒静止
+          if(o.timer>2000){ o.phase=2; }
+        }else if(o.phase===2){ // 引っ込む
+          o.h -= 1.2;
+          if(o.h <= 20){ o.h=20; o.phase=0; o.timer=0; }
+        }
+      }
+      if(AABB(player.x, player.y, player.w, player.h, ox, oy, o.w, o.h)){
+        if(o.type==='corn'){
+          // 単純ダメージ（上から踏んでもダメージ扱い）
+          hitPlayer(1);
+        }else if(o.type==='dokan'){
+          const fromTop = (player.y+player.h) <= (oy+10) && (player.y+player.h) >= (oy-14);
+          if(fromTop){
+            // 上に乗る
+            topY = Math.min(topY, oy - player.h);
+            onPlatform=true;
+          }else{
+            // 横から衝突はダメージ
+            hitPlayer(1);
+          }
+        }else if(o.jumpPad){
+          // ジャンプ台
+          player.vy = -18;
+          world.speed = Math.min(world.maxSpeed, world.baseSpeed*1.9);
+          world.boosting=true; world.boostUntil = now()+800; // 軽い加速
+        }
+      }
+    }
+    // ハザード（火の玉残骸）
+    for(const hz of world.hazards){
+      const hx = hz.x - world.scrollX, hy = ground - hz.h;
+      if(AABB(player.x, player.y, player.w, player.h, hx, hy, hz.w, hz.h)){
+        hitPlayer(1);
+      }
+    }
+
+    // 地面判定
+    if(player.y >= topY){
+      player.y = topY; player.vy=0; player.onGround=true; player.jumpCount=0;
+    }else{
+      player.onGround=false;
+    }
+
+    // アイテム・コイン
+    for(let i=world.items.length-1;i>=0;i--){
+      const it = world.items[i];
+      // ふわふわ
+      it.y += it.vy;
+      if(it.y<ground-220 || it.y>ground-120) it.vy *= -1;
+
+      const ix = it.x - world.scrollX, iy = it.y;
+      if(AABB(player.x, player.y, player.w, player.h, ix, iy, it.w, it.h)){
+        // コイン or アイテム
+        if(it.type==='coin'){
+          world.coins++;
+          if(world.coins%10===0){
+            world.invincible=true; world.invUntil=now()+5000; player.goldMode=true;
+            showCutin('mutekiop');
+          }
+        }else{
+          addItem(it.type);
+        }
+        world.items.splice(i,1);
+      }else if(ix < -120){
+        world.items.splice(i,1);
+      }
+    }
+
+    // 看板掃除
+    for(let i=world.signs.length-1;i>=0;i--){
+      const s = world.signs[i];
+      const sx = s.x - world.scrollX;
+      if(sx < -200) world.signs.splice(i,1);
+    }
+
+    // コイン/ジャンプ台出現を少し混ぜる
+    if(Math.random()<0.02){
+      // コイン列
+      const baseX = world.scrollX + W + 50;
+      const y = ground - randomInt(120, 240);
+      for(let k=0;k<5;k++){
+        world.items.push({type:'coin', icon:IM.coin, x:baseX+ k*40, y, w:30, h:30, vy:0});
+      }
+    }
+    if(Math.random()<0.006){
+      // 既設ジャンプ台もたまに
+      const x=world.scrollX + W + randomInt(200,400);
+      world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, y:0, w:120, h:40, jumpPad:true});
+      spawnSign(x-180);
+    }
+
+    // ヴィラン＆火の玉
+    for(let i=world.fireballs.length-1;i>=0;i--){
+      const f = world.fireballs[i];
+      f.vy += 0.5; f.y += f.vy;
+      const gx = f.x - world.scrollX, gy = f.y;
+      if(gy+f.h >= ground){
+        // 着地→残骸化
+        world.hazards.push({x:f.x, w:30, h:20});
+        world.fireballs.splice(i,1);
+        continue;
+      }
+      if(AABB(player.x, player.y, player.w, player.h, gx, gy, f.w, f.h)){
+        hitPlayer(1);
+        world.fireballs.splice(i,1);
+      }
+    }
+
+    // ヴィラン本体
+    if(currentViran){
+      currentViran.tick += dt;
+      // プレイヤー方向へ緩く追従
+      const targetY = world.groundY()-260;
+      currentViran.y += (targetY - currentViran.y)*0.02;
+      const vx = 2.2; currentViran.x += vx;
+
+      // 射撃
+      if(currentViran.shoots < currentViran.maxShoots && currentViran.tick > currentViran.nextShot){
+        currentViran.shoots++;
+        currentViran.nextShot += randomInt(600,900);
+        spawnFireball(currentViran.x-40, currentViran.y+30);
+      }
+      if(currentViran.shoots >= currentViran.maxShoots && currentViran.tick > currentViran.nextShot+800){
+        // 退去
+        currentViran = null;
+      }
+    }
+
+    updateHUD();
+  }
+
+  function hitPlayer(dmg){
+    if(world.invincible) return;
+    world.hearts -= dmg;
+    if(world.hearts <= 0){
+      world.hearts=0;
+      // ゲームオーバー演出
+      gameOver();
+    }else{
+      flashMsg('ダメージ！');
+    }
+  }
+
+  function gameOver(){
+    setState(STATE.GAMEOVER);
+    // 記録 cut-in
+    bigMsg.textContent = `記録 ${Math.floor(world.meters)} m！`;
+    bigMsg.classList.remove('hidden');
+    setTimeout(()=>{
+      bigMsg.classList.add('hidden');
+      // スタート地点へ戻って3択
+      setState(STATE.POSTMENU);
+    }, 2000);
+  }
+
+  // ===== ヴィラン =====
+  let currentViran = null;
+  function spawnViran(){
+    showCutin('viranop');
+    currentViran = {
+      x: world.scrollX + W + 120,
+      y: world.groundY()-260,
+      tick:0, shoots:0, maxShoots: randomInt(5,7),
+      nextShot: 1200,
+    };
+  }
+  function spawnFireball(x,y){
+    world.fireballs.push({x, y, w:26, h:26, vy:1.2});
+  }
+
+  // ===== 描画 =====
+  function drawImageTiled(img, y, speedFactor, sliceH){
+    // 横ループ
+    const imgW = img.width || 256;
+    const scale = (H/720); // 適度に拡縮
+    const drawW = imgW*scale;
+    const baseX = -((world.scrollX*speedFactor)%drawW);
+    for(let x=baseX - drawW; x<W+drawW; x+=drawW){
+      ctx.drawImage(img, x, y, drawW, sliceH || img.height*scale);
+    }
+  }
+
+  function render(){
+    // 背景（空）
+    ctx.clearRect(0,0,W,H);
+    if(IM.sora){ drawImageTiled(IM.sora, 0, 0.1, H); }
+
+    const ground = world.groundY();
+
+    // hatake（地面すぐ上）
+    if(IM.hatake){ drawImageTiled(IM.hatake, ground-120, 0.6, 120); }
+
+    // 障害物・看板・アイテム・ヴィラン・火の玉
+    // 看板（後景）
+    for(const s of world.signs){
+      const x = s.x - world.scrollX;
+      ctx.drawImage(s.img, x, ground - s.h - 10, s.w, s.h);
+    }
+
+    // アイテム
+    for(const it of world.items){
+      const x = it.x - world.scrollX;
+      const y = it.y;
+      if(it.type==='coin'){ ctx.drawImage(IM.coin, x, y, it.w, it.h); }
+      else { ctx.drawImage(it.icon, x, y, it.w, it.h); }
+    }
+
+    // ヴィラン
+    if(currentViran){
+      const vx = currentViran.x - world.scrollX;
+      ctx.drawImage(IM.viran, vx-80, currentViran.y-40, 160, 120);
+    }
+    // 火の玉
+    for(const f of world.fireballs){
+      const x = f.x - world.scrollX, y = f.y;
+      ctx.drawImage(IM.tama, x, y, f.w, f.h);
+    }
+    // 火の玉残骸
+    for(const hz of world.hazards){
+      const x = hz.x - world.scrollX, y = ground - hz.h;
+      ctx.fillStyle='#f54'; ctx.fillRect(x, y, hz.w, hz.h);
+    }
+
+    // 障害物
+    for(const o of world.obstacles){
+      const x = o.x - world.scrollX;
+      if(o.type==='dokan'){
+        const h=o.h;
+        ctx.drawImage(o.img, x, ground-h, o.w, h);
+      }else{
+        ctx.drawImage(o.img, x, ground-o.h, o.w, o.h);
+      }
+    }
+
+    // 地面 doro
+    if(IM.doro){ drawImageTiled(IM.doro, ground, 1.0, H-ground+20); }
+
+    // プレイヤー
+    const px = player.x, py = player.y;
+    const spriteImg = IM[player.sprite] || null;
+    if(player.goldMode){
+      // gold ボディ＋星キラキラ
+      ctx.drawImage(IM.gold, px-10, py-6, player.w+20, player.h+12);
+      const star = (Math.floor(performance.now()/120)%2)?IM.hoshi1:IM.hoshi2;
+      for(let i=0;i<3;i++){
+        const sx = px + (i*18)%player.w; const sy = py - 10 - (i*6);
+        ctx.drawImage(star, sx, sy, 18, 18);
+      }
+    }else if(spriteImg){
+      ctx.drawImage(spriteImg, px, py, player.w, player.h);
+    }else{
+      ctx.fillStyle='#fff'; ctx.fillRect(px,py,player.w,player.h);
+    }
+
+    // ジャンプ台上のエフェクト（軽く）
+    // （省略：必要なら追加）
+
+    // タイトル画像（背面演出）
+    if(state===STATE.TITLE){
+      // 背景にOPロゴをうっすら
+      const s = Math.min(W*0.8, 600);
+      ctx.globalAlpha=0.85;
+      ctx.drawImage(IM.op, (W-s)/2, (H-s)/2 - 80, s, s);
+      ctx.globalAlpha=1;
+    }
+  }
+
+  // ===== コイン10枚で無敵ロゴ =====
+  // cutin は showCutin('mutekiop') を使って表示済み
+
+  // ===== 初期化して開始 =====
+  loadAll.then(()=>{
+    setState(STATE.TITLE);
+    outlineSel();
+    refreshSlots();
+    requestAnimationFrame(gameLoop);
+  });
+
+})();
+</script>
+</body>
+</html>
