@@ -185,8 +185,8 @@
   const ST={TITLE:0,CHARSEL:1,COUNT:2,RUN:3,OVER:4,MENU:5,QUIT:6};
   let state=ST.TITLE;
 
-  // OP → キャラ選択
-  document.getElementById('opYes').onclick=()=>{state=ST.CHARSEL;show(panelChar);hide(panelOP);};
+  // OP → キャラ選択（OPは一度隠したらCOUNT/RUN中に再表示しない）
+  document.getElementById('opYes').onclick=()=>{if(state!==ST.TITLE) return; state=ST.CHARSEL;show(panelChar);hide(panelOP);};
   document.getElementById('opNo').onclick=()=>{hide(panelOP);show(panelQuit);state=ST.QUIT;};
 
   let selected='orange';
@@ -218,11 +218,11 @@
     safeUntilMeters:150,
     signs:[], obstacles:[], items:[], fires:[], hazards:[],
     nextObsX:0, nextItemX:0,
-    nextViranAt: rnd(600,1100),
+    nextViranAt: rnd(400,700),  // ★ 早めに登場させる
   };
 
   const player={
-    x: W*0.22, y:0, w:56, h:42, vy:0, onGround:false,
+    x: W*0.22, y:0, w:48, h:54, vy:0, onGround:false, // ★縦長比率へ
     jumps:2, maxJumps:2, wingsUntil:0,
     sprite:'orange', gold:false
   };
@@ -247,7 +247,7 @@
 
   /* ===== Start/Reset ===== */
   function startCountdown(sel){
-    // UI初期化（リスタート時の残りUIバグ対策）
+    // 一括クリア（★ カウントダウン中にOPがまた出る問題を防止）
     hide(panelOP);hide(panelChar);hide(panelMenu);hide(panelQuit);
     hide(resultMsg);resultMsg.textContent='';
     player.sprite=sel||'orange';
@@ -266,9 +266,9 @@
     world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+480;
-    world.nextItemX=W+1600;   // アイテムはレア
-    world.nextViranAt=rnd(600,1100);
+    world.nextObsX=W+420;        // ほんの少し手前から始める
+    world.nextItemX=W+1600;      // アイテムはレア
+    world.nextViranAt=rnd(400,700);
     world.safeUntilMeters=150;
 
     player.x=W*0.22; player.y=groundY()-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
@@ -343,11 +343,13 @@
 
   /* ===== Spawns ===== */
   function spawnObstacle(x){
-    const t=(Math.random()<0.55)?'corn':'dokan';
-    if(t==='corn'){ world.obstacles.push({type:'corn', img:IM.corn, x, w:48, h:48}); }
+    // ★ 通常演出でジャンプ台も登場（約20%）
+    const r=Math.random();
+    if(r<0.2){ world.obstacles.push({type:'jumpdai', img:IM.jumpdai, x, w:120, h:40, jumpPad:true}); if(Math.random()<0.6) spawnSign(x-180); }
+    else if(r<0.6){ world.obstacles.push({type:'corn', img:IM.corn, x, w:48, h:48}); }
     else{ world.obstacles.push({type:'dokan', img:IM.dokan, x, w:60, h:20, phase:0, timer:0, maxH:90}); }
   }
-  function spawnSign(x){ const n=rnd(1,6); world.signs.push({img:IM['kanban'+n], x, w:80, h:60}); }
+  function spawnSign(x){ const n=rnd(1,6); world.signs.push({img:IM['kanban'+n], x, w:140, h:100}); } // ★拡大
   function spawnItem(x){
     // アイテムはかなりレア
     const r=Math.random(); const type = r<.34?'tsubasa': r<.67?'jump':'en';
@@ -356,7 +358,7 @@
 
   /* ===== Viran ===== */
   let viran=null;
-  function callViran(){ showCutin('viranop'); viran={x:world.scrollX+W+140, y:groundY()-260, tick:0, shoots:0, max:rnd(5,7), nxt:1200}; }
+  function callViran(){ showCutin('viranop'); viran={x:world.scrollX+W+140, y:groundY()-260, tick:0, shoots:0, max:rnd(5,7), nxt:800}; }
   function fireball(x,y){ world.fires.push({x,y,w:26,h:26,vy:1.2}); }
 
   /* ===== Loop ===== */
@@ -382,14 +384,18 @@
       if(world.boosting && t()>world.boostUntil){ world.boosting=false; world.speed=world.baseSpeed; }
       if(world.inv && t()>world.invUntil){ world.inv=false; player.gold=false; }
       if(player.maxJumps>2 && t()>player.wingsUntil){ player.maxJumps=2; jumpPill.textContent=`ジャンプ ×${player.maxJumps}`; }
-      if(world.meters >= world.nextViranAt){ callViran(); world.nextViranAt += rnd(600,1100); }
+
+      // ★ ヴィラン出現タイミングを確実化
+      if(!viran && world.meters >= world.nextViranAt){
+        callViran(); world.nextViranAt += rnd(500,900);
+      }
     }
 
     // スポーン
     const right=world.scrollX+W+60;
     if(world.nextObsX<right){
       if(world.meters>world.safeUntilMeters-20) spawnObstacle(world.nextObsX);
-      if(Math.random()<0.25) spawnSign(world.nextObsX-160);
+      if(Math.random()<0.35) spawnSign(world.nextObsX-200);
       world.nextObsX += rnd(360,560);
     }
     if(world.nextItemX<right){
@@ -463,7 +469,7 @@
       }else if(ix<-140){ world.items.splice(i,1); }
     }
 
-    // Viran
+    // ヴィラン
     if(viran && state===ST.RUN){
       viran.tick+=dt; viran.x+=2.2; viran.y += (groundY()-260-viran.y)*0.02;
       if(viran.shoots<viran.max && viran.tick>viran.nxt){ viran.shoots++; viran.nxt+=rnd(600,900); fireball(viran.x-40, viran.y+30); }
@@ -512,24 +518,20 @@
       return;
     }
 
-    // プレイ系：空→畑→道路
+    // プレイ系：空→畑→道路（隙間ゼロ）
     if(IM.sora) drawTiled(IM.sora,0,0.12,H);
 
     const gy=groundY();
     if(IM.hatake){
-      const h=Math.min(150,Math.floor(H*0.22));
-      drawTiled(IM.hatake, gy-h, 0.55, h);
+      const fieldH=Math.max(80, Math.floor(H*0.22));
+      drawTiled(IM.hatake, gy-fieldH, 0.55, fieldH);
     }
 
-    // 看板
-    for(const s of world.signs){
-      const x=s.x-world.scrollX; cx.drawImage(s.img, x, gy - s.h - 10, s.w, s.h);
-    }
+    // 看板（背景）
+    for(const s of world.signs){ const x=s.x-world.scrollX; cx.drawImage(s.img, x, gy - s.h - 10, s.w, s.h); }
 
     // アイテム・コイン
-    for(const it of world.items){
-      const x=it.x-world.scrollX; cx.drawImage(it.type==='coin'?IM.coin:it.icon, x, it.y, it.w, it.h);
-    }
+    for(const it of world.items){ const x=it.x-world.scrollX; cx.drawImage(it.type==='coin'?IM.coin:it.icon, x, it.y, it.w, it.h); }
 
     // ヴィラン・火の玉・残骸
     if(viran){ const vx=viran.x-world.scrollX; cx.drawImage(IM.viran, vx-80, viran.y-40, 160,120); }
@@ -544,8 +546,8 @@
       else if(o.jumpPad){ cx.drawImage(IM.jumpdai,x,gy-o.h,o.w,o.h); }
     }
 
-    // 道路（最後）
-    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+12);
+    // 道路（最後に軽くかぶせる）
+    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+2);
 
     // プレイヤー（道路上）
     const px=player.x, py=player.y;
