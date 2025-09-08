@@ -7,7 +7,7 @@
 <style>
   :root{--fg:#fff;--pill:#2b2f3a;--btn:#1b1f27;--btn2:#2b303b;}
   html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif}
-  /* 画面中央に“仮想スマホ画面(414x896)”を拡大縮小して収める */
+  /* 画面中央に“仮想スマホ画面(414x896)”を拡大縮小して収める（ボタン隠れ防止） */
   #wrap{position:fixed;inset:0;display:grid;place-items:center;background:#000;overflow:hidden}
   #stage{position:relative;width:414px;height:896px;transform-origin:center center}
 
@@ -140,7 +140,7 @@
   function autoscale(){
     const w=window.innerWidth, h=window.innerHeight;
     const scale=Math.min(w/ DESIGN_W, h/ DESIGN_H);
-    stage.style.transform=`scale(${scale})`;
+    stage.style.transform=`scale(${Math.max(0.5, scale)})`;
   }
   addEventListener('resize', autoscale, {passive:true});
   addEventListener('orientationchange', autoscale, {passive:true});
@@ -157,10 +157,10 @@
   }
   fit();
 
-  /* ===== 画像（道路/畑のファイル名変更） ===== */
+  /* ===== 画像 ===== */
   const files={
-    doro:'do-ro.png',      // ←道路
-    hatake:'hatake2.png',  // ←畑
+    doro:'do-ro.png',      // 道路
+    hatake:'hatake2.png',  // 畑
     sora:'sora.PNG',       // 大文字
     corn:'corn.PNG',       // 大文字
     op:'op.png',
@@ -232,7 +232,7 @@
   function hide(el){el.classList.add('hidden');}
 
   /* ===== World / Player ===== */
-  function groundY(){ return  Math.floor(H*0.70); } // 道路の基準線（全描画/物理で共通）
+  function groundY(){ return Math.floor(H*0.76); } // ★ さらに下げて接地感UP（前:0.70）
   function t(){ return performance.now(); }
   function rnd(a,b){ return Math.floor(a + Math.random()*(b-a+1)); }
 
@@ -253,7 +253,8 @@
     x: Math.floor(W*0.22), y:0, w:48, h:54, vy:0, onGround:false,
     jumps:2, maxJumps:2, wingsUntil:0,
     sprite:'orange', gold:false,
-    prevX:0, prevY:0
+    prevX:0, prevY:0,
+    tilt:0 // ★ 傾き（ラダー/ランプ上で回転表示）
   };
 
   /* ===== 入力 ===== */
@@ -291,11 +292,11 @@
     world.coins=0; world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+420; world.nextItemX=W+1600; world.nextSignX=W+200; world.nextViranAt=rnd(400,700);
+    world.nextObsX=W+420; world.nextItemX=W+1600; world.nextSignX=W+220; world.nextViranAt=rnd(400,700);
 
     const gy=groundY();
     player.x=Math.floor(W*0.22); player.y=gy-player.h; player.vy=0; player.onGround=true; player.jumps=0; player.maxJumps=2; player.wingsUntil=0;
-    player.prevX=player.x; player.prevY=player.y;
+    player.prevX=player.x; player.prevY=player.y; player.tilt=0;
 
     slots[0]=null; slots[1]=null; refreshSlots();
     refreshHUD();
@@ -367,24 +368,29 @@
 
   /* ===== スポーン ===== */
   function makeRamp(x){
-    // イラスト風：前半で坂→後半で発射
-    const w=180, h=44, launch=0.55;
-    return {type:'jumpdai', img:IM.jumpdai, x, w, h, jumpPad:true, ramp:true, launchX:x+w*launch, launched:false};
+    // 坂に沿って登れる → 中盤で自動ジャンプ＆加速。開始点は地面ピッタリ。
+    const w=200, h=52, launchRatio=0.58; // 発射位置: 幅の58%
+    return {
+      type:'jumpdai', img:IM.jumpdai, x, w, h,
+      ramp:true, jumpPad:true,
+      launchX:x + w*launchRatio, launched:false,
+      slope: h / (w*launchRatio) // 傾斜（dy/dx）
+    };
   }
   function spawnObstacle(x){
     const r=Math.random();
-    if(r<0.20){
+    if(r<0.22){
       world.obstacles.push(makeRamp(x));
-    }else if(r<0.60){
-      world.obstacles.push({type:'corn', img:IM.corn, x, w:72, h:72}); // ★大型化
+    }else if(r<0.62){
+      world.obstacles.push({type:'corn', img:IM.corn, x, w:78, h:78}); // さらに大型
     }else{
-      world.obstacles.push({type:'dokan', img:IM.dokan, x, w:64, h:20, phase:0, timer:0, maxH:100});
+      world.obstacles.push({type:'dokan', img:IM.dokan, x, w:66, h:22, phase:0, timer:0, maxH:104});
     }
   }
   function spawnSign(){
     const n=rnd(1,6);
-    const x = world.scrollX + W + rnd(20,60); // 画面右端の外で生成→左へ流入
-    world.signs.push({img:IM['kanban'+n], x, w:240, h:170}); // ★大型化
+    const x = world.scrollX + W + rnd(40,90); // 右端外で生成→左へ入る
+    world.signs.push({img:IM['kanban'+n], x, w:260, h:184}); // 大きめ
   }
   function spawnItem(x){
     const r=Math.random(); const type = r<.34?'tsubasa': r<.67?'jump':'en';
@@ -397,7 +403,6 @@
   function fireball(x,y){ world.fires.push({x,y,w:26,h:26,vy:1.2}); }
 
   /* ===== ループ ===== */
-  const cvCtx=cx; // alias
   let last=performance.now();
   ready.then(()=>{ show(panelOP); requestAnimationFrame(loop); });
 
@@ -429,7 +434,7 @@
     const right=world.scrollX+W+60;
     if(world.nextObsX<right){ spawnObstacle(world.nextObsX); world.nextObsX += rnd(360,560); }
     if(world.nextItemX<right){ spawnItem(world.nextItemX); world.nextItemX += rnd(2200,3400); }
-    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(500,900); }
+    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(520,940); }
 
     // コイン：かなりレア
     if(Math.random()<0.0035){
@@ -440,50 +445,63 @@
     // 物理
     player.prevX=player.x; player.prevY=player.y;
     player.vy += world.gravity; player.y += player.vy;
+    player.tilt += (0 - player.tilt)*0.15; // 傾きはデフォにゆっくり戻す
 
     // 障害物
     let topY=gy - player.h;
     for(const o of world.obstacles){
       const ox=o.x-world.scrollX;
+
+      // 土管の伸縮
       if(o.type==='dokan'){
         o.timer += dt;
-        if(o.phase===0){ o.h=(o.h||20)+0.9; if(o.h>=o.maxH){ o.h=o.maxH; o.phase=1; o.timer=0; } }
+        if(o.phase===0){ o.h=(o.h||22)+0.9; if(o.h>=o.maxH){ o.h=o.maxH; o.phase=1; o.timer=0; } }
         else if(o.phase===1){ if(o.timer>2000){ o.phase=2; } }
-        else if(o.phase===2){ o.h-=1.2; if(o.h<=20){ o.h=20; o.phase=0; o.timer=0; } }
+        else if(o.phase===2){ o.h-=1.2; if(o.h<=22){ o.h=22; o.phase=0; o.timer=0; } }
       }
 
       // ランプ（坂→発射）
       if(o.ramp){
-        const x=ox, yBase=gy-o.h, xRel=(player.x+player.w*0.5)-x;
-        if(xRel>0 && xRel<o.w){
-          const slopeRatio=Math.min(1, Math.max(0, (player.x - x) / (o.launchX - (o.x-world.scrollX))));
-          const rampY = yBase - (o.h*0.9) * slopeRatio; // 少し角度強調
-          const landingCond = (player.prevY+player.h)<=rampY+6 && (player.y+player.h)>=rampY-2 && player.vy>=-2;
-          if(landingCond){
+        const startX=ox, endX=o.launchX - world.scrollX; // 発射開始X（画面座標）
+        const cxMid = player.x + player.w*0.5;
+
+        if(cxMid>=startX && cxMid<=endX){
+          // 坂の表面: エントリで地面ピッタリ → 直線的に上昇
+          const ratio = (cxMid - startX) / (endX - startX); // 0..1
+          const rampY = gy - o.h * ratio;
+          const onRamp = (player.prevY+player.h)<=rampY+6 && (player.y+player.h)>=rampY-2 && player.vy>=-2;
+
+          if(onRamp){
             topY = Math.min(topY, Math.floor(rampY) - player.h);
-            if(!o.launched && (player.x+player.w*0.5) >= (o.launchX - world.scrollX)){
-              o.launched = true;
-              player.vy = -18;
-              world.speed = Math.min(world.maxSpeed, world.baseSpeed*1.9);
-              world.boosting=true; world.boostUntil=t()+800;
-            }
+            // 傾き：坂角度（上りは負角度）
+            player.tilt = -Math.atan(o.slope);
           }
+        }else if(!o.launched && cxMid > endX){
+          // 自動発射（1回だけ）
+          o.launched=true;
+          player.vy = -18;
+          world.speed = Math.min(world.maxSpeed, world.baseSpeed*1.9);
+          world.boosting=true; world.boostUntil=t()+800;
         }
       }
 
-      // 土管：上からは着地OK、横は即死
+      // 土管：上からのみ着地、横/下は即死（前フレーム位置で側面/底を判定）
       if(o.type==='dokan'){
-        const oy=gy-(o.h||20), ow=o.w, oh=(o.h||20);
-        if(AABB(player.x,player.y,player.w,player.h, ox,oy, ow,oh)){
-          const prevBottom=player.prevY+player.h, bottom=player.y+player.h;
-          const prevRight=player.prevX+player.w, right=player.x+player.w;
-          const fromTop = prevBottom<=oy && bottom>=oy && (player.x+player.w*0.5)>=ox && (player.x+player.w*0.5)<=ox+ow;
-          const hitSide = prevRight<=ox && right>ox && bottom>oy+6; // 右進行で側面侵入
+        const left=ox, top=gy-(o.h||22), right=left+o.w, bottom=top+(o.h||22);
+        if(AABB(player.x,player.y,player.w,player.h, left,top, o.w,(o.h||22))){
+          const prevBottom=player.prevY+player.h, bottomNow=player.y+player.h;
+          const prevRight=player.prevX+player.w, rightNow=player.x+player.w;
+          const prevLeft=player.prevX, leftNow=player.x;
+
+          const fromTop = prevBottom<=top && bottomNow>=top && (player.x+player.w*0.5)>=left && (player.x+player.w*0.5)<=right;
+          const hitRightSide = prevRight<=left && rightNow>left && bottomNow>top+4;
+          const hitLeftSide  = prevLeft>=right && leftNow<right && bottomNow>top+4;
+          const fromBottom   = prevTop(player)>=bottom && player.y<bottom; // 下からめり込み
 
           if(fromTop){
-            topY=Math.min(topY, oy-player.h); // 着地
-          }else if(hitSide){
-            hit(); // 側面ヒット＝即死
+            topY=Math.min(topY, top-player.h); // 着地OK
+          }else if(hitRightSide || hitLeftSide || fromBottom){
+            hit(); // 即死
           }
         }
       }
@@ -541,13 +559,13 @@
 
   /* ===== Utility ===== */
   function AABB(ax,ay,aw,ah,bx,by,bw,bh){return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;}
+  function prevTop(p){ return p.prevY; }
   function drawTiled(img,y,spd,drawH){
     const iw=img.width||256, scale=Math.max(W/iw,1)*0.6, w=iw*scale;
     const x0=-((world.scrollX*spd)%w);
     for(let x=x0-w;x<W+w;x+=w){ cx.drawImage(img,x,y,w,drawH||img.height*scale); }
   }
   function drawShadow(x, y, w){
-    // 地面上に楕円影を描く（接地感UP）
     const gy=groundY();
     cx.save(); cx.globalAlpha=0.25;
     cx.beginPath();
@@ -574,29 +592,27 @@
 
     const gy=groundY();
 
-    // 背景：空→畑（畑と道路は数px重ねてラインを消す）
+    // 背景：空→畑（畑と道路は数px重ねて境界線を消す）
     if(IM.sora) drawTiled(IM.sora,0,0.12,H);
     if(IM.hatake){
       const fieldH=Math.max(Math.floor(H*0.22),80);
-      drawTiled(IM.hatake, gy-fieldH, 0.55, fieldH+2); // +2で道路と重ね
+      drawTiled(IM.hatake, gy-fieldH, 0.55, fieldH+3); // +3で道路と重ね
     }
 
-    // 道路（先に敷く → その上に影/障害物/キャラを描く）
-    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+6);
+    // 道路（先に敷く）
+    if(IM.doro) drawTiled(IM.doro, gy, 1.0, H-gy+8);
 
     // 影（接地感）
-    // 障害物の影
     for(const o of world.obstacles){
       const x=o.x-world.scrollX;
       if(x<-200 || x>W+200) continue;
       drawShadow(x, gy, o.w);
     }
-    // プレイヤー影
     drawShadow(player.x, gy, player.w);
 
-    // 看板（右端外から流入／フェードなし）
+    // 看板（右端外から流入。地面に設置）
     for(const s of world.signs){
-      const x=s.x-world.scrollX, y=gy - s.h - 10;
+      const x=s.x-world.scrollX, y=gy - s.h; // 支柱底が地面
       cx.drawImage(s.img, x, y, s.w, s.h);
     }
 
@@ -613,18 +629,28 @@
     // 障害物
     for(const o of world.obstacles){
       const x=o.x-world.scrollX;
-      if(o.type==='dokan'){ const h=o.h||20; cx.drawImage(IM.dokan,x,gy-h,o.w,h); }
+      if(o.type==='dokan'){ const h=o.h||22; cx.drawImage(IM.dokan,x,gy-h,o.w,h); }
       else if(o.type==='corn'){ cx.drawImage(IM.corn,x,gy-o.h,o.w,o.h); }
       else if(o.jumpPad){ cx.drawImage(IM.jumpdai,x,gy-o.h,o.w,o.h); }
     }
 
-    // プレイヤー
+    // プレイヤー（坂上は傾けて描画：底中心回転）
     if(player.gold){
-      cx.drawImage(IM.gold, player.x-8, player.y-6, player.w+16, player.h+12);
+      cx.save();
+      const pivotX=player.x+player.w/2, pivotY=player.y+player.h;
+      cx.translate(pivotX, pivotY);
+      cx.rotate(player.tilt);
+      cx.drawImage(IM.gold, -player.w/2-8, -player.h-6, player.w+16, player.h+12);
       const star=(Math.floor(performance.now()/120)%2)?IM.hoshi1:IM.hoshi2;
-      for(let i=0;i<3;i++){ const sx=player.x+(i*16)%player.w, sy=player.y-10-(i*6); cx.drawImage(star, sx, sy, 16,16); }
+      for(let i=0;i<3;i++){ const sx=-player.w/2 + (i*16)%player.w, sy=-player.h-10-(i*6); cx.drawImage(star, sx, sy, 16,16); }
+      cx.restore();
     }else{
-      cx.drawImage(IM[player.sprite], player.x, player.y, player.w, player.h);
+      cx.save();
+      const pivotX=player.x+player.w/2, pivotY=player.y+player.h;
+      cx.translate(pivotX, pivotY);
+      cx.rotate(player.tilt);
+      cx.drawImage(IM[player.sprite], -player.w/2, -player.h, player.w, player.h);
+      cx.restore();
     }
   }
 
