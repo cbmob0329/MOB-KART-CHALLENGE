@@ -6,9 +6,12 @@
 <title>MOB CART Runner</title>
 <style>
   :root{--fg:#fff;--pill:#2b2f3a;--btn:#1b1f27;--btn2:#2b303b;}
-  html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif}
-  /* ウィンドウ内に仮想画面(414x896)を「左上起点」でスケール配置。iOSでも下がらない */
-  #wrap{position:fixed;inset:0;overflow:hidden;background:#000}
+  html,body{margin:0;height:100%;
+    /* ←左右の黒帯を空色グラデに変更（比率差で生じる余白が暗く見えないように） */
+    background:linear-gradient(#7ecbe3,#7fd5e7);
+    color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif}
+  /* ウィンドウ内に仮想画面(414x896)を左上起点でスケール配置（iOSでも下がらない） */
+  #wrap{position:fixed;inset:0;overflow:hidden}
   #stage{position:absolute;left:0;top:0;width:414px;height:896px;transform-origin:0 0}
   #cv{display:block;touch-action:none;background:#000;border-radius:12px;border:1px solid #12151d;box-shadow:0 8px 30px rgba(0,0,0,.6)}
 
@@ -195,13 +198,9 @@
   const t = ()=>performance.now();
   const rnd=(a,b)=> (Math.random()*(b-a+1)+a)|0;
 
-  /* ====== 地面ライン ======
-     1) 道路テクスチャを描くY = ROAD_TOP_Y
-     2) 見た目の接地線(GROUND_Y) = ROAD_TOP_Y + ROAD_BASELINE_OFFSET
-     すべての当たり＆配置は GROUND_Y を使う
-  */
-  const ROAD_TOP_Y = snap(H*0.82);
-  const ROAD_BASELINE_OFFSET = 12; // ←レンガ上に“足が乗る”見た目差分
+  /* ====== 地面ライン（共通基準） ====== */
+  const ROAD_TOP_Y = snap(H*0.82);         // 道路タイルの描画Y（上端）
+  const ROAD_BASELINE_OFFSET = 12;         // レンガ上の見た目接地分
   const GROUND_Y = () => ROAD_TOP_Y + ROAD_BASELINE_OFFSET;
 
   /* =================== World / Player =================== */
@@ -272,7 +271,8 @@
     world.coins=0; world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+420; world.nextItemX=W+1600; world.nextSignX=W+260; world.nextViranAt=rnd(400,700);
+    world.nextObsX=W+420; world.nextItemX=W+3600; world.nextSignX=W+1200; // ★頻度ダウン
+    world.nextViranAt=rnd(400,700);
 
     const gy=GROUND_Y();
     player.x=snap(W*0.22); player.y=snap(gy - player.h); player.vy=0; player.onGround=true;
@@ -300,7 +300,7 @@
     }
   }
 
-  /* =================== アイテム2枠 =================== */
+  /* =================== アイテム（2枠） =================== */
   const slots=[null,null];
   function addItem(type){
     if(slots[0] && slots[1]){ showToast('アイテム枠がいっぱい！'); return false; }
@@ -344,7 +344,7 @@
   /* =================== スポーン =================== */
   function makeRamp(x){
     // 地面ピッタリに入口を合わせる坂 → 中盤で自動発射
-    const w=200, h=52, launchRatio=0.58;
+    const w=160, h=46, launchRatio=0.56; // ★サイズ調整
     return {
       type:'jumpdai', img:IM.jumpdai, x:snap(x), w, h,
       ramp:true, jumpPad:true,
@@ -354,12 +354,15 @@
   }
   function spawnObstacle(x){
     const r=Math.random();
-    if(r<0.24){ world.obstacles.push(makeRamp(x)); }
-    else if(r<0.64){ world.obstacles.push({type:'corn', img:IM.corn, x:snap(x), w:78, h:78}); }
-    else{ world.obstacles.push({type:'dokan', img:IM.dokan, x:snap(x), w:66, h:22, phase:0, timer:0, maxH:104}); }
+    if(r<0.28){ world.obstacles.push(makeRamp(x)); }
+    else if(r<0.68){
+      world.obstacles.push({type:'corn', img:IM.corn, x:snap(x), w:78, h:78, hitInset:{x:8,y:6,w:62,h:60}}); // ★内側ヒット
+    }else{
+      world.obstacles.push({type:'dokan', img:IM.dokan, x:snap(x), w:66, h:22, phase:0, timer:0, maxH:104});
+    }
   }
   function spawnSign(){
-    const n=rnd(1,6), x=world.scrollX + W + rnd(40,90);
+    const n=rnd(1,6), x=world.scrollX + W + rnd(60,120);
     world.signs.push({img:IM['kanban'+n], x:snap(x), w:260, h:184});
   }
   function spawnItem(x){
@@ -397,11 +400,11 @@
       if(!viran && world.meters >= world.nextViranAt){ callViran(); world.nextViranAt += rnd(500,900); }
     }
 
-    // スポーン
+    // スポーン間隔：障害物は一定、看板は減、アイテムはレア
     const right=world.scrollX+W+60;
     if(world.nextObsX<right){ spawnObstacle(world.nextObsX); world.nextObsX += rnd(360,560); }
-    if(world.nextItemX<right){ spawnItem(world.nextItemX); world.nextItemX += rnd(2200,3400); }
-    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(520,940); }
+    if(world.nextItemX<right){ spawnItem(world.nextItemX); world.nextItemX += rnd(3600,5200); } // ★レア化
+    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(1100,1900); }                // ★頻度ダウン
 
     // 物理
     player.prevX=player.x; player.prevY=player.y;
@@ -426,7 +429,7 @@
         const startX=ox, endX=snap(o.launchX - world.scrollX);
         const cxMid = player.x + (player.w>>1);
         if(cxMid>=startX && cxMid<=endX){
-          const ratio = (cxMid - startX) / Math.max(1,(endX - startX)); // 0..1
+          const ratio = (cxMid - startX) / Math.max(1,(endX - startX));
           const rampY = snap(gy - o.h * ratio);
           const feetPrev=player.prevY+player.h, feet=player.y+player.h;
           const onRamp = (feet>=rampY-8 && feet<=rampY+8 && player.vy>=-3) || (feetPrev<=rampY && feet>=rampY);
@@ -438,7 +441,7 @@
         }
       }
 
-      // 土管：上からは吸着可、横/下は即死（許容広め）
+      // 土管：上から吸着、横/下は即死（許容広め）
       if(o.type==='dokan'){
         const ow=o.w, oh=(o.h||22);
         const left=ox, top=gy-oh, right=left+ow, bottom=top+oh;
@@ -451,16 +454,17 @@
           const hitRightSide = prevRight<=left && rightNow>left && bottomNow>top+6;
           const hitLeftSide  = prevLeft>=right && leftNow<right && bottomNow>top+6;
           const fromBottom   = (player.prevY<=bottom && player.y<bottom && (player.y+player.h)>bottom);
-
           if(fromTop){ topY=Math.min(topY, top-player.h); }
           else if(hitRightSide || hitLeftSide || fromBottom){ hit(); }
         }
       }
 
-      // コーン：触れたら即死
+      // コーン：矩形ヒットを内側に（見た目未接触でも誤爆しない）
       if(o.type==='corn'){
         const oy=snap(gy - o.h);
-        if(AABB(player.x,player.y,player.w,player.h, ox,oy, o.w,o.h)){ if(state===ST.RUN && !world.inv) hit(); }
+        const inset=o.hitInset||{x:0,y:0,w:o.w,h:o.h};
+        const bx=ox+inset.x, by=oy+inset.y, bw=inset.w, bh=inset.h;
+        if(AABB(player.x,player.y,player.w,player.h, bx,by,bw,bh)){ if(state===ST.RUN && !world.inv) hit(); }
       }
     }
 
@@ -481,7 +485,7 @@
     if(player.y>=gyTop){ player.y=gyTop; player.vy=0; player.onGround=true; player.jumps=0; }
     else { player.onGround=false; }
 
-    // アイテム・コイン
+    // アイテム・コイン（※コインの無敵は据え置き）
     for(let i=world.items.length-1;i>=0;i--){
       const it=world.items[i]; if(it.vy){ it.y+=it.vy; if(it.y<gy-230 || it.y>gy-120) it.vy*=-1; }
       const ix=snap(it.x-world.scrollX), iy=it.y;
@@ -511,12 +515,6 @@
     const x0= -(((world.scrollX*spd)%w)|0);
     for(let x=x0-w;x<W+w;x+=w){ cx.drawImage(img, x|0, (y|0), w, (drawH|0)); }
   }
-  function drawShadow(x, w){
-    const gy=GROUND_Y();
-    cx.save(); cx.globalAlpha=0.18;                 /* 濃さ↓ */
-    cx.beginPath(); cx.ellipse((x + w*0.5)|0, (gy+1)|0, Math.max(12, w*0.32)|0, 5, 0, 0, Math.PI*2);
-    cx.fillStyle='#000'; cx.fill(); cx.restore();
-  }
   function hit(){ if(state!==ST.RUN) return; if(world.inv) return; gameOver(); }
 
   /* =================== Render =================== */
@@ -533,22 +531,20 @@
 
     const gy=GROUND_Y();
 
-    // 背景：空→畑（畑を道路と3px重ね）
+    // 背景：空 → 畑（畑を道路と3px重ね）
     if(IM.sora) drawTiled(IM.sora, 0, 0.12, H);
-    if(IM.hatake){
-      const fieldH=(H*0.22)|0;
-      drawTiled(IM.hatake, (gy-fieldH-3)|0, 0.55, fieldH+3);
-    }
+    const fieldH=(H*0.22)|0;
+    const fieldTop=(gy-fieldH-3)|0;
+    if(IM.hatake) drawTiled(IM.hatake, fieldTop, 0.55, fieldH+3);
 
     // 道路（上端=ROAD_TOP_Y）
     if(IM.doro) drawTiled(IM.doro, ROAD_TOP_Y, 1.0, (H-ROAD_TOP_Y+8)|0);
 
-    // 影
-    for(const o of world.obstacles){ const x=(o.x-world.scrollX)|0; if(x<-200||x>W+200) continue; drawShadow(x, o.w); }
-    drawShadow(player.x, player.w);
-
-    // 看板（地面設置）
-    for(const s of world.signs){ const x=(s.x-world.scrollX)|0, y=(gy - s.h)|0; cx.drawImage(s.img, x, y, s.w, s.h); }
+    // 看板：畑の上端ライン上（赤ライン位置）
+    for(const s of world.signs){
+      const x=(s.x-world.scrollX)|0, y=(fieldTop - s.h)|0; // ←底が畑上端に乗る
+      cx.drawImage(s.img, x, y, s.w, s.h);
+    }
 
     // 障害物
     for(const o of world.obstacles){
