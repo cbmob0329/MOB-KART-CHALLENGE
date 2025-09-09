@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v4.4（再スタート/斜面ジャンプ/判定&密着）</title>
+<title>MOB KART CHALLENGE — v4.5（再開/判定/密着/斜面/序盤強化）</title>
 <style>
   :root{
     --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
@@ -65,7 +65,7 @@
 <body>
   <div id="app">
     <div class="topbar">
-      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.4（再スタート/斜面ジャンプ/判定&密着）</small></div>
+      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.5（再開/判定/密着/斜面/序盤強化）</small></div>
       <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
     </div>
 
@@ -147,19 +147,10 @@
   const countdown = document.getElementById('countdown');
   const boostBar = document.getElementById('boostBar'); const boostFill = boostBar.querySelector('.fill');
 
-  /* ====== Util (Promise helpers) ====== */
-  const sleep = (ms)=>new Promise(r=>setTimeout(r,ms));
-  const nextFrame = ()=>new Promise(r=>requestAnimationFrame(()=>r()));
-  const runCountdown = (seq=['3','2','1','GO'], step=600)=>new Promise(async (resolve)=>{
-    for(let i=0;i<seq.length;i++){
-      countdown.textContent = seq[i];
-      countdown.classList.add('show');
-      await sleep(step-120);
-      countdown.classList.remove('show');
-      await sleep(120);
-    }
-    resolve();
-  });
+  /* ====== Util ====== */
+  const shrink=(r,p)=>({x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p});
+  const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
   /* ====== Assets ====== */
   const files = [
@@ -173,12 +164,12 @@
   const IMG={}; let left = files.length;
   files.forEach(fn=>{ const im=new Image(); im.src = encodeURI(fn); im.onload=()=>{IMG[fn]=im;if(--left===0) boot();}; im.onerror=()=>{IMG[fn]=im;if(--left===0) boot();}; });
 
-  /* ====== World constants ====== */
-  const GY = ()=> Math.floor(vh*0.80);          // 地面上端（走行ライン）
-  const RUNX = ()=> Math.floor(vw*0.25);        // プレイヤーの固定X
-  const SAFE_M = 80;                            // スタート安全地帯
-  const KMH_PER_PX = 0.12;                      // px/s → km/h
+  /* ====== World ====== */
+  const GY = ()=> Math.floor(vh*0.80);      // 走行ライン上端
+  const RUNX = ()=> Math.floor(vw*0.25);    // プレイヤー固定X
+  const SAFE_M = 80;
   const PX_PER_M = 30;
+  const KMH_PER_PX = 0.12;                  // 表示用
 
   const SIZE = {
     player:{w:90,h:64},
@@ -196,7 +187,7 @@
   /* ====== State ====== */
   let state='boot';
   let scrollX=0, meters=0;
-  let baseSpeed=333;               // 約40km/h
+  let baseSpeed=333;               // ≒40 km/h
   let speed=baseSpeed;
   let boostGauge=0, boostMax=100, boosting=0, enFree=0, invincible=0, wingTime=0;
   let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0;
@@ -206,44 +197,38 @@
 
   const items=[], obstacles=[], fires=[], villains=[];
   const slots=[null,null];
-  const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
-  const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
-  const shrink=(r,p)=>({x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p});
 
-  /* ====== UI ====== */
+  /* ====== Flow ====== */
   btnFS.addEventListener('click',()=>{
     const el=document.documentElement;
     if(!document.fullscreenElement){ el.requestFullscreen?.(); btnFS.textContent='全画面解除'; } else { document.exitFullscreen?.(); btnFS.textContent='全画面'; }
   });
   function showCut(fn,ms=2000){ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); }
 
-  /* ====== Start/Reset flow ====== */
+  function openSelect(){ state='select'; charSel.style.display='flex'; }
+  function closeSelect(){ charSel.style.display='none'; }
+
+  function boot(){ state='op'; showCut('op.png',2000); setTimeout(openSelect,2000); }
+
   startBtn.addEventListener('click',()=>startFlow());
+  btnChange.addEventListener('click',()=>openSelect());
   goRestart.addEventListener('click',()=>{ hideGo(); startFlow(); });
   goChange.addEventListener('click',()=>{ hideGo(); openSelect(); });
   goQuit.addEventListener('click',()=>location.reload());
-  btnChange.addEventListener('click',()=>openSelect());
   document.querySelectorAll('#charSel .opt').forEach(b=>{
     b.addEventListener('click',()=>{
-      const ch=b.dataset.ch; player.sprite=(ch==='VR')?'VR.png':'orange.png';
+      player.sprite = (b.dataset.ch==='VR') ? 'VR.png' : 'orange.png';
       document.querySelectorAll('#charSel .opt').forEach(x=>x.style.outline=''); b.style.outline='2px solid #2bd3ff';
     });
   });
 
-  function openSelect(){ state='select'; charSel.style.display='flex'; }
-  function closeSelect(){ charSel.style.display='none'; }
-  function boot(){ state='op'; showCut('op.png',2000); setTimeout(openSelect,2000); }
-
-  async function startFlow(){
+  // ステートマシン用
+  let resetWait = 0, cdIndex = 0, cdTimer = 0;
+  function startFlow(){
     closeSelect();
-    resetWorld();                 // まず必ずスタート地点へ戻す
-    state='prestart';
-    await nextFrame();            // 描画を反映させる
-    await nextFrame();
-    await sleep(300);             // 少し待ってHUD等も安定
-    state='countdown';
-    await runCountdown(['3','2','1','GO'],600);
-    state='play';                 // ここで確実に開始
+    resetWorld();                   // スタート地点へ戻す
+    state='reset';                  // tickが進める
+    resetWait = 0.45;               // 整列待ち（iOSの順序問題回避）
   }
 
   function resetWorld(){
@@ -251,27 +236,30 @@
     boostGauge=0; boosting=0; enFree=0; invincible=0; wingTime=0;
     coins=0; sparkleT=0; sparkleFrame=0;
     items.length=0; obstacles.length=0; fires.length=0; villains.length=0;
-    nextVillAtM = 1200 + Math.random()*800;
     slots[0]=slots[1]=null; refreshSlots();
+    nextVillAtM = 1200 + Math.random()*800;
     player.x=RUNX()|0; player.y=(GY()-player.h)|0; player.vy=0; player.onGround=true; player.jumpsLeft=2; player.tilt=0;
     boostBar.classList.remove('ready');
-    // 序盤：コンテナ 3〜5 セット
+    // 序盤コンテナを事前配置
     placeEarlyContena();
-    // 通常スポーン初期化
+    // 以降の通常スポーン
     const lastX = obstacles.length ? obstacles[obstacles.length-1].x + 6*PX_PER_M : SAFE_M*PX_PER_M;
     nextSpawnX = lastX + 8*PX_PER_M;
     scheduleNextSpawn(nextSpawnX);
-    last = 0;
+    last=0;                          // dtリセット
+    forceDraw();                     // その場で描画反映
   }
+
+  function forceDraw(){ draw(); }
 
   function placeEarlyContena(){
     const base = SAFE_M*PX_PER_M + 12*PX_PER_M;
     let x = base + (Math.random()*6|0)*PX_PER_M;
-    const sets = 3 + (Math.random()*3|0);
+    const sets = 3 + (Math.random()*3|0); // 3〜5
     for(let s=0;s<sets;s++){
       const n = (Math.random()<.5?2:3);
       for(let i=0;i<n;i++) spawnAt('contena', x + i*(SIZE.cont.w+8));
-      x += (10 + Math.random()*10)*PX_PER_M;
+      x += (10 + Math.random()*10)*PX_PER_M; // 10〜20m 間隔
     }
   }
 
@@ -323,7 +311,7 @@
   let nextSpawnX = null;
   let lastKanbanX = -1e9;
   function scheduleNextSpawn(fromX){
-    const gapM = 14 + Math.random()*16; // 14〜30m
+    const gapM = 10 + Math.random()*8; // 10〜18m（詰める）
     nextSpawnX = fromX + gapM*PX_PER_M;
   }
   function spawnAt(kind,x){
@@ -343,7 +331,7 @@
     return 'corn';
   }
 
-  // コイン&アイテム：低い位置＆レア
+  /* ====== Collectibles（レア） ====== */
   let lastCoinAtM = -9999, lastRareAtM=-9999;
   function spawnCollectibles(){
     const gy=GY()|0;
@@ -368,9 +356,7 @@
   function maybeVillain(){
     if(meters>=nextVillAtM && villains.length===0){
       showCut('viran op.png',2000);
-      setTimeout(()=>{
-        villains.push({x:scrollX+RUNX()+260, y:-80, vy:20, state:'descend', hoverY:GY()-220, left:5+Math.floor(Math.random()*4), t:1});
-      },450);
+      setTimeout(()=>{ villains.push({x:scrollX+RUNX()+260, y:-80, vy:20, state:'descend', hoverY:GY()-220, left:5+Math.floor(Math.random()*4), t:1}); },450);
       nextVillAtM += 1000 + Math.random()*1000;
     }
   }
@@ -394,9 +380,34 @@
 
   /* ====== Loop ====== */
   let last=0, dispSp=0, dispT=0;
+  requestAnimationFrame(tick);
   function tick(ts){
     if(!last) last=ts;
     let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,1/30);
+
+    /* ---- ステートマシン ---- */
+    if(state==='reset'){
+      resetWait -= dt;
+      if(resetWait<=0){
+        cdIndex=0; cdTimer=0.7;
+        countdown.textContent='3'; countdown.classList.add('show');
+        state='countdown';
+      }
+      draw(); return requestAnimationFrame(tick);
+    }
+    if(state==='countdown'){
+      cdTimer -= dt;
+      if(cdTimer<=0){
+        cdIndex++;
+        if(cdIndex<4){
+          countdown.textContent= ['3','2','1','GO'][cdIndex];
+          cdTimer=0.7;
+        }else{
+          countdown.classList.remove('show');
+          state='play';
+        }
+      }
+    }
 
     if(state==='play'){
       const mult=(boosting>0)?1.7:1;
@@ -404,14 +415,14 @@
       scrollX += spd*dt;
       meters   = scrollX/PX_PER_M;
 
-      // スポーン：距離制
+      // スポーン
       if(nextSpawnX && (scrollX + vw + 120) >= nextSpawnX){
         const kind = pickKind();
         spawnAt(kind, nextSpawnX|0);
         scheduleNextSpawn(nextSpawnX);
       }
 
-      // ブーストチャージ（遅め）
+      // ブースト・効果
       if(enFree<=0){ boostGauge = Math.min(boostMax, boostGauge + dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
       if(boosting>0) boosting-=dt;
       if(enFree>0)   enFree-=dt;
@@ -420,18 +431,18 @@
 
       spawnCollectibles(); maybeVillain();
 
-      // 障害物アップデート（常時接地）
+      // 障害物の高さ更新（土管伸縮など）
       const gy=GY()|0;
       for(const o of obstacles){
         if(o.kind==='dokan'){
-          o.phase = (o.phase + dt) % 4; // 1s rise,2s stop,1s fall
+          o.phase = (o.phase + dt) % 4; // 1↑,2=,1↓
           let t=o.phase;
           let h = (t<1)? Math.round(30 + t*(SIZE.dokan.hMax-30)) : (t<3)? SIZE.dokan.hMax : Math.round(SIZE.dokan.hMax - (t-3)*(SIZE.dokan.hMax-30));
           o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
         }else{
           o.y=(gy - o.h)|0;
         }
-        if(o.kind==='tora'){ if(o.cool>0) o.cool-=dt; }
+        if(o.kind==='tora' && o.cool>0) o.cool-=dt;
         if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
       }
       while(obstacles.length && obstacles[0].x < scrollX-400) obstacles.shift();
@@ -444,67 +455,71 @@
 
       updateVill(dt);
 
-      // physics（重力）
+      // 物理
       player.vy += 900*dt; player.y = (player.y + player.vy*dt)|0;
 
-      // 乗り物＆斜面密着
-      const groundTop = (gy - player.h)|0;
-      let targetTop = groundTop;
-      let onSlope = false;
+      // ===== 支持面の一括計算（密着＆浮き防止） =====
+      const cx = RUNX()+player.w*0.5;
+      let supportTop = gy;                 // デフォは地面上端
+      let onSlope=false;                   // 斜面中フラグ
 
-      // slope (jumpdai)：密着＋60%で確定ジャンプ（高め）＋1.2秒ブースト
+      // 斜面：位置に応じた上面Y
       for(const o of obstacles){
         if(o.kind!=='jumpdai') continue;
-        const sx = (o.x - scrollX)|0;
-        const half = RUNX()+player.w*0.5;
-        if(half >= sx && half <= sx + o.w){
-          const p = Math.max(0, Math.min(1, (half - sx)/o.w));
+        const sx=o.x - scrollX;
+        if(cx>=sx && cx<=sx+o.w){
+          const p = (cx - sx)/o.w;
           const topY = (gy - p*o.h)|0;
-          const snapY = (topY - player.h + 1)|0; // 見た目密着
-          targetTop = Math.min(targetTop, snapY);
+          if(topY < supportTop) supportTop = topY;
           onSlope = true;
-          player.tilt = Math.max(-0.15, Math.min(0.24, (p-0.3)*0.6));
+          // 60%地点で確定ジャンプ＋ブースト
           if(!o.kicked && p>0.6){
-            o.kicked=true; player.y=snapY; player.vy=-680; // 高く飛ぶ
-            boosting = Math.max(boosting, 1.2);           // 1.2秒ブースト
+            o.kicked=true; player.vy=-820; boosting=Math.max(boosting,1.2);
           }
+          // 見た目の傾き
+          player.tilt = Math.max(-0.15, Math.min(0.24, (p-0.3)*0.6));
         }
       }
-      // rideables（±16pxで吸着、+2px沈み込み）
+      // 乗れる物：上面+1px（沈み込み）
       for(const o of obstacles){
         if(o.kind!=='contena' && o.kind!=='tora' && o.kind!=='dokan') continue;
-        const sx = (o.x - scrollX)|0;
-        const left = sx, right = sx + o.w;
-        const center = RUNX()+player.w*0.5;
-        if(center < left || center > right) continue;
-        const top = (o.y+2)|0; // +2px沈み込み
-        const feet=player.y+player.h;
-        if(feet > top-16 && feet < top+16 && player.vy>=0){
-          targetTop = Math.min(targetTop, (top - player.h)|0);
-          if(o.kind==='tora' && o.cool<=0){ player.y=(top - player.h)|0; player.vy=-560; o.cool=.5; }
+        const sx=o.x - scrollX;
+        if(cx>=sx && cx<=sx+o.w){
+          const topY = (o.y+1)|0; // +1px沈み込み
+          if(topY < supportTop) supportTop = topY;
         }
       }
-      if(player.y>=targetTop){ player.y=targetTop; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); } }
-      else { player.onGround=false; if(!onSlope) player.tilt*=0.9; }
 
-      // 当たり（誤爆抑制＆上面セーフ幅14px）
+      // スナップ吸着（±12px）
+      const feet = player.y + player.h;
+      if(player.vy>=0 && feet > supportTop-12 && feet < supportTop+12){
+        player.y = (supportTop - player.h)|0;
+        player.vy = 0;
+        if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
+      }else{
+        player.onGround=false; if(!onSlope) player.tilt*=0.9;
+      }
+
+      // ===== 当たり判定（誤爆抑制＋足元セーフ） =====
       if(invincible<=0){
         const A=shrink({x:RUNX(),y:player.y,w:player.w,h:player.h},4);
+        // 火の玉
         for(const f of fires){
           const rx=f.x - scrollX;
-          if(rects(A, {x:rx+2,y:f.y+2,w:f.w-4,h:f.h-4})){ die(); return; }
+          if(rects(A, shrink({x:rx,y:f.y,w:f.w,h:f.h},4))){ die(); return; }
         }
+        // 障害物
         for(const o of obstacles){
           const rx=o.x - scrollX;
-          const BBase={x:rx,y:o.y,w:o.w,h:o.h};
+          const B0={x:rx,y:o.y,w:o.w,h:o.h};
           if(o.kind==='corn' || o.kind==='gomi'){
-            const B=shrink(BBase,6);
-            if(rects(A,B)) { die(); return; }
+            if(rects(A, shrink(B0,6))){ die(); return; }
           }else if(o.kind==='contena' || o.kind==='tora' || o.kind==='dokan'){
-            const B=shrink(BBase,4);
-            const feet=A.y+A.h, top=o.y+2; // +2px沈み込み基準
-            if(rects(A,B) && !(feet<=top+14)) { die(); return; }
+            const B=shrink(B0,4);
+            const top=o.y+1; // +1px沈み込み基準
+            if(rects(A,B) && !(A.y+A.h <= top+10)){ die(); return; } // 上面+10px以内はセーフ
           }
+          // jumpdaiは非デス
         }
       }
 
@@ -513,7 +528,7 @@
         const it=items[i];
         if(it.type!=='coin'){ it.t = (it.t||0) + dt*1.6; it.y = (it.y + Math.sin(it.t)*0.4)|0; }
         const rx=it.x - scrollX;
-        if(rects({x:RUNX()+4,y:player.y+4,w:player.w-8,h:player.h-8},{x:rx,y:it.y,w:it.w,h:it.h})){
+        if(rects(shrink({x:RUNX(),y:player.y,w:player.w,h:player.h},4),{x:rx,y:it.y,w:it.w,h:it.h})){
           if(it.type==='coin'){ coins++; sparkleT=0; if(coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000); } }
           else{ if(!(slots[0]&&slots[1])){ if(!slots[0]) slots[0]={type:it.type}; else slots[1]={type:it.type}; refreshSlots(); } }
           items.splice(i,1);
@@ -590,19 +605,18 @@
       const sx=it.x - scrollX; if(sx<-200||sx>vw+200) continue;
       let name = it.type==='coin' ? 'coin.png' : (it.type==='tsubasa' ? 'tsubasa.png' : (it.type==='en' ? 'en.png' : 'jump.png'));
       const im=IMG[name]; if(im&&im.width) ctx.drawImage(im, sx|0, it.y|0, it.w|0, it.h|0);
-      else { ctx.fillStyle='#7cf'; ctx.fillRect(sx|0,it.y|0,it.w|0,it.h|0); }
     }
 
     // 火の玉
     for(const f of fires){
       const sx=f.x - scrollX; if(sx<-200||sx>vw+200) continue;
-      const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0); else {ctx.fillStyle='#d33'; ctx.fillRect(sx|0,f.y|0,f.w|0,f.h|0);}
+      const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0);
     }
 
     // ヴィラン
     for(const v of villains){
       const sx=v.x - scrollX; const im=IMG['viran.png'];
-      if(im&&im.width) ctx.drawImage(im, (sx-60)|0, (v.y-50)|0, 120, 100); else {ctx.fillStyle='#933'; ctx.fillRect((sx-40)|0,(v.y-30)|0,80,60);}
+      if(im&&im.width) ctx.drawImage(im, (sx-60)|0, (v.y-50)|0, 120, 100);
     }
 
     // プレイヤー
@@ -617,9 +631,10 @@
     ctx.restore();
   }
 
-  /* ====== Start ====== */
-  requestAnimationFrame(tick);
-  function openSelect(){ state='select'; charSel.style.display='flex'; }
+  /* ====== Buttons etc. ====== */
+  function showGo(){ goMsg.textContent=`記録 ${Math.floor(meters)}m！`; goModal.style.display='flex'; }
+  function hideGo(){ goModal.style.display='none'; }
+
 })();
 </script>
 </body>
