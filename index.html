@@ -21,7 +21,8 @@
   .gauge-wrap{position:fixed;left:12px;right:12px;top:44px;}
   .gauge{height:16px;background:#303847;border:1px solid #475268;border-radius:999px;overflow:hidden}
   .gauge i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#2bd,#8ef)}
-  .bottombar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;z-index:6;}
+  .bottombar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+             display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;z-index:6;}
   .bbtn{background:var(--btn2);border-radius:16px;padding:14px 12px;font-weight:900;text-align:center;user-select:none}
   .slot{height:56px;border-radius:12px;border:1px dashed #666;background:rgba(255,255,255,.06);display:grid;place-items:center}
   .slot img{max-width:90%;max-height:90%;image-rendering:pixelated}
@@ -30,7 +31,14 @@
 
   /* 中央パネル */
   .overlay{position:fixed;inset:0;display:grid;place-items:center;z-index:7;}
-  .panel{background:rgba(15,18,26,.92);border-radius:18px;padding:18px}
+  .panel{
+    background:rgba(15,18,26,.92);
+    border-radius:18px;
+    padding:18px;
+    max-width:90%;   /* ← 追加 */
+    max-height:90%;  /* ← 追加 */
+    overflow:auto;   /* ← 追加 */
+  }
   .card{flex:1 1 48%;border:1px solid #2c3444;border-radius:14px;padding:10px;display:grid;place-items:center;cursor:pointer}
   .sel{outline:3px solid #2bd36b}
   .btn{background:#1b1f27;border:1px solid #323a49;border-radius:14px;padding:12px 16px;font-weight:800;text-align:center;margin-top:12px;cursor:pointer}
@@ -105,7 +113,12 @@
   document.getElementById('panelChar').addEventListener('click',e=>{
     const c=e.target.closest('.card'); if(c){selected=c.dataset.char;document.querySelectorAll('.card').forEach(x=>x.classList.toggle('sel',x===c));}
   });
-  document.getElementById('charStart').onclick=()=>{player.sprite=selected;document.getElementById('panelChar').classList.add('hidden');startCountdown();};
+  document.getElementById('charStart').onclick=()=>{
+    if(state!==ST.CHARSEL) return;
+    player.sprite=selected;
+    document.getElementById('panelChar').classList.add('hidden');
+    startCountdown();
+  };
 
   document.getElementById('btnJump').onclick=()=>{if(state===ST.RUN&&player.onGround){player.vy=-14;player.onGround=false;}};
 
@@ -116,12 +129,9 @@
       else{clearInterval(tm);el.classList.add('hidden');state=ST.RUN;}},700);
   }
 
-  const world={scrollX:0,speed:4,obstacles:[],nextObsX:W+360}; const W=DESIGN_W,H=DESIGN_H;
+  const world={scrollX:0,speed:4}; const W=DESIGN_W,H=DESIGN_H;
 
-  function loop(){
-    update(); render(); requestAnimationFrame(loop);
-  }
-  requestAnimationFrame(loop);
+  function loop(){update();render();requestAnimationFrame(loop);} requestAnimationFrame(loop);
 
   function update(){
     if(state!==ST.RUN)return;
@@ -132,6 +142,7 @@
   }
 
   function drawTiled(img,y,spd,h){
+    if(!img.complete)return;
     const iw=img.width||256, w=iw, x0=-(world.scrollX*spd%w)|0;
     for(let x=x0-w;x<W+w;x+=w)cx.drawImage(img,x,y,w,h);
   }
@@ -139,9 +150,9 @@
   function render(){
     cx.clearRect(0,0,W,H);
     const gy=GROUND_Y();
-    if(IM.sora.complete)drawTiled(IM.sora,0,0.1,H);
-    if(IM.hatake.complete)drawTiled(IM.hatake,gy-200,0.5,200);
-    if(IM.doro.complete)drawTiled(IM.doro,ROAD_TOP_Y,1,H-ROAD_TOP_Y);
+    drawTiled(IM.sora,0,0.1,H);
+    drawTiled(IM.hatake,gy-200,0.5,200);
+    drawTiled(IM.doro,ROAD_TOP_Y,1,H-ROAD_TOP_Y);
     if(IM[player.sprite].complete)cx.drawImage(IM[player.sprite],player.x,player.y,player.w,player.h);
     if(IM.corn.complete)cx.drawImage(IM.corn,200,gy-78+CORN_Y_OFFSET,78,78);
     if(IM.dokan.complete)cx.drawImage(IM.dokan,300,gy-60,66,60);
