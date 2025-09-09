@@ -8,7 +8,7 @@
   :root{--fg:#fff;--pill:#2b2f3a;--btn:#1b1f27;--btn2:#2b303b;}
   html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif}
   #wrap{position:fixed;inset:0;overflow:hidden}
-  /* ステージは左上起点でscale。スマホは“cover”で黒帯なし、PCは“contain” */
+  /* ステージは左上起点でscale。“contain”で必ず全体が入る(上下のHUD欠けなし) */
   #stage{position:absolute;left:0;top:0;width:414px;height:896px;transform-origin:0 0}
   #cv{display:block;touch-action:none;background:#000;border-radius:12px;border:1px solid #12151d;box-shadow:0 8px 30px rgba(0,0,0,.6)}
 
@@ -49,6 +49,12 @@
   @keyframes fade{0%{opacity:0}20%{opacity:1}80%{opacity:1}100%{opacity:0}}
   .result{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);border:1px solid #444;border-radius:14px;padding:10px 14px;font-weight:900;opacity:0;animation:res 2s ease forwards;white-space:pre-line;text-align:center;z-index:7}
   @keyframes res{0%{opacity:0;transform:translate(-50%,-46%)}20%{opacity:1;transform:translate(-50%,-50%)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-54%)}}
+
+  /* === OPオーバーレイ（Canvasを塞がず軽量） === */
+  #opOverlay{
+    position:fixed;inset:0;background:#000;display:grid;place-items:center;z-index:20;
+  }
+  #opOverlay img{width:min(72vw,520px);height:auto;image-rendering:pixelated}
 </style>
 </head>
 <body>
@@ -73,13 +79,6 @@
       </div>
 
       <div class="center">
-        <!-- OPは3秒だけ見せて自動でキャラ選択へ -->
-        <div class="panel" id="panelOP">
-          <h1 style="text-align:center">MOB CART Runner</h1>
-          <div style="display:grid;place-items:center"><img src="op.png" alt="OP" style="width:min(70vw,420px);height:auto;image-rendering:pixelated"></div>
-          <div style="opacity:.65;text-align:center;margin-top:6px">Now Loading...</div>
-        </div>
-
         <div class="panel hidden" id="panelChar">
           <h2>キャラクター選択</h2>
           <div class="charWrap">
@@ -112,17 +111,18 @@
   </div>
 </div>
 
+<!-- 軽量OP（3秒で自動遷移、HUDは下に見えている） -->
+<div id="opOverlay"><img src="op.png" alt="OP"></div>
+
 <script>
 (() => {
-  /* =============== スケール =============== */
+  /* =============== スケール（常にcontainで全体が入る） =============== */
   const DESIGN_W=414, DESIGN_H=896;
   const stage=document.getElementById('stage');
-  const MOBILE=/Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   function scaleToFit(){
     const vw = window.innerWidth;
     const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-    // モバイル=cover（黒帯なし） / PC=contain（全体見える）
-    const s  = MOBILE ? Math.max(vw/DESIGN_W, vh/DESIGN_H) : Math.min(vw/DESIGN_W, vh/DESIGN_H);
+    const s  = Math.min(vw / DESIGN_W, vh / DESIGN_H);   // ← contain
     const tx = (vw - DESIGN_W * s) * 0.5;
     const ty = (vh - DESIGN_H * s) * 0.5;
     stage.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
@@ -144,7 +144,6 @@
   const files={
     doro:'do-ro.png', hatake:'hatake2.png',
     sora:'sora.PNG', corn:'corn.PNG',
-    op:'op.png',
     orange:'orange.png', VR:'VR.png',
     dokan:'dokan.png', jumpdai:'jumpdai.png',
     kanban1:'kanban1.png', kanban2:'kanban2.png', kanban3:'kanban3.png',
@@ -155,8 +154,7 @@
   };
   const IM={};
   const ready=Promise.all(Object.entries(files).map(([k,src])=>new Promise(res=>{
-    const img=new Image();
-    img.onload=()=>{IM[k]=img;res();};
+    const img=new Image(); img.onload=()=>{IM[k]=img;res();};
     img.onerror=()=>{IM[k]=document.createElement('canvas');res();};
     img.src=src;
   })));
@@ -168,9 +166,9 @@
   const coinPill=document.getElementById('coinPill');
   const boostFill=document.getElementById('boostFill');
 
-  const panelOP=document.getElementById('panelOP');
   const panelChar=document.getElementById('panelChar');
   const panelMenu=document.getElementById('panelMenu');
+  const opOverlay=document.getElementById('opOverlay');
 
   const countEl=document.getElementById('count');
   const cutinBox=document.getElementById('cutin'); const cutinImg=document.getElementById('cutinImg');
@@ -195,7 +193,7 @@
   /* =============== World / Player =============== */
   const world={
     scrollX:0,
-    baseSpeed:3.8, speed:3.8, maxSpeed:8.2,
+    baseSpeed:3.8, speed:3.8, maxSpeed:8.0,
     gravity:0.72,
     meters:0,
     coins:0,
@@ -203,7 +201,7 @@
     inv:false, invUntil:0,
     signs:[], obstacles:[], items:[], fires:[], hazards:[],
     nextObsX:0, nextItemX:0, nextSignX:0,
-    nextViranAt:rnd(400,700)
+    nextViranAt:rnd(500,900)
   };
   const player={
     x:snap(W*0.22), y:0, w:48, h:54, vy:0,
@@ -226,27 +224,25 @@
   });
 
   /* =============== 画面遷移 =============== */
-  document.getElementById('charStart').onclick=()=>{ if(state!==ST.CHARSEL) return; startCountdown(selected); };
-  document.getElementById('menuChar').onclick=()=>{show(panelChar);hide(panelMenu);state=ST.CHARSEL;};
-  document.getElementById('menuStart').onclick=()=>{hide(panelMenu);startCountdown(selected);};
-
   let selected='orange';
   panelChar.addEventListener('click',e=>{
     const c=e.target.closest('.card'); if(!c) return;
     selected=c.dataset.char;
     panelChar.querySelectorAll('.card').forEach(el=>el.classList.toggle('sel', el.dataset.char===selected));
   });
+  document.getElementById('charStart').onclick=()=>{ if(state!==ST.CHARSEL) return; startCountdown(selected); };
+  document.getElementById('menuChar').onclick=()=>{show(panelChar);hide(panelMenu);state=ST.CHARSEL;};
+  document.getElementById('menuStart').onclick=()=>{hide(panelMenu);startCountdown(selected);};
 
-  /* ====== OP → 3秒後に自動でキャラ選択へ ====== */
+  /* ====== OP → 3秒後にキャラ選択 ====== */
   ready.then(()=>{
-    show(panelOP);
-    setTimeout(()=>{ hide(panelOP); show(panelChar); state=ST.CHARSEL; }, 3000);
+    setTimeout(()=>{ opOverlay.style.display='none'; show(panelChar); state=ST.CHARSEL; }, 3000);
     requestAnimationFrame(loop);
   });
 
   /* =============== スタート/リセット =============== */
   function startCountdown(sel){
-    hide(panelOP); hide(panelChar); hide(panelMenu);
+    hide(panelChar); hide(panelMenu);
     hide(resultMsg); resultMsg.textContent='';
     player.sprite=sel||'orange';
     resetRun();
@@ -263,7 +259,7 @@
     world.coins=0; world.boostGauge=0; world.boostReady=false; world.boosting=false;
     world.inv=false; world.invUntil=0; player.gold=false;
     world.signs.length=0; world.obstacles.length=0; world.items.length=0; world.fires.length=0; world.hazards.length=0;
-    world.nextObsX=W+420; world.nextItemX=W+3600; world.nextSignX=W+1200; // レア化
+    world.nextObsX=W+420; world.nextItemX=W+3600; world.nextSignX=W+1200; // レアめ
     world.nextViranAt=rnd(500,900);
 
     const gy=GROUND_Y();
@@ -334,9 +330,10 @@
   function showCutin(key){ cutinImg.src=files[key]||''; cutinBox.classList.remove('hidden'); setTimeout(()=>cutinBox.classList.add('hidden'),2000); }
 
   /* =============== スポーン =============== */
+  const CORN_Y_OFFSET = 2; // 見た目で少し沈める(浮き抑制)
   function makeRamp(x){
-    // ★三角ランプ（地面ピッタリに入口&必ず乗れる）+ 中盤自動ジャンプ
-    const w=150, h=42, launchRatio=0.60;
+    // 三角ランプ：幅120/高さ36、GROUNDから始まる。中盤で自動ジャンプ。
+    const w=120, h=36, launchRatio=0.60;
     return {
       type:'jumpdai', x:snap(x), w, h,
       ramp:true, jumpPad:true,
@@ -348,7 +345,7 @@
     const r=Math.random();
     if(r<0.30){ world.obstacles.push(makeRamp(x)); }
     else if(r<0.70){
-      world.obstacles.push({type:'corn', x:snap(x), w:78, h:78, hitInset:{x:8,y:8,w:62,h:60}}); // 接地 & 内側当たり
+      world.obstacles.push({type:'corn', x:snap(x), w:78, h:78, hitInset:{x:8,y:8,w:62,h:60}});
     }else{
       world.obstacles.push({type:'dokan', x:snap(x), w:66, h:22, phase:0, timer:0, maxH:104});
     }
@@ -378,7 +375,6 @@
   function update(dt){
     const gy=GROUND_Y();
 
-    // OPは3秒だけ表示→ready済み
     if(state===ST.RUN){
       world.scrollX += world.speed;
       world.meters  += world.speed*0.06;
@@ -395,15 +391,15 @@
     // スポーン
     const right=world.scrollX+W+60;
     if(world.nextObsX<right){ spawnObstacle(world.nextObsX); world.nextObsX += rnd(360,560); }
-    if(world.nextItemX<right){ spawnItem(world.nextItemX); world.nextItemX += rnd(3600,5200); } // レア化
-    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(1100,1900); }                // 看板減
+    if(world.nextItemX<right){ spawnItem(world.nextItemX); world.nextItemX += rnd(3600,5200); }
+    if(world.nextSignX<right){ spawnSign(); world.nextSignX += rnd(1100,1900); }
 
     // プレイヤー物理
     player.prevX=player.x; player.prevY=player.y;
     player.vy += world.gravity; player.y += player.vy; player.y = snap(player.y);
     player.tilt += (0 - player.tilt)*0.15;
 
-    // 障害物（接地ライン共有）
+    // 障害物
     let topY=gy - player.h;
     for(const o of world.obstacles){
       const ox=snap(o.x - world.scrollX);
@@ -416,19 +412,25 @@
         else if(o.phase===2){ o.h-=1.2; if(o.h<=22){ o.h=22; o.phase=0; o.timer=0; } }
       }
 
-      // ランプ：地面から自然に登る → 発射点で自動ジャンプ
+      // ランプ：GROUNDから登り、発射点で自動ジャンプ
       if(o.ramp){
         const startX=ox, endX=snap(o.launchX - world.scrollX);
         const feetX = player.x + (player.w>>1);
-        if(feetX>=startX && feetX<=startX + o.w*0.95){   // 入口〜ほぼ終端まで
-          // “三角ランプ”の高さ：入口0 → launchまで直線的に上昇
+        if(feetX>=startX && feetX<=startX + o.w*0.98){
           const climbLen = Math.max(1,(endX - startX));
           const ratio = Math.min(1, Math.max(0,(feetX - startX)/climbLen));
           const rampY = snap(gy - o.h * ratio);
 
           const feetPrev=player.prevY+player.h, feet=player.y+player.h;
-          const onRamp = (feet>=rampY-8 && feet<=rampY+8 && player.vy>=-5) || (feetPrev<=rampY && feet>=rampY);
-          if(onRamp){ topY = Math.min(topY, rampY - player.h); player.tilt = -Math.atan(o.slope); }
+          const onRamp = (feet>=rampY-10 && feet<=rampY+10 && player.vy>=-6) || (feetPrev<=rampY && feet>=rampY);
+          if(onRamp){
+            // 直接吸着して沈み/浮きを抑える
+            player.y = snap(rampY - player.h);
+            player.vy = Math.max(player.vy, 0);
+            player.onGround=true; player.jumps=0;
+            player.tilt = -Math.atan(o.slope);
+            topY = Math.min(topY, player.y);
+          }
         }
         if(!o.launched && feetX > endX){
           o.launched=true; player.vy = -18;
@@ -437,7 +439,7 @@
         }
       }
 
-      // 土管：上だけ乗れる／横・下は即死（連続判定で抜け防止）
+      // 土管：上からは必ず吸着、横/下は即死（貫通防止）
       if(o.type==='dokan'){
         const ow=o.w, oh=(o.h||22);
         const left=ox, top=gy-oh, right=left+ow, bottom=top+oh;
@@ -445,20 +447,25 @@
           const prevBottom=player.prevY+player.h, bottomNow=player.y+player.h;
           const prevRight=player.prevX+player.w, rightNow=player.x+player.w;
           const prevLeft=player.prevX, leftNow=player.x;
-          const fromTop = (prevBottom<=top+8) && (bottomNow>=top) &&
+
+          const fromTop = (prevBottom<=top+10) && (bottomNow>=top) &&
                           ((player.x+player.w*0.5)>=left && (player.x+player.w*0.5)<=right);
           const hitRightSide = prevRight<=left && rightNow>left && bottomNow>top+6;
           const hitLeftSide  = prevLeft>=right && leftNow<right && bottomNow>top+6;
           const fromBottom   = (player.prevY<=bottom && player.y<bottom && (player.y+player.h)>bottom);
 
-          if(fromTop){ topY=Math.min(topY, top-player.h); }
-          else if(hitRightSide || hitLeftSide || fromBottom){ hit(); }
+          if(fromTop){
+            player.y = snap(top - player.h); player.vy = 0; player.onGround=true; player.jumps=0;
+            topY = Math.min(topY, player.y);
+          } else if(hitRightSide || hitLeftSide || fromBottom){
+            hit();
+          }
         }
       }
 
-      // コーン：地面ベタ置き + 当たりを内側に縮小（誤爆防止）
+      // コーン：地面ベタ置き + 2px沈め + 当たり縮小
       if(o.type==='corn'){
-        const oy=snap(gy - o.h);
+        const oy=snap(gy - o.h + CORN_Y_OFFSET);
         const inset=o.hitInset||{x:0,y:0,w:o.w,h:o.h};
         const bx=ox+inset.x, by=oy+inset.y, bw=inset.w, bh=inset.h;
         if(AABB(player.x,player.y,player.w,player.h, bx,by,bw,bh)){ if(state===ST.RUN && !world.inv) hit(); }
@@ -519,39 +526,34 @@
     cx.clearRect(0,0,W,H);
 
     if(state===ST.TITLE){
-      // OP中はロゴだけ（背景真っ暗）
+      // OPはCSSオーバーレイに任せる。Canvasは真っ暗のまま軽量。
       cx.fillStyle="#000"; cx.fillRect(0,0,W,H);
-      cx.globalAlpha=.98;
-      const s=Math.min(W*0.75,520);
-      if(IM.op) cx.drawImage(IM.op,(W-s)/2,(H-s)/2-40,s,s);
-      cx.globalAlpha=1;
       return;
     }
     if(state===ST.CHARSEL){ if(IM.sora) cx.drawImage(IM.sora,0,0,W,H); return; }
 
     const gy=GROUND_Y();
 
-    // 背景：空 → 畑（畑を道路と3px重ね）
+    // 背景：空→畑（3px重ね）
     if(IM.sora) drawTiled(IM.sora, 0, 0.12, H);
     const fieldH=(H*0.22)|0;
     const fieldTop=(gy-fieldH-3)|0;
     if(IM.hatake) drawTiled(IM.hatake, fieldTop, 0.55, fieldH+3);
 
-    // 道路（上端=ROAD_TOP_Y）
+    // 道路
     if(IM.doro) drawTiled(IM.doro, ROAD_TOP_Y, 1.0, (H-ROAD_TOP_Y+8)|0);
 
     // 看板：畑の上端に設置
     for(const s of world.signs){
       const x=(s.x-world.scrollX)|0, y=(fieldTop - s.h)|0;
-      cx.drawImage(IM['kanban'+(((s.img&&s.img.dataset)||'').n||1)] || s.img, x, y, s.w, s.h);
-      if(!s.img.dataset) s.img.dataset={n:1};
+      cx.drawImage(s.img, x, y, s.w, s.h);
     }
 
     // 障害物（地面ピッタリ）
     for(const o of world.obstacles){
       const x=(o.x-world.scrollX)|0;
       if(o.type==='dokan'){ const h=o.h||22; cx.drawImage(IM.dokan, x, (gy-h)|0, o.w, h); }
-      else if(o.type==='corn'){ cx.drawImage(IM.corn, x, (gy-o.h)|0, o.w, o.h); }
+      else if(o.type==='corn'){ cx.drawImage(IM.corn, x, (gy-o.h + CORN_Y_OFFSET)|0, o.w, o.h); }
       else if(o.jumpPad){ cx.drawImage(IM.jumpdai, x, (gy-o.h)|0, o.w, o.h); }
     }
 
