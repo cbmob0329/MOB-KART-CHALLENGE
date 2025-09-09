@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB CART Runner — v3 安定版（地形&サイズ修正）</title>
+<title>MOB CART Runner — v3 安定版（地形/密着/サイズ 最終修正）</title>
 <style>
   :root{
-    --ui-fg:#fff; --ui-dim:#9fb0ce; --bar:#0b0f14; --pill:#182028; --line:#2b3342;
+    --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
     --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px);
   }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;}
@@ -25,7 +25,7 @@
 
   /* HUD */
   .hud{position:fixed;top:calc(48px + var(--safe-top));left:0;right:0;z-index:45;display:flex;gap:10px;align-items:center;padding:8px 12px;pointer-events:none}
-  .pill{pointer-events:auto;min-width:72px;padding:8px 12px;border-radius:18px;background:var(--pill);border:1px solid var(--line)}
+  .pill{pointer-events:auto;min-width:72px;padding:8px 12px;border-radius:18px;background:#182028;border:1px solid var(--line)}
   .pill h6{margin:0;font-size:10px;color:var(--ui-dim)}
   .pill .v{font-size:14px;margin-top:2px}
   .meter{width:16px;height:44px;border-radius:12px;background:#111823;border:1px solid var(--line);position:relative;overflow:hidden}
@@ -65,7 +65,7 @@
 <body>
   <div id="app">
     <div class="topbar">
-      <div class="title"><b>MOB CART Runner</b><small>v3 安定版（地形&サイズ修正）</small></div>
+      <div class="title"><b>MOB CART Runner</b><small>v3 安定版（地形/密着/サイズ 最終修正）</small></div>
       <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
     </div>
 
@@ -149,7 +149,7 @@
 
   /* ====== Assets ====== */
   const files = [
-    'sora.PNG','hatake2.png','hatake.png','do-ro.png',  /* ← 追加: hatake.png */
+    'sora.PNG','hatake2.png','hatake.png','do-ro.png',
     'corn.PNG','dokan.png','jumpdai.png',
     'orange.png','VR.png','op.png',
     'kanban1.png','kanban2.png','kanban3.png','kanban4.png','kanban5.png','kanban6.png',
@@ -160,13 +160,25 @@
   const IMG={}; let left = files.length;
   files.forEach(fn=>{ const im=new Image(); im.src = encodeURI(fn); im.onload=()=>{IMG[fn]=im;if(--left===0) boot();}; im.onerror=()=>{IMG[fn]=im;if(--left===0) boot();}; });
 
-  /* ====== World constants (logical) ====== */
-  const GY = ()=> Math.floor(vh*0.80);               // 地面上端（走行ライン）
-  const RUNX = ()=> Math.floor(vw*0.25);             // プレイヤーの固定X
-  const SAFE_M = 80;                                 // 安全地帯
+  /* ====== World constants ====== */
+  const GY = ()=> Math.floor(vh*0.80);          // 地面上端（走行ラインの基準）
+  const RUNX = ()=> Math.floor(vw*0.25);        // プレイヤーの固定X
+  const SAFE_M = 80;                            // スタート安全地帯
   const KMH_PER_PX = 0.06*3.6;
-  const BOOST_MULT = 1.6, BOOST_TIME=2.5;
-  const EN_TIME=5.0, INV_TIME=5.0, WING_TIME=5.0;
+
+  // 画像の論理サイズ（大きめ）
+  const SIZE = {
+    player:{w:90,h:64},
+    corn:{w:64,h:86},
+    gomi:{w:84,h:78},
+    cont:{w:128,h:120},
+    tora:{w:140,h:96},
+    dokan:{w:96,h:160}, // 最大時
+    jump:{w:200,h:64},
+    kanban:{w:432,h:324},
+    coin:{w:26,h:26},
+    item:{w:34,h:34}
+  };
 
   /* ====== State ====== */
   let state='boot';
@@ -176,24 +188,17 @@
   let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0;
   let nextVillAtM = 1200 + Math.random()*800;
 
-  const player = { sprite:'orange.png', w:84, h:60, x:RUNX()|0, y:(GY()-60)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0 };
+  const player = { sprite:'orange.png', w:SIZE.player.w, h:SIZE.player.h, x:RUNX()|0, y:(GY()-SIZE.player.h)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0 };
 
   const items=[], obstacles=[], fires=[], villains=[];
   const slots=[null,null];
   const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
   const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
 
-  function refreshSlots(){
-    btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
-    btnItem1.textContent = slots[0]? slots[0].type.toUpperCase() : 'アイテム1';
-    btnItem2.textContent = slots[1]? slots[1].type.toUpperCase() : 'アイテム2';
-  } refreshSlots();
-
-  /* ====== UI / misc ====== */
+  /* ====== UI ====== */
   btnFS.addEventListener('click',()=>{
     const el=document.documentElement;
-    if(!document.fullscreenElement){ el.requestFullscreen?.(); btnFS.textContent='全画面解除'; }
-    else{ document.exitFullscreen?.(); btnFS.textContent='全画面'; }
+    if(!document.fullscreenElement){ el.requestFullscreen?.(); btnFS.textContent='全画面解除'; } else { document.exitFullscreen?.(); btnFS.textContent='全画面'; }
   });
   function showCut(fn,ms=2000){ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); }
   function showCountdown(seq=['3','2','1','GO'],step=700,cb){
@@ -202,51 +207,59 @@
       if(++i<seq.length) setTimeout(tick,step); else setTimeout(cb,step);
     }; tick();
   }
-  function tileX(img, y, h, factor){
+  function tileX(img, y, h, factor, overlapTop=0){
     if(!(img&&img.width)) return;
-    y |= 0; h |= 0;
+    y = (y-overlapTop)|0; h = (h+overlapTop)|0; // 1px重ねで隙間対策
     const aspect = img.width/img.height;
-    const pw = Math.max(16, Math.round(h * aspect)); // 高さ合わせ
+    const pw = Math.max(16, Math.round(h * aspect));
     const tx = - ((scrollX*factor) % pw);
     for(let x=tx-pw; x<vw+pw; x+=pw){ ctx.drawImage(img, x|0, y|0, pw|0, h|0); }
   }
 
   /* ====== Spawner ====== */
   let lastSpawnAt = -9999, lastKind='';
-  function canSpawn(kind){ const dx = (scrollX - lastSpawnAt); const need = (kind===lastKind)? 460:340; return dx>need; }
+  let lastKanbanAt = -99999; // 看板間距離
+  function canSpawn(kind){
+    const dx = (scrollX - lastSpawnAt);
+    const need = (kind===lastKind)? 520:380; // 全体間隔
+    return dx>need;
+  }
   function spawnAt(kind,x){
     const gy=GY()|0;
-    if(kind==='corn'){ obstacles.push({kind,x:x|0,y:(gy-64)|0,w:48,h:64, deadly:true}); }
-    else if(kind==='gomi'){ obstacles.push({kind,x:x|0,y:(gy-56)|0,w:60,h:56, deadly:true, t:Math.random()*6}); }
-    else if(kind==='contena'){ const n=(Math.random()<.5?2:3); for(let i=0;i<n;i++) obstacles.push({kind,x:(x+i*100)|0,y:(gy-96)|0,w:100,h:96, deadlySide:true}); }
-    else if(kind==='tora'){ obstacles.push({kind,x:x|0,y:(gy-70)|0,w:100,h:70, deadlySide:true, cool:0}); }
-    else if(kind==='dokan'){ obstacles.push({kind,x:x|0,baseY:gy,phase:0,y:(gy-30)|0,w:64,h:30, deadlySide:true}); }
-    else if(kind==='jumpdai'){ obstacles.push({kind,x:x|0,y:(gy-48)|0,w:160,h:48, kicked:false}); }
-    else if(kind==='kanban'){ const i=1+Math.floor(Math.random()*6); const h=270, w=360; obstacles.push({kind,img:'kanban'+i+'.png',x:x|0,y:(gy-h)|0,w:w|0,h:h|0}); }
+    if(kind==='corn'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.corn.h)|0,w:SIZE.corn.w,h:SIZE.corn.h, deadly:true}); }
+    else if(kind==='gomi'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.gomi.h)|0,w:SIZE.gomi.w,h:SIZE.gomi.h, deadly:true, t:Math.random()*6}); }
+    else if(kind==='contena'){ const n=(Math.random()<.5?2:3); for(let i=0;i<n;i++) obstacles.push({kind,x:(x+i*(SIZE.cont.w+8))|0,y:(gy-SIZE.cont.h)|0,w:SIZE.cont.w,h:SIZE.cont.h, deadlySide:true}); }
+    else if(kind==='tora'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.tora.h)|0,w:SIZE.tora.w,h:SIZE.tora.h, deadlySide:true, cool:0}); }
+    else if(kind==='dokan'){ obstacles.push({kind,x:x|0,baseY:gy,phase:0,y:(gy-30)|0,w:SIZE.dokan.w,h:30, deadlySide:true}); }
+    else if(kind==='jumpdai'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.jump.h)|0,w:SIZE.jump.w,h:SIZE.jump.h, kicked:false}); }
+    else if(kind==='kanban'){ const nowX = scrollX|0; if(nowX-lastKanbanAt<1200) return; lastKanbanAt = nowX;
+      const i=1+Math.floor(Math.random()*6); obstacles.push({kind,img:'kanban'+i+'.png',x:x|0,y:(gy-SIZE.kanban.h)|0,w:SIZE.kanban.w,h:SIZE.kanban.h}); }
   }
+  function weightedPick(weights){ const sum=weights.reduce((a,b)=>a+b[1],0); let r=Math.random()*sum; for(const w of weights){ r-=w[1]; if(r<=0) return w[0]; } return weights[0][0]; }
   function spawnRandom(){
     const m=meters;
-    // 種類の重み（看板はかなりレア）
     const pool = (m<SAFE_M)
-      ? [['jumpdai',3],['kanban',1]]
-      : [['corn',3],['gomi',3],['contena',3],['tora',2],['dokan',2],['jumpdai',2],['kanban',0.3]];
-    const sum = pool.reduce((a,b)=>a+b[1],0);
-    let r = Math.random()*sum, kind=pool[0][0];
-    for(const [k,w] of pool){ if((r-=w)<=0){ kind=k; break; } }
+      ? [['jumpdai',3],['kanban',0.12]]
+      : [['corn',3],['gomi',3],['contena',3],['tora',2],['dokan',2],['jumpdai',2],['kanban',0.12]];
+    const kind = weightedPick(pool);
     if(!canSpawn(kind)) return;
-    spawnAt(kind, scrollX + vw + 140 + Math.random()*220);
+    spawnAt(kind, scrollX + vw + 160 + Math.random()*260);
     lastSpawnAt = scrollX; lastKind = kind;
   }
+
+  // コインはレア：確率 0.004、前回から400m空け、クラスター同時1つまで
+  let lastCoinAtM = -9999;
   function spawnCollectibles(){
-    // coins
-    if(Math.random()<0.02){
-      const gy=GY(), n=(Math.random()<.5?3:5), start=scrollX+vw+160+Math.random()*220, baseY=gy-150-Math.random()*80;
-      for(let i=0;i<n;i++) items.push({type:'coin',x:(start+i*30)|0,y:(baseY+Math.sin(i)*8)|0,w:26,h:26});
+    const already = items.some(it=>it.type==='coin');
+    if(!already && Math.random()<0.004 && meters-lastCoinAtM>400){
+      const gy=GY(), n=(Math.random()<.5?3:5), start=scrollX+vw+180+Math.random()*260, baseY=gy-160-Math.random()*90;
+      for(let i=0;i<n;i++) items.push({type:'coin',x:(start+i*32)|0,y:(baseY+Math.sin(i)*8)|0,w:SIZE.coin.w,h:SIZE.coin.h});
+      lastCoinAtM = meters;
     }
-    // rare items
+    // レアアイテムは以前どおり（低頻度）
     if(Math.random()<0.006){
       const type=['tsubasa','jump','en'][Math.floor(Math.random()*3)];
-      const gy=GY(); items.push({type, x:(scrollX+vw+180+Math.random()*240)|0, y:(gy-180-Math.random()*90)|0, w:34,h:34, t:Math.random()*6});
+      const gy=GY(); items.push({type, x:(scrollX+vw+200+Math.random()*260)|0, y:(gy-190-Math.random()*90)|0, w:SIZE.item.w,h:SIZE.item.h, t:Math.random()*6});
     }
   }
 
@@ -284,7 +297,6 @@
   onPD(btnBoost, ()=>boost());
   onPD(btnItem1, ()=>useSlot(0));
   onPD(btnItem2, ()=>useSlot(1));
-
   btnChange.addEventListener('click',()=>openSelect());
   document.querySelectorAll('#charSel .opt').forEach(b=>{
     b.addEventListener('click',()=>{
@@ -304,7 +316,6 @@
 
   function beginFromCountdown(){
     closeSelect();
-    // reset
     scrollX=0; meters=0; speed=baseSpeed; boostGauge=100; boosting=0; enFree=0; invincible=0; wingTime=0;
     coins=0; sparkleT=0; sparkleFrame=0; items.length=0; obstacles.length=0; fires.length=0; villains.length=0;
     nextVillAtM = 1200 + Math.random()*800; slots[0]=slots[1]=null; refreshSlots();
@@ -314,6 +325,11 @@
     showCountdown(['3','2','1','GO'],700,()=>{ state='play'; });
   }
 
+  function refreshSlots(){
+    btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
+    btnItem1.textContent = slots[0]? slots[0].type.toUpperCase() : 'アイテム1';
+    btnItem2.textContent = slots[1]? slots[1].type.toUpperCase() : 'アイテム2';
+  }
   function showGo(){ goMsg.textContent=`記録 ${Math.floor(meters)}m！`; goModal.style.display='flex'; }
   function hideGo(){ goModal.style.display='none'; }
   function die(){ state='gameover'; showGo(); }
@@ -322,19 +338,19 @@
   function jump(){
     if(state!=='play') return;
     const maxJ=(wingTime>0)?4:2;
-    if(player.onGround){ player.vy=-380; player.onGround=false; player.jumpsLeft=maxJ-1; }
-    else if(player.jumpsLeft>0){ player.vy=-360; player.jumpsLeft--; }
+    if(player.onGround){ player.vy=-400; player.onGround=false; player.jumpsLeft=maxJ-1; }
+    else if(player.jumpsLeft>0){ player.vy=-380; player.jumpsLeft--; }
     elJump.textContent='×' + (player.onGround?maxJ:player.jumpsLeft);
   }
   function boost(){
     if(state!=='play') return;
-    if(enFree>0){ boosting=BOOST_TIME; return; }
-    if(boostGauge>=boostMax){ boosting=BOOST_TIME; boostGauge=0; elBoost.classList.remove('ready'); }
+    if(enFree>0){ boosting=2.5; return; }
+    if(boostGauge>=boostMax){ boosting=2.5; boostGauge=0; elBoost.classList.remove('ready'); }
   }
   function useSlot(i){
     const it=slots[i]; if(!it) return;
-    if(it.type==='tsubasa') wingTime=WING_TIME;
-    if(it.type==='en') enFree=EN_TIME;
+    if(it.type==='tsubasa') wingTime=5.0;
+    if(it.type==='en') enFree=5.0;
     if(it.type==='jump'){
       let near=null, dmin=1e9;
       for(const o of obstacles){
@@ -342,7 +358,7 @@
         const d = o.x - scrollX - RUNX();
         if(deadly && d>0 && d<dmin){ dmin=d; near=o; }
       }
-      if(near){ near.kind='jumpdai'; near.w=160; near.h=48; near.y=(GY()-48)|0; near.deadly=false; near.deadlySide=false; near.kicked=false; near.backTimer=4.0; }
+      if(near){ near.kind='jumpdai'; near.w=SIZE.jump.w; near.h=SIZE.jump.h; near.y=(GY()-SIZE.jump.h)|0; near.deadly=false; near.deadlySide=false; near.kicked=false; near.backTimer=4.0; }
     }
     slots[i]=null; refreshSlots();
   }
@@ -354,12 +370,12 @@
     let dt=(ts-last)/1000; last=ts; dt=Math.min(dt,1/30);
 
     if(state==='play'){
-      const mult=(boosting>0)?BOOST_MULT:1;
+      const mult=(boosting>0)?1.6:1;
       const spd=speed*mult;
       scrollX += spd*dt;
       meters   = scrollX/30;
 
-      if(enFree<=0){ boostGauge = clamp(boostGauge + dt*22, 0, boostMax); if(boostGauge>=boostMax) elBoost.classList.add('ready'); }
+      if(enFree<=0){ boostGauge = Math.min(boostMax, boostGauge + dt*22); if(boostGauge>=boostMax) elBoost.classList.add('ready'); }
       if(boosting>0) boosting-=dt;
       if(enFree>0)   enFree-=dt;
       if(invincible>0) invincible-=dt;
@@ -373,63 +389,58 @@
         if(o.kind==='dokan'){
           o.phase = (o.phase + dt) % 4; // 1s rise,2s stop,1s fall
           let t=o.phase;
-          let h = (t<1)? 30 + t*90 : (t<3)? 120 : 120 - (t-3)*90;
-          o.h=h|0; o.y=(gy-h)|0;
+          let h = (t<1)? Math.round(30 + t*(SIZE.dokan.h-30)) : (t<3)? SIZE.dokan.h : Math.round(SIZE.dokan.h - (t-3)*(SIZE.dokan.h-30));
+          o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
         }
-        if(o.kind==='gomi'){ o.t += dt*2; o.y = (gy-56 + Math.sin(o.t)*4)|0; o.x = (o.x + Math.sin(o.t*0.7)*0.14)|0; }
+        if(o.kind==='gomi'){ o.t += dt*2; o.y = (gy-SIZE.gomi.h + Math.sin(o.t)*4)|0; o.x = (o.x + Math.sin(o.t*0.7)*0.18)|0; }
         if(o.kind==='tora'){ if(o.cool>0) o.cool-=dt; }
-        if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:48,h:64,y:(gy-64)|0,deadly:true,deadlySide:false,backTimer:0}); } }
+        if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
       }
       // cleanup old
-      while(obstacles.length && obstacles[0].x < scrollX-300) obstacles.shift();
+      while(obstacles.length && obstacles[0].x < scrollX-360) obstacles.shift();
       for(const f of fires){
         if(!f.landed){ f.vy+=f.ay*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; if(f.y+f.h>=gy-1){ f.y=gy-f.h; f.vx=0; f.vy=0; f.landed=true; } }
       }
-      while(fires.length && fires[0].x < scrollX-300) fires.shift();
+      while(fires.length && fires[0].x < scrollX-360) fires.shift();
 
       updateVill(dt);
 
       // physics
       player.vy += 900*dt; player.y = (player.y + player.vy*dt)|0;
 
-      // --------- ride & slope (jumpdai) ----------
+      // --------- ride & slope snap ----------
       const groundTop = (gy - player.h)|0;
       let targetTop = groundTop;
       let onSlope = false;
+
+      // slope (jumpdai)
       for(const o of obstacles){
+        if(o.kind!=='jumpdai') continue;
         const sx = (o.x - scrollX)|0;
-        const withinX = (RUNX()+player.w*0.5 >= sx) && (RUNX()+player.w*0.5 <= sx + o.w);
-        if(o.kind==='jumpdai' && withinX){
-          // 斜面の上面：左→右に上がる
-          const p = clamp(( (RUNX()+player.w*0.5) - sx )/o.w, 0, 1); // 0..1
-          const topY = (gy - p*o.h)|0; // 足元ライン
+        const half = RUNX()+player.w*0.5;
+        if(half >= sx && half <= sx + o.w){
+          const p = clamp((half - sx)/o.w, 0, 1); // 0..1
+          const topY = (gy - p*o.h)|0;           // 斜面上面の足元
           const snapY = (topY - player.h)|0;
-          if(player.vy>=-20 || player.y>=snapY-6){ // 触れたら登る
+          if(player.vy>=-20 || player.y>=snapY-6){
             targetTop = Math.min(targetTop, snapY);
             onSlope = true;
-            // 傾ける
             player.tilt = clamp((p-0.3)*0.6, -0.15, 0.22);
-            // 60%地点でオートジャンプ（1回だけ）
-            if(!o.kicked && p>0.6){
-              o.kicked = true;
-              player.vy = -440;
-              speed += 24; // 微ブースト
-            }
+            if(!o.kicked && p>0.6){ o.kicked=true; player.vy=-460; speed += 24; }
           }
         }
       }
-      // 他の台上（コンテナ/トランポリン/土管）
+      // rideables
       for(const o of obstacles){
+        if(o.kind!=='contena' && o.kind!=='tora' && o.kind!=='dokan') continue;
         const sx = (o.x - scrollX)|0;
         const left = sx, right = sx + o.w;
-        const feet = player.y + player.h;
-        const ride = (o.kind==='contena'||o.kind==='tora'||o.kind==='dokan');
-        if(ride && RUNX()+player.w*0.5 >= left && RUNX()+player.w*0.5 <= right){
-          const top = o.y|0;
-          if(feet > top-12 && feet < top+14 && player.vy>=0){
-            targetTop = Math.min(targetTop, (top - player.h)|0);
-            if(o.kind==='tora' && o.cool<=0){ player.vy=-540; o.cool=.5; }
-          }
+        const center = RUNX()+player.w*0.5;
+        if(center < left || center > right) continue;
+        const top = o.y|0, feet=player.y+player.h;
+        if(feet > top-12 && feet < top+14 && player.vy>=0){
+          targetTop = Math.min(targetTop, (top - player.h)|0);
+          if(o.kind==='tora' && o.cool<=0){ player.vy=-560; o.cool=.5; }
         }
       }
       if(player.y>=targetTop){ player.y=targetTop; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); } }
@@ -458,10 +469,10 @@
       // pickups
       for(let i=items.length-1;i>=0;i--){
         const it=items[i];
-        if(it.type!=='coin'){ it.t += dt*1.6; it.y = (it.y + Math.sin(it.t)*0.4)|0; }
+        if(it.type!=='coin'){ it.t = (it.t||0) + dt*1.6; it.y = (it.y + Math.sin(it.t)*0.4)|0; }
         const rx=it.x - scrollX;
         if(rects({x:RUNX(),y:player.y,w:player.w,h:player.h},{x:rx,y:it.y,w:it.w,h:it.h})){
-          if(it.type==='coin'){ coins++; sparkleT=0; if(coins>=needCoin){ coins=0; invincible=INV_TIME; showCut('mutekiop.png',2000); } }
+          if(it.type==='coin'){ coins++; sparkleT=0; if(coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000); } }
           else{ if(!(slots[0]&&slots[1])){ if(!slots[0]) slots[0]={type:it.type}; else slots[1]={type:it.type}; refreshSlots(); } }
           items.splice(i,1);
         } else if(rx<-120){ items.splice(i,1); }
@@ -485,21 +496,29 @@
     ctx.clearRect(0,0,vw,vh);
     const gy=GY()|0;
 
-    // レイヤー：Sky -> (帽子の草)hatake2 -> (中帯)hatake -> (下帯)レンガ(do-ro)
+    // 背景タイル：Sky
     tileX(IMG['sora.PNG'],    0, vh, 0.25);
 
-    const topH   = Math.round(vh*0.20);                        // 上の緑帯（草）
-    tileX(IMG['hatake2.png'], (gy-topH-120)|0, topH|0, 0.6);   // 位置は見た目合わせ
+    // 草帯（上）: hatake2 固定高さ
+    const topH = Math.round(vh*0.20);                 // 草の帯
+    const topY = (gy - topH - 120)|0;                 // 見た目合わせ（雲とのバランス）
+    tileX(IMG['hatake2.png'], topY, topH, 0.6, 1);
 
-    const midH   = (gy - (gy-topH-120))|0;                     // 草の下〜地面まで
-    tileX(IMG['hatake.png'],  (gy-midH)|0, midH|0, 0.9);       // ← ここが以前レンガだった帯
+    // 中帯：hatake を地面直前まで（GY ちょうどに終端）
+    const midH = (gy - topY)|0;
+    tileX(IMG['hatake.png'],  (gy - midH)|0, midH, 0.9, 1);
 
-    const botH   = (vh - gy)|0;                                // 地面より下はレンガで埋め
-    tileX(IMG['do-ro.png'],   gy|0, botH|0, 1.0);
+    // シーム帯：GY直上を do-ro で薄く覆い、下帯と密着（1pxオーバーラップ）
+    const seamH = 14; // 必要に応じて自動で上書きされるが、まずは14px
+    tileX(IMG['do-ro.png'], (gy - seamH)|0, seamH, 1.0, 1);
+
+    // 下帯（足元～下端）は do-ro で完全タイル（+1px 重ねで線消し）
+    const botH = (vh - gy + 1)|0;
+    tileX(IMG['do-ro.png'], gy|0, botH, 1.0, 1);
 
     // 障害物
     for(const o of obstacles){
-      const sx=o.x - scrollX; if(sx<-360||sx>vw+360) continue;
+      const sx=o.x - scrollX; if(sx<-400||sx>vw+400) continue;
       const draw=(name,def)=>{ const im=IMG[name]; if(im&&im.width) ctx.drawImage(im, sx|0, o.y|0, o.w|0, o.h|0); else {ctx.fillStyle=def; ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0);} };
       if(o.kind==='corn')    draw('corn.PNG','#f7b500');
       else if(o.kind==='gomi')    draw('gomi.png','#9aa');
@@ -510,9 +529,9 @@
       else if(o.kind==='kanban'){ const im=IMG[o.img]; if(im&&im.width) ctx.drawImage(im,sx|0,o.y|0,o.w|0,o.h|0); else {ctx.fillStyle='#777';ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0);} }
     }
 
-    // アイテム（見えなかった問題：ここで描画）
+    // アイテム（障害物の上・プレイヤーの下に表示）
     for(const it of items){
-      const sx=it.x - scrollX; if(sx<-180||sx>vw+180) continue;
+      const sx=it.x - scrollX; if(sx<-200||sx>vw+200) continue;
       let name = it.type==='coin' ? 'coin.png' : (it.type==='tsubasa' ? 'tsubasa.png' : (it.type==='en' ? 'en.png' : 'jump.png'));
       const im=IMG[name]; if(im&&im.width) ctx.drawImage(im, sx|0, it.y|0, it.w|0, it.h|0);
       else { ctx.fillStyle='#7cf'; ctx.fillRect(sx|0,it.y|0,it.w|0,it.h|0); }
@@ -520,7 +539,7 @@
 
     // 火の玉
     for(const f of fires){
-      const sx=f.x - scrollX; if(sx<-180||sx>vw+180) continue;
+      const sx=f.x - scrollX; if(sx<-200||sx>vw+200) continue;
       const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0); else {ctx.fillStyle='#d33';ctx.fillRect(sx|0,f.y|0,f.w|0,f.h|0);}
     }
 
@@ -530,7 +549,7 @@
       if(im&&im.width) ctx.drawImage(im, (sx-60)|0, (v.y-50)|0, 120, 100); else {ctx.fillStyle='#933'; ctx.fillRect((sx-40)|0,(v.y-30)|0,80,60);}
     }
 
-    // プレイヤー
+    // プレイヤー（最後）
     ctx.save();
     ctx.translate((RUNX()+player.w/2)|0, (player.y+player.h/2)|0);
     ctx.rotate(player.tilt); ctx.translate((-player.w/2)|0,(-player.h/2)|0);
@@ -544,7 +563,7 @@
 
   /* ====== Start ====== */
   requestAnimationFrame(tick); // start loop
-
-})();</script>
+})();
+</script>
 </body>
 </html>
