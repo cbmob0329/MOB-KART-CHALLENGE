@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v4.2（地面=mob.png/速度40/再開修正）</title>
+<title>MOB KART CHALLENGE — v4.3（再開/斜面/序盤配置修正）</title>
 <style>
   :root{
     --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
@@ -21,13 +21,13 @@
   .right{margin-left:auto}
   .ghost{background:#0f141b;border:1px solid var(--line);color:#dfe7f7;border-radius:14px;padding:8px 12px;font-size:13px}
 
-  /* HUD 1行目（距離/速度/ジャンプ/コイン/キャラ） */
+  /* HUD 1行目 */
   .hud{position:fixed;top:calc(48px + var(--safe-top));left:0;right:0;z-index:45;display:flex;gap:10px;align-items:center;padding:8px 12px;pointer-events:none}
   .pill{pointer-events:auto;min-width:72px;padding:8px 12px;border-radius:18px;background:#182028;border:1px solid var(--line)}
   .pill h6{margin:0;font-size:10px;color:var(--ui-dim)}
   .pill .v{font-size:14px;margin-top:2px}
 
-  /* HUD 2行目（ブースト）— さらに下へ下げて被り回避 */
+  /* HUD 2行目（ブースト） */
   .boostrow{position:fixed;left:12px;right:12px;top:calc(128px + var(--safe-top));z-index:46}
   .boostbar{height:18px;border-radius:10px;border:1px solid var(--line);background:#0c1118;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35)}
   .boostbar .fill{height:100%;width:0;background:linear-gradient(90deg,#1fb6ff,#60a5fa)}
@@ -51,7 +51,7 @@
   .cut{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;pointer-events:none}
   .cut img{max-width:70vw;max-height:60vh;filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));opacity:0;transform:scale(.95);transition:.25s}
   .cut.show img{opacity:1;transform:scale(1)}
-  .countdown{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:64px;letter-spacing:2px;text-shadow:0 8px 30px rgba(0,0,0,.6);opacity:0;transition:.2s}
+  .countdown{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:64px;letter-spacing:2px;text-shadow:0 8px 30px rgba(0,0,0,.6);opacity:0;transition:.15s}
   .countdown.show{opacity:1}
 
   .centerModal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:120}
@@ -65,7 +65,7 @@
 <body>
   <div id="app">
     <div class="topbar">
-      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.2（地面=mob.png/速度40/再開修正）</small></div>
+      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.3（再開/斜面/序盤配置修正）</small></div>
       <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
     </div>
 
@@ -76,7 +76,6 @@
       <div class="pill" id="hudCoin"><h6>コイン</h6><div class="v">0/10</div></div>
       <div class="pill"><h6>キャラ</h6><div class="v"><button id="btnChange" class="ghost">変更</button></div></div>
     </div>
-    <!-- 一段下のブーストバー（HUDに被らない位置） -->
     <div class="boostrow"><div class="boostbar" id="boostBar"><div class="fill"></div></div></div>
 
     <div id="stageWrap"><canvas id="cv" width="540" height="960"></canvas></div>
@@ -183,7 +182,7 @@
   /* ====== State ====== */
   let state='boot';
   let scrollX=0, meters=0;
-  let baseSpeed=333;               // ≒40 km/h
+  let baseSpeed=333;               // 約40km/h
   let speed=baseSpeed;
   let boostGauge=0, boostMax=100, boosting=0, enFree=0, invincible=0, wingTime=0;
   let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0;
@@ -195,7 +194,7 @@
   const slots=[null,null];
   const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
   const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
-  function padRect(r,p){ return {x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p}; }
+  const padRect=(r,p)=>({x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p});
 
   /* ====== UI ====== */
   btnFS.addEventListener('click',()=>{
@@ -203,11 +202,13 @@
     if(!document.fullscreenElement){ el.requestFullscreen?.(); btnFS.textContent='全画面解除'; } else { document.exitFullscreen?.(); btnFS.textContent='全画面'; }
   });
   function showCut(fn,ms=2000){ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); }
-  function showCountdown(seq=['3','2','1','GO'],step=700,cb){
-    let i=0; const tick=()=>{ countdown.textContent=seq[i]; countdown.classList.add('show');
-      setTimeout(()=>countdown.classList.remove('show'), step-150);
-      if(++i<seq.length) setTimeout(tick,step); else setTimeout(cb,step);
-    }; tick();
+  function showCountdown(seq=['3','2','1','GO'],step=600,cb){
+    let i=0;
+    const tick=()=>{ countdown.textContent=seq[i]; countdown.classList.add('show');
+      setTimeout(()=>countdown.classList.remove('show'), step-120);
+      if(++i<seq.length) setTimeout(tick,step); else setTimeout(()=>{ countdown.classList.remove('show'); cb&&cb(); },step);
+    };
+    tick();
   }
 
   /* ====== tiler ====== */
@@ -314,8 +315,8 @@
       document.querySelectorAll('#charSel .opt').forEach(x=>x.style.outline=''); b.style.outline='2px solid #2bd3ff';
     });
   });
-  startBtn.addEventListener('click',()=>beginFromCountdown());
-  goRestart.addEventListener('click',()=>{ hideGo(); beginFromCountdown(); });
+  startBtn.addEventListener('click',()=>startFlow());
+  goRestart.addEventListener('click',()=>{ hideGo(); startFlow(); });
   goChange.addEventListener('click',()=>{ hideGo(); openSelect(); });
   goQuit.addEventListener('click',()=>location.reload());
 
@@ -324,19 +325,46 @@
   function closeSelect(){ charSel.style.display='none'; }
   function boot(){ state='op'; showCut('op.png',2000); setTimeout(openSelect,2000); }
 
-  function beginFromCountdown(){
+  // --- スタート一連フロー（整列 → カウントダウン → プレイ） ---
+  function startFlow(){
     closeSelect();
-    // すべてリセット（再開時バグの原因になり得るタイムスタンプ/クラスも初期化）
-    scrollX=0; meters=0; speed=baseSpeed; boostGauge=0; boosting=0; enFree=0; invincible=0; wingTime=0;
-    coins=0; sparkleT=0; sparkleFrame=0; items.length=0; obstacles.length=0; fires.length=0; villains.length=0;
-    nextVillAtM = 1200 + Math.random()*800; slots[0]=slots[1]=null; refreshSlots();
+    resetWorld();           // まず確実にスタート地点へ
+    state='prestart';
+    setTimeout(()=>{        // 0.6秒整列待機（チラつき防止）
+      state='countdown';
+      showCountdown(['3','2','1','GO'],600,()=>{ state='play'; });
+    }, 600);
+  }
+
+  function resetWorld(){
+    scrollX=0; meters=0; speed=baseSpeed;
+    boostGauge=0; boosting=0; enFree=0; invincible=0; wingTime=0;
+    coins=0; sparkleT=0; sparkleFrame=0;
+    items.length=0; obstacles.length=0; fires.length=0; villains.length=0;
+    nextVillAtM = 1200 + Math.random()*800;
+    slots[0]=slots[1]=null; refreshSlots();
     player.x=RUNX()|0; player.y=(GY()-player.h)|0; player.vy=0; player.onGround=true; player.jumpsLeft=2; player.tilt=0;
     boostBar.classList.remove('ready');
-    nextSpawnX = SAFE_M*PX_PER_M + scrollX + vw + 160; scheduleNextSpawn(nextSpawnX);
-    last = 0; // ★ タイマーをリセット（dtが暴れないように）
+    // 序盤コンテナを事前配置
+    placeEarlyContena();
+    // 以後の通常スポーンを初期化
+    const lastX = obstacles.length ? obstacles[obstacles.length-1].x + 6*PX_PER_M : SAFE_M*PX_PER_M;
+    nextSpawnX = lastX + 8*PX_PER_M; // 少し詰めて次を用意
+    scheduleNextSpawn(nextSpawnX);
+    last = 0; // dtリセット
+  }
 
-    state='countdown';
-    showCountdown(['3','2','1','GO'],600,()=>{ state='play'; });
+  function placeEarlyContena(){
+    const base = SAFE_M*PX_PER_M + 12*PX_PER_M;      // 安全地帯の少し後
+    let x = base + (Math.random()*6|0)*PX_PER_M;     // 12〜18m後
+    const sets = 3 + (Math.random()*3|0);            // 3〜5セット
+    for(let s=0;s<sets;s++){
+      const n = (Math.random()<.5?2:3);              // 2連 or 3連
+      for(let i=0;i<n;i++){
+        spawnAt('contena', x + i*(SIZE.cont.w+8));
+      }
+      x += (10 + Math.random()*10)*PX_PER_M;         // 10〜20m 間隔
+    }
   }
 
   function refreshSlots(){
@@ -437,7 +465,7 @@
       let targetTop = groundTop;
       let onSlope = false;
 
-      // slope (jumpdai)：60%地点で確実にジャンプ
+      // slope (jumpdai)：連続スナップ＋60%で確定ジャンプ＋1秒ブースト
       for(const o of obstacles){
         if(o.kind!=='jumpdai') continue;
         const sx = (o.x - scrollX)|0;
@@ -446,15 +474,16 @@
           const p = Math.max(0, Math.min(1, (half - sx)/o.w));
           const topY = (gy - p*o.h)|0;
           const snapY = (topY - player.h)|0;
-          if(player.vy>=-25 || player.y>=snapY-10){
-            targetTop = Math.min(targetTop, snapY);
-            onSlope = true;
-            player.tilt = Math.max(-0.15, Math.min(0.24, (p-0.3)*0.6));
-            if(!o.kicked && p>0.6){ o.kicked=true; player.y=snapY; player.vy=-520; speed = Math.min(speed+26, baseSpeed*1.25); }
+          targetTop = Math.min(targetTop, snapY);
+          onSlope = true;
+          player.tilt = Math.max(-0.15, Math.min(0.24, (p-0.3)*0.6));
+          if(!o.kicked && p>0.6){
+            o.kicked=true; player.y=snapY; player.vy=-520;
+            boosting = Math.max(boosting, 1.0); // 1秒の加速
           }
         }
       }
-      // rideables（±16pxで吸着、連続スナップ）
+      // rideables（±16pxで吸着）
       for(const o of obstacles){
         if(o.kind!=='contena' && o.kind!=='tora' && o.kind!=='dokan') continue;
         const sx = (o.x - scrollX)|0;
