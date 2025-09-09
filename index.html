@@ -2,58 +2,57 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <title>MOB CART Runner</title>
 <style>
-  :root{--pill:#2b2f3a;--btn2:#2b303b;}
+  :root{--pill:#2b2f3a;--btn:#1b1f27;--btn2:#2b303b;}
   html,body{margin:0;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif;}
   #wrap{position:fixed;inset:0;overflow:hidden;background:#000;}
 
-  /* Canvasのみ拡大 */
+  /* ===== Canvasだけ拡大（HUDは別レイヤー） ===== */
   #stage{position:absolute;left:0;top:0;width:414px;height:896px;transform-origin:0 0;z-index:1;}
   #cv{display:block;width:414px;height:896px;background:#000;touch-action:none;}
 
-  /* HUD固定 */
-  .hud{position:fixed;inset:0;z-index:5;}
+  /* ===== 画面固定HUD ===== */
+  .hud{position:fixed;inset:0;z-index:5;pointer-events:none}
+  .topbar{position:fixed;left:12px;right:12px;top:calc(6px + env(safe-area-inset-top));display:flex;gap:10px;pointer-events:auto}
   .pill{background:var(--pill);border-radius:999px;padding:6px 12px;font-weight:700;font-size:14px}
-  .topbar{position:fixed;left:12px;right:12px;top:calc(6px + env(safe-area-inset-top));display:flex;gap:10px;}
-  .gauge-wrap{position:fixed;left:12px;right:12px;top:44px;}
+  .gauge-wrap{position:fixed;left:12px;right:12px;top:44px}
   .gauge{height:16px;background:#303847;border:1px solid #475268;border-radius:999px;overflow:hidden}
   .gauge i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#2bd,#8ef)}
-  .bottombar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
-             display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;z-index:6;}
+  .bottombar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));display:grid;grid-template-columns:1fr 64px 64px 1fr;gap:10px;z-index:6;pointer-events:auto}
   .bbtn{background:var(--btn2);border-radius:16px;padding:14px 12px;font-weight:900;text-align:center;user-select:none}
   .slot{height:56px;border-radius:12px;border:1px dashed #666;background:rgba(255,255,255,.06);display:grid;place-items:center}
   .slot img{max-width:90%;max-height:90%;image-rendering:pixelated}
   .slot.empty{opacity:.35}
   .hidden{display:none!important}
 
-  /* 中央パネル */
-  .overlay{position:fixed;inset:0;display:grid;place-items:center;z-index:7;}
+  /* ===== キャラ選択（Canvas外・常に画面内） ===== */
+  .overlay{position:fixed;inset:0;display:grid;place-items:center;z-index:7}
   .panel{
-    background:rgba(15,18,26,.92);
-    border-radius:18px;
-    padding:18px;
-    max-width:90%;   /* ← 追加 */
-    max-height:90%;  /* ← 追加 */
-    overflow:auto;   /* ← 追加 */
+    background:rgba(15,18,26,.92);border-radius:18px;padding:18px;
+    max-width:min(560px,90vw);max-height:min(680px,90vh);overflow:auto
   }
+  .row{display:flex;gap:10px;flex-wrap:wrap}
   .card{flex:1 1 48%;border:1px solid #2c3444;border-radius:14px;padding:10px;display:grid;place-items:center;cursor:pointer}
+  .card img{width:110px;height:auto;image-rendering:pixelated}
   .sel{outline:3px solid #2bd36b}
   .btn{background:#1b1f27;border:1px solid #323a49;border-radius:14px;padding:12px 16px;font-weight:800;text-align:center;margin-top:12px;cursor:pointer}
 
   .count{position:fixed;inset:0;display:grid;place-items:center;font-size:60px;font-weight:900;text-shadow:0 4px 16px #000;z-index:8}
+
+  /* ===== OP 2秒 ===== */
   #opOverlay{position:fixed;inset:0;background:#000;display:grid;place-items:center;z-index:20}
   #opOverlay img{width:min(72vw,520px);height:auto;image-rendering:pixelated}
 </style>
 </head>
 <body>
 <div id="wrap">
+  <!-- Canvas（ゲーム画面） -->
   <div id="stage"><canvas id="cv"></canvas></div>
 
   <!-- HUD固定 -->
-  <div class="hud">
+  <div class="hud" aria-hidden="false">
     <div class="topbar">
       <div class="pill" id="distPill">距離 0 m</div>
       <div class="pill" id="spdPill">速度 0 km/h</div>
@@ -71,7 +70,7 @@
   <div class="overlay hidden" id="panelChar">
     <div class="panel">
       <h2>キャラクター選択</h2>
-      <div style="display:flex;gap:10px">
+      <div class="row">
         <div class="card sel" data-char="orange"><img src="orange.png"><div>オレンジ</div></div>
         <div class="card" data-char="VR"><img src="VR.png"><div>VR</div></div>
       </div>
@@ -85,79 +84,227 @@
 
 <script>
 (() => {
+  /* ===== ステージスケール（cover + フェールセーフ） ===== */
   const DESIGN_W=414, DESIGN_H=896;
   const stage=document.getElementById('stage');
-  function scaleCover(){
+  function scaleStage(){
     const vw=innerWidth, vh=(visualViewport?visualViewport.height:innerHeight);
-    const s=Math.max(vw/DESIGN_W, vh/DESIGN_H);
+    const sCover=Math.max(vw/DESIGN_W, vh/DESIGN_H);
+    const sContain=Math.min(vw/DESIGN_W, vh/DESIGN_H);
+    const s=Math.max(sContain, Math.min(sCover, 1.0)); // 過拡大の暴走を抑える
     const tx=(vw-DESIGN_W*s)/2, ty=(vh-DESIGN_H*s)/2;
     stage.style.transform=`translate(${tx}px,${ty}px) scale(${s})`;
   }
-  addEventListener('resize',scaleCover); if(visualViewport) visualViewport.addEventListener('resize',scaleCover); scaleCover();
+  addEventListener('resize',scaleStage,{passive:true});
+  if(visualViewport) visualViewport.addEventListener('resize',scaleStage,{passive:true});
+  scaleStage();
 
+  /* ===== Canvas ===== */
   const cv=document.getElementById('cv'), cx=cv.getContext('2d');
-  cv.width=DESIGN_W; cv.height=DESIGN_H;
+  const DPR=Math.min(2, devicePixelRatio||1);
+  cv.width=Math.round(DESIGN_W*DPR); cv.height=Math.round(DESIGN_H*DPR);
+  cv.style.width=DESIGN_W+'px'; cv.style.height=DESIGN_H+'px';
+  cx.setTransform(DPR,0,0,DPR,0,0);
+  const W=DESIGN_W, H=DESIGN_H;
+  const snap=n=>n|0, rnd=(a,b)=> (Math.random()*(b-a+1)+a)|0;
 
-  const files={sora:'sora.PNG',hatake:'hatake2.png',doro:'do-ro.png',corn:'corn.PNG',dokan:'dokan.png',jumpdai:'jumpdai.png',orange:'orange.png',VR:'VR.png'};
-  const IM={}; for(const[k,v] of Object.entries(files)){IM[k]=new Image(); IM[k].src=v;}
+  /* ===== 画像 ===== */
+  const files={
+    doro:'do-ro.png', hatake:'hatake2.png', sora:'sora.PNG',
+    corn:'corn.PNG', dokan:'dokan.png', jumpdai:'jumpdai.png',
+    orange:'orange.png', VR:'VR.png'
+  };
+  const IM={}; for(const[k,src] of Object.entries(files)){ const im=new Image(); im.src=src; IM[k]=im; }
 
-  const ROAD_TOP_Y=(DESIGN_H*0.82)|0, ROAD_BASELINE_OFFSET=12;
-  const GROUND_Y=()=>ROAD_TOP_Y+ROAD_BASELINE_OFFSET;
-  const CORN_Y_OFFSET=4;
+  /* ===== レイアウト（HUDぶんの下端を予約） ===== */
+  const HUD_BOTTOM = 150;                   // ← ボタン列ぶんの高さ確保（端末により±10調整OK）
+  const ROAD_TOP_Y = Math.round((H - HUD_BOTTOM) * 0.82);
+  const ROAD_BASELINE_OFFSET = 12;
+  const GROUND_Y = () => ROAD_TOP_Y + ROAD_BASELINE_OFFSET;
+  const CORN_Y_OFFSET = 4;                  // コーンは少し沈めて接地
 
-  let state=0, selected='orange'; const ST={TITLE:0,CHARSEL:1,COUNT:2,RUN:3};
-  const player={x:80,y:0,w:48,h:54,vy:0,onGround:true,sprite:'orange'};
+  /* ===== 状態 ===== */
+  const ST={TITLE:0,CHARSEL:1,COUNT:2,RUN:3,OVER:4};
+  let state=ST.TITLE;
 
-  setTimeout(()=>{document.getElementById('opOverlay').style.display='none';document.getElementById('panelChar').classList.remove('hidden');state=ST.CHARSEL;},2000);
+  const world={
+    scrollX:0, speed:3.8, gravity:0.72, meters:0,
+    obstacles:[], nextObsX:W+420
+  };
+  const player={x:snap(W*0.22), y:0, w:48, h:54, vy:0, onGround:true, sprite:'orange', prevX:0, prevY:0, tilt:0};
 
-  document.getElementById('panelChar').addEventListener('click',e=>{
-    const c=e.target.closest('.card'); if(c){selected=c.dataset.char;document.querySelectorAll('.card').forEach(x=>x.classList.toggle('sel',x===c));}
+  /* ===== OP → 2秒後にキャラ選択 ===== */
+  setTimeout(()=>{ document.getElementById('opOverlay').style.display='none'; show(panelChar); state=ST.CHARSEL; }, 2000);
+
+  /* ===== UI ===== */
+  const panelChar=document.getElementById('panelChar');
+  const distPill=document.getElementById('distPill');
+  const spdPill=document.getElementById('spdPill');
+  const boostFill=document.getElementById('boostFill');
+  const countEl=document.getElementById('count');
+
+  function show(el){el.classList.remove('hidden')} function hide(el){el.classList.add('hidden')}
+
+  let selected='orange';
+  panelChar.addEventListener('click',e=>{
+    const card=e.target.closest('.card'); if(!card) return;
+    selected=card.dataset.char;
+    panelChar.querySelectorAll('.card').forEach(c=>c.classList.toggle('sel', c===card));
   });
   document.getElementById('charStart').onclick=()=>{
     if(state!==ST.CHARSEL) return;
-    player.sprite=selected;
-    document.getElementById('panelChar').classList.add('hidden');
-    startCountdown();
+    player.sprite=selected; hide(panelChar); startCountdown();
   };
 
-  document.getElementById('btnJump').onclick=()=>{if(state===ST.RUN&&player.onGround){player.vy=-14;player.onGround=false;}};
+  /* ===== 入力 ===== */
+  document.getElementById('btnJump').addEventListener('click', ()=>{ if(state===ST.RUN && (player.onGround)) { player.vy=-14; player.onGround=false; }});
+  addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp'){ e.preventDefault(); if(state===ST.RUN && player.onGround){ player.vy=-14; player.onGround=false; }}});
 
+  /* ===== カウントダウン → 開始 ===== */
   function startCountdown(){
-    state=ST.COUNT; let n=3; const el=document.getElementById('count'); el.textContent=n; el.classList.remove('hidden');
-    const gy=GROUND_Y(); player.y=gy-player.h;
-    const tm=setInterval(()=>{n--; if(n>0)el.textContent=n; else if(n===0)el.textContent='GO';
-      else{clearInterval(tm);el.classList.add('hidden');state=ST.RUN;}},700);
+    state=ST.COUNT; let n=3; countEl.textContent=n; show(countEl);
+    const gy=GROUND_Y(); player.y=gy-player.h; player.vy=0; player.onGround=true;
+    const tm=setInterval(()=>{ n--; if(n>0)countEl.textContent=n; else if(n===0)countEl.textContent='GO';
+      else{ clearInterval(tm); hide(countEl); startRun(); } },700);
+  }
+  function startRun(){
+    state=ST.RUN; world.scrollX=0; world.meters=0; world.obstacles.length=0; world.nextObsX=W+420;
+    requestAnimationFrame(loop);
   }
 
-  const world={scrollX:0,speed:4}; const W=DESIGN_W,H=DESIGN_H;
+  /* ===== 生成 ===== */
+  function makeCorn(x){ return {type:'corn', x:snap(x), w:78, h:78, hit:{x:8,y:8,w:62,h:60}}; }
+  function makePipe(x){ return {type:'dokan', x:snap(x), w:66, h:22, phase:0, timer:0, maxH:104}; }
+  function makeRamp(x){ const w=120,h=36,launch=0.55; return {type:'ramp', x:snap(x), w, h, launchX:x+w*launch, launched:false, slope:h/(w*launch)}; }
 
-  function loop(){update();render();requestAnimationFrame(loop);} requestAnimationFrame(loop);
-
-  function update(){
-    if(state!==ST.RUN)return;
-    world.scrollX+=world.speed;
-    player.vy+=0.72; player.y+=player.vy;
-    const gy=GROUND_Y()-player.h;
-    if(player.y>=gy){player.y=gy;player.vy=0;player.onGround=true;}
+  /* ===== 背景タイル描画（ズレにくい版） ===== */
+  function drawTiled(img, y, spd, h){
+    if(!img.complete) return;
+    const w = img.width || 512;                       // 元画像幅でリピート
+    const x0 = -((world.scrollX * spd) % w) | 0;
+    for(let x = x0 - w; x < W + w; x += w){ cx.drawImage(img, x, y, w, h); }
   }
 
-  function drawTiled(img,y,spd,h){
-    if(!img.complete)return;
-    const iw=img.width||256, w=iw, x0=-(world.scrollX*spd%w)|0;
-    for(let x=x0-w;x<W+w;x+=w)cx.drawImage(img,x,y,w,h);
+  /* ===== メインループ ===== */
+  function loop(ts){
+    const dt=Math.min(32, ts-(loop._||ts)); loop._=ts;
+    update(dt); render(); if(state===ST.RUN) requestAnimationFrame(loop);
+  }
+
+  function update(dt){
+    if(state!==ST.RUN) return;
+    world.scrollX += world.speed;
+    world.meters  += world.speed*0.06;
+
+    // スポーン
+    const right=world.scrollX + W + 40;
+    if(world.nextObsX < right){
+      const r=Math.random();
+      world.obstacles.push(r<0.33 ? makeRamp(world.nextObsX) : r<0.7 ? makeCorn(world.nextObsX) : makePipe(world.nextObsX));
+      world.nextObsX += rnd(360,560);
+    }
+
+    // プレイヤー物理（画面内に固定）
+    player.prevX=player.x; player.prevY=player.y;
+    player.vy += 0.72; player.y += player.vy; player.onGround=false;
+
+    const gy=GROUND_Y(); const gyTop=gy - player.h;
+    // 障害物と接触
+    for(const o of world.obstacles){
+      const ox = (o.x - world.scrollX) | 0;     // ← 画面X（スクロール差し引き）
+      if(o.type==='dokan'){
+        o.timer+=dt;
+        if(o.phase===0){ o.h=(o.h||22)+0.9; if(o.h>=o.maxH){ o.h=o.maxH; o.phase=1; o.timer=0; } }
+        else if(o.phase===1){ if(o.timer>1800){ o.phase=2; } }
+        else if(o.phase===2){ o.h-=1.2; if(o.h<=22){ o.h=22; o.phase=0; o.timer=0; } }
+      }
+
+      // ランプ（傾斜吸着→発射）
+      if(o.type==='ramp'){
+        const startX=ox, endX=(o.launchX - world.scrollX)|0;
+        const feetX=player.x + (player.w>>1);
+        if(feetX>=startX && feetX<=startX + o.w*0.98){
+          const climb=Math.max(1,(endX-startX));
+          const ratio=Math.min(1, Math.max(0,(feetX-startX)/climb));
+          const rampY = (gy - o.h*ratio) | 0;
+          const feetPrev=player.prevY+player.h, feet=player.y+player.h;
+          const onRamp=(feet>=rampY-10 && feet<=rampY+10) || (feetPrev<=rampY && feet>=rampY);
+          if(onRamp){
+            player.y = (rampY - player.h) | 0;
+            player.vy = Math.max(player.vy, 0);
+            player.onGround=true;
+          }
+        }
+        if(!o.launched && (player.x + (player.w>>1)) > endX){ o.launched=true; player.vy=-18; }
+      }
+
+      // 土管：上は吸着、横/下はアウト
+      if(o.type==='dokan'){
+        const h=o.h||22, left=ox, top=gy-h, right=left+o.w, bottom=top+h;
+        if(AABB(player.x,player.y,player.w,player.h,left,top,o.w,h)){
+          const prevB=player.prevY+player.h, nowB=player.y+player.h;
+          const prevR=player.prevX+player.w, nowR=player.x+player.w;
+          const fromTop=(prevB<=top+12) && (nowB>=top) && ((player.x+player.w*0.5)>=left && (player.x+player.w*0.5)<=right);
+          const hitSide=(prevR<=left && nowR>left) || (player.prevX>=right && player.x<right);
+          const fromBottom=(player.prevY<=bottom && player.y<bottom && nowB>bottom);
+          if(fromTop){ player.y=(top - player.h)|0; player.vy=0; player.onGround=true; }
+          else if(hitSide||fromBottom){ gameOver(); return; }
+        }
+      }
+
+      // コーン：内側当たり + 4px沈め
+      if(o.type==='corn'){
+        const oy=(gy - o.h + CORN_Y_OFFSET)|0;
+        const bx=ox + o.hit.x, by=oy + o.hit.y, bw=o.hit.w, bh=o.hit.h;
+        if(AABB(player.x,player.y,player.w,player.h,bx,by,bw,bh)){ gameOver(); return; }
+      }
+    }
+
+    // 地面に吸着
+    if(player.y>=gyTop){ player.y=gyTop; player.vy=0; player.onGround=true; }
+
+    // HUD更新
+    distPill.textContent=`距離 ${Math.floor(world.meters)} m`;
+    spdPill.textContent=`速度 ${Math.round(world.speed*15)} km/h`;
+    boostFill.style.width='0%';
   }
 
   function render(){
     cx.clearRect(0,0,W,H);
     const gy=GROUND_Y();
-    drawTiled(IM.sora,0,0.1,H);
-    drawTiled(IM.hatake,gy-200,0.5,200);
-    drawTiled(IM.doro,ROAD_TOP_Y,1,H-ROAD_TOP_Y);
-    if(IM[player.sprite].complete)cx.drawImage(IM[player.sprite],player.x,player.y,player.w,player.h);
-    if(IM.corn.complete)cx.drawImage(IM.corn,200,gy-78+CORN_Y_OFFSET,78,78);
-    if(IM.dokan.complete)cx.drawImage(IM.dokan,300,gy-60,66,60);
-    if(IM.jumpdai.complete){cx.beginPath();cx.moveTo(400,gy);cx.lineTo(520,gy);cx.lineTo(400,gy-36);cx.closePath();cx.fillStyle=cx.createPattern(IM.jumpdai,'repeat');cx.fill();}
+
+    // 背景：空→畑→道路（すべて無限ループ）
+    drawTiled(IM.sora, 0, 0.12, H);
+    drawTiled(IM.hatake, gy-200-3, 0.55, 200+3);    // 畑は道路と3px重ね
+    drawTiled(IM.doro, ROAD_TOP_Y, 1.0, H-ROAD_TOP_Y+8);
+
+    // 障害物（スクリーンXで描画）
+    for(const o of world.obstacles){
+      const x=(o.x - world.scrollX) | 0;
+      if(o.type==='dokan'){ const h=o.h||22; cx.drawImage(IM.dokan, x, (gy-h)|0, o.w, h); }
+      if(o.type==='corn'){ cx.drawImage(IM.corn, x, (gy-o.h + CORN_Y_OFFSET)|0, o.w, o.h); }
+      if(o.type==='ramp'){
+        const y=gy, w=o.w, h=o.h;
+        if(IM.jumpdai.complete){
+          cx.save(); cx.beginPath(); cx.moveTo(x,y); cx.lineTo(x+w,y); cx.lineTo(x,y-h); cx.closePath();
+          const pat=cx.createPattern(IM.jumpdai,'repeat'); cx.fillStyle=pat; cx.fill(); cx.restore();
+        }else{
+          cx.fillStyle='#7cf'; cx.beginPath(); cx.moveTo(x,y); cx.lineTo(x+w,y); cx.lineTo(x,y-h); cx.closePath(); cx.fill();
+        }
+      }
+    }
+
+    // プレイヤー（画面内に固定）
+    cx.drawImage(IM[player.sprite], player.x, player.y, player.w, player.h);
   }
+
+  function gameOver(){
+    state=ST.OVER;
+    alert(`ゲームオーバー\n記録 ${Math.floor(world.meters)} m`);
+    show(panelChar); state=ST.CHARSEL;
+  }
+
+  function AABB(ax,ay,aw,ah,bx,by,bw,bh){return ax<bx+bw && ax+aw>bx && ay<by+bh && ay+ah>by;}
 })();
 </script>
 </body>
