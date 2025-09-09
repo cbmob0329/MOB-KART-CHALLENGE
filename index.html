@@ -2,327 +2,1218 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<title>MOB 横スクロールランナー（完成版 / 1ファイル）</title>
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
+<title>MOB Runner (Mobile, 1-file, Canvas)</title>
 <style>
-  html,body{margin:0;height:100%;background:#000;color:#fff;-webkit-text-size-adjust:100%}
-  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue","Hiragino Sans","Yu Gothic",sans-serif;overflow:hidden}
   :root{
-    --hud-bg:rgba(13,13,15,.72);
-    --hud-fg:#fff;
-    --hud-dim:#9aa3ad;
-    --accent:#15c3ff; --btn:#1c212b; --shadow:0 8px 28px rgba(0,0,0,.35);
+    --hud-bg: rgba(10,10,14,.72);
+    --hud-fg: #fff;
+    --hud-dim:#9aa4b2;
+    --accent:#13c4ff;
+    --danger:#ff4d4f;
+    --ok:#3bd671;
+    --gold:#ffcc33;
+    --btn:#171a21;
+    --btn2:#222633;
+    --edge:#2e3445;
   }
-  #wrap{position:fixed;inset:0;display:grid;grid-template-rows:1fr;grid-template-columns:1fr}
-  canvas#cv{position:absolute;inset:0;width:100%;height:100%;display:block;background:#000}
 
-  .hud{
-    position:fixed;left:calc(env(safe-area-inset-left) + 8px);right:calc(env(safe-area-inset-right) + 8px);
-    top:calc(env(safe-area-inset-top) + 8px);
-    display:flex;gap:10px;align-items:center;justify-content:space-between;
-    padding:8px 10px;border-radius:12px;background:var(--hud-bg);backdrop-filter:saturate(1.2) blur(6px);
-    box-shadow:var(--shadow);z-index:10;pointer-events:none;
+  html,body{height:100%;margin:0;background:#000;color:var(--hud-fg);-webkit-text-size-adjust:100%;}
+  /* Full-bleed game area; canvas pixels are managed for DPR inside JS */
+  #wrap{
+    position:fixed; inset:0;
+    display:grid;
+    grid-template-rows: auto 1fr auto;
+    background:#000;
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:calc(env(safe-area-inset-bottom) + 0px);
   }
-  .pill{pointer-events:none;display:flex;gap:8px;align-items:center;padding:6px 10px;border-radius:999px;background:#101419;border:1px solid rgba(255,255,255,.08);font-weight:600}
-  .lab{color:#9aa3ad;font-size:12px;letter-spacing:.06em;text-transform:uppercase}
-  .val{color:#fff;font-weight:800}
-  .boostbar{width:140px;height:10px;border-radius:999px;background:#0b0e13;border:1px solid rgba(255,255,255,.08);overflow:hidden}
-  .boostbar>i{display:block;height:100%;width:0%;background:linear-gradient(90deg,#0086ff,#00ffe1);transition:width .12s}
 
-  .controls{
-    position:fixed;left:calc(env(safe-area-inset-left) + 8px);right:calc(env(safe-area-inset-right) + 8px);
-    bottom:calc(env(safe-area-inset-bottom) + 8px);
-    display:grid;grid-template-columns:1fr .9fr .9fr;gap:10px;z-index:15;
+  /* === HUD (top) === */
+  #hud{
+    position:sticky; top:0; z-index:50;
+    display:flex; gap:10px; align-items:center; justify-content:space-between;
+    padding:10px 12px;
+    background:var(--hud-bg); backdrop-filter: blur(8px);
+    border-bottom:1px solid #000a;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Sans", "Yu Gothic", sans-serif;
   }
-  .row2{margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;cursor:pointer;background:var(--btn);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:14px 12px;color:#fff;font-weight:800;text-align:center;box-shadow:var(--shadow)}
-  .btn:active{transform:translateY(1px)} .btn[disabled]{opacity:.45;pointer-events:none}
-
-  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);z-index:30}
-  .card{width:min(560px,90vw);padding:20px;border-radius:14px;background:#0e1117;color:#fff;box-shadow:var(--shadow);text-align:center}
-  .card .lg{font-size:42px;font-weight:900}
-
-  .countdown{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:min(22vw,120px);z-index:32;text-shadow:0 0 24px rgba(0,0,0,.8)}
-
-  /* ===== OP（タイトル） ===== */
-  .op{position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:35}
-  .op img{max-width:100%;max-height:100%;object-fit:contain}
-  .op .tap{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 24px);z-index:36}
-  .tapbtn{
-    -webkit-tap-highlight-color:transparent;cursor:pointer;touch-action:manipulation;
-    background:#111;border:2px solid #fff;color:#fff;font-weight:900;letter-spacing:.08em;
-    padding:14px 18px;border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.35);
+  .metric{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .m{display:flex; gap:6px; align-items:center; font-weight:600; font-size:13px}
+  .m span{color:var(--hud-dim); font-weight:500}
+  .bar{
+    width:min(42vw,260px); height:10px; border-radius:999px;
+    background:#1b2030; border:1px solid #0008; overflow:hidden;
   }
+  .fill{height:100%; background:linear-gradient(90deg, #31d0ff, #6df2ff); width:0%}
+
+  /* === Canvas layer === */
+  #stage{
+    position:relative; z-index:1;
+  }
+  canvas{display:block; width:100%; height:100%; background:#000;}
+
+  /* === Controls (bottom fixed, outside canvas scaling) === */
+  #ctl{
+    position:sticky; bottom:0; z-index:60;
+    background:var(--hud-bg); backdrop-filter: blur(8px);
+    border-top:1px solid #000a;
+    padding:10px 10px calc(10px + env(safe-area-inset-bottom));
+    display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; align-items:center;
+  }
+  .btn{
+    -webkit-tap-highlight-color: transparent;
+    user-select:none;
+    background:linear-gradient(180deg, var(--btn2), var(--btn));
+    border:1px solid var(--edge);
+    box-shadow: inset 0 1px 0 #fff1, 0 2px 8px #0006;
+    color:#eef;
+    font-weight:700; font-size:14px; letter-spacing:.02em;
+    padding:14px 10px; border-radius:14px; text-align:center;
+  }
+  .btn:active{transform:translateY(1px); box-shadow: inset 0 1px 0 #fff1;}
+  .slotWrap{display:flex; gap:8px; justify-content:flex-end}
+  .slot{
+    width:52px; height:52px; border-radius:12px;
+    background:linear-gradient(180deg, #1e2230, #111521);
+    border:1px solid var(--edge);
+    position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .slot img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; image-rendering: pixelated;}
+  .slot .empty{color:#678; font-size:10px}
+
+  /* overlays */
+  #overlay, #cutin, #gameover, #op, #select{
+    position:fixed; inset:0; display:none; place-items:center; z-index:80; pointer-events:none;
+  }
+  #overlay{z-index:40}
+  .fade{animation:fade .35s ease-out}
+  @keyframes fade{from{opacity:0} to{opacity:1}}
+
+  .centerBox{
+    pointer-events:auto;
+    background:rgba(0,0,0,.75);
+    border:1px solid #000; border-radius:16px; padding:16px;
+    display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center;
+    text-align:center;
+    box-shadow: 0 10px 40px #000a;
+  }
+  .big{font-size:34px; font-weight:800; letter-spacing:.06em}
+  .mid{font-size:18px; font-weight:700; color:#cbd5e1}
+
+  /* Selection */
+  #select .chrs{display:flex; gap:16px}
+  .choice{
+    width:min(44vw,180px); aspect-ratio:1; border-radius:18px;
+    background:#0f1220; border:1px solid #2a3044; overflow:hidden;
+    display:grid; place-items:center;
+  }
+  .choice img{width:100%; height:100%; object-fit:contain}
+
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center}
+  .bSm{padding:10px 14px; border-radius:12px; border:1px solid #2a3044; background:#121626; color:#def; font-weight:700}
+
+  /* Muteki sparkle overlay (stars) */
+  .sparkle{position:fixed; inset:0; pointer-events:none; z-index:70; display:none}
+
+  /* Prevent long-press menus / text selection on iOS */
+  *{ -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
 </style>
 </head>
 <body>
 <div id="wrap">
-  <canvas id="cv" width="1280" height="720"></canvas>
-
-  <div class="hud" id="hud">
-    <div style="display:flex;gap:10px;align-items:center">
-      <div class="pill"><span class="lab">距離</span>&nbsp;<span class="val" id="uiDist">0 m</span></div>
-      <div class="pill"><span class="lab">速度</span>&nbsp;<span class="val" id="uiSpeed">0 km/h</span></div>
-      <div class="pill"><span class="lab">ジャンプ</span>&nbsp;<span class="val" id="uiJump">0/2</span></div>
-      <div class="pill"><span class="lab">コイン</span>&nbsp;<span class="val" id="uiCoin">0</span></div>
+  <div id="hud">
+    <div class="metric">
+      <div class="m"><span>距離</span><b id="m">0</b>m</div>
+      <div class="m"><span>速度</span><b id="kmh">0</b>km/h</div>
+      <div class="m"><span>ジャンプ</span><b id="j">0</b>/2</div>
+      <div class="m"><span>コイン</span><b id="c">0</b></div>
     </div>
-    <div class="pill" style="gap:10px"><span class="lab">ブースト</span><div class="boostbar"><i id="uiBoost"></i></div></div>
-  </div>
-
-  <div class="controls" id="ctrls">
-    <button class="btn" id="btnJump">ジャンプ</button>
-    <button class="btn" id="btnBoost">ブースト</button>
-    <div class="row2">
-      <button class="btn" id="btnItem1"><small>ITEM 1</small><img class="icon" id="itemIcon1" alt="" style="height:22px;opacity:.3;margin-bottom:4px"/></button>
-      <button class="btn" id="btnItem2"><small>ITEM 2</small><img class="icon" id="itemIcon2" alt="" style="height:22px;opacity:.3;margin-bottom:4px"/></button>
+    <div class="metric">
+      <div class="m"><span>BOOST</span></div>
+      <div class="bar"><div class="fill" id="boostFill"></div></div>
     </div>
   </div>
 
-  <!-- ===== OP（タップで開始 / 自動でも進む） ===== -->
-  <div class="op" id="op" style="display:none">
-    <img id="opImg" alt="op">
-    <div class="tap"><button id="tapStart" class="tapbtn">TAP TO START</button></div>
-  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
 
-  <div class="countdown" id="countdown" style="display:none">3</div>
-  <div class="overlay" id="modal" style="display:none">
-    <div class="card">
-      <div class="lg" id="modalMain">記録 0 m！</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:14px">
-        <div class="btn" data-act="restart">スタート</div>
-        <div class="btn" data-act="choose">キャラ選択</div>
-        <div class="btn" data-act="quit">やめる</div>
-      </div>
+  <div id="ctl">
+    <div class="btn" id="btnJump">ジャンプ</div>
+    <div class="btn" id="btnBoost">ブースト</div>
+    <div class="slotWrap">
+      <div class="slot" id="slot0"><div class="empty">ITEM</div></div>
+      <div class="slot" id="slot1"><div class="empty">ITEM</div></div>
     </div>
   </div>
 </div>
 
+<!-- Overlays -->
+<div id="op" class="fade"><div class="centerBox">
+  <img id="opImg" alt="op" style="width:min(70vw,420px); height:auto; image-rendering:pixelated;">
+  <div class="mid">ロード中...</div>
+</div></div>
+
+<div id="select" class="fade"><div class="centerBox">
+  <div class="mid">キャラクターを選択</div>
+  <div class="chrs">
+    <button class="choice" data-ch="orange"><img src="orange.png" alt="orange"></button>
+    <button class="choice" data-ch="VR"><img src="VR.png" alt="vr"></button>
+  </div>
+</div></div>
+
+<div id="cutin" class="fade"><div class="centerBox">
+  <img id="cutinImg" style="width:min(70vw,420px);height:auto; image-rendering: pixelated;">
+</div></div>
+
+<div id="gameover" class="fade"><div class="centerBox">
+  <div class="big" id="recordTxt">記録 0m！</div>
+  <div class="row">
+    <button class="bSm" id="againSelect">キャラ選択</button>
+    <button class="bSm" id="againStart">スタート</button>
+    <button class="bSm" id="quitBtn">やめる</button>
+  </div>
+</div></div>
+
+<canvas id="spark" class="sparkle"></canvas>
+
 <script>
-/* ================= 画面フィット ================= */
-(()=>{const cv=document.getElementById('cv');const fit=()=>{const dpr=Math.max(1,Math.min(window.devicePixelRatio||1,2));cv.width=Math.floor(innerWidth*dpr);cv.height=Math.floor(innerHeight*dpr);};addEventListener('resize',fit,{passive:true});addEventListener('orientationchange',fit,{passive:true});fit();})();
+/* ============================================================
+   Mobile 横スクロールランナー（1ファイル）
+   - 画像はリポジトリ直下に配置（大文字/小文字 厳守）
+   - iPhone Safari 対応（safe-area, address bar対策, touch操作）
+   - 外部ライブラリ不使用
+   ============================================================ */
+(() => {
+  // ---------- Canvas / DPR ----------
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d', { alpha: false });
+  const sparkCv = document.getElementById('spark');
+  const sparkCtx = sparkCv.getContext('2d', { alpha: true });
 
-/* ================= 画像ロード（大小文字厳守） ================= */
-const IMG_NAMES={sky:'sora.PNG',field:'hatake2.png',road:'do-ro.png',corn:'corn.PNG',pipe:'dokan.png',ramp:'jumpdai.png',signs:['kanban1.png','kanban2.png','kanban3.png','kanban4.png','kanban5.png','kanban6.png'],coin:'coin.png',gold:'gold.png',star1:'hoshi1.png',star2:'hoshi2.png',invOP:'mutekiop.png',viran:'viran.png',viranOP:'viran op.png',fire:'tama.png',itemWing:'tsubasa.png',itemJump:'jump.png',itemEn:'en.png',charA:'orange.png',charB:'VR.png',op:'op.png'};
-const IMGS={};
-function loadImages(done){const list=[];for(const k in IMG_NAMES){if(Array.isArray(IMG_NAMES[k])) IMG_NAMES[k].forEach(n=>list.push([`${k}:${n}`,n])); else list.push([k,IMG_NAMES[k]]);}
-let left=list.length;const onend=()=>{if(--left<=0) done();};list.forEach(([key,src])=>{const img=new Image();img.onload=onend;img.onerror=onend;img.src=src;if(key.startsWith('signs:')){(IMGS.signs??=[]).push(img);}else{IMGS[key]=img;}});}
-
-/* ================= ユーティリティ ================= */
-const clamp=(v,a,b)=>v<a?a:v>b?b:v;const rand=(a,b)=>Math.random()*(b-a)+a;const randi=(a,b)=>Math.floor(rand(a,b+1));
-const chance=p=>Math.random()<p;const now_ms=()=>performance.now();const lerp=(a,b,t)=>a+(b-a)*t;
-
-/* ================= 定数 ================= */
-const G={gravity:2600,runSpeed:480,maxSpeed:820,boostFillPerSec:12,boostDrainPerSec:40,invTime:5,coinToInv:10,itemWingTime:5,itemEnTime:5,safeStartMeters:60,groundTopRatio:.76,pipeCycleUpSec:.85,pipeHoldSec:2,pipeDownSec:.85,pipeTopSnapTol:12,rampAutoJumpPct:.60,rampKickVY:1050,rampKickVX:140,signRareP:.002,coinRareP:.004,itemRareP:.0015,fireballSize:64,villIntervalMin:500,villIntervalMax:1000,villDescendSpeed:50,villHoverYRatio:.45,villAheadXRatio:.42,villFiresMin:5,villFiresMax:8,villFireDelayMin:.6,villFireDelayMax:1.6};
-
-/* ================= ステート ================= */
-const State={LOADING:0,OP:1,COUNT:2,RUN:3,OVER:4,PAUSE:5};let state=State.LOADING;
-const cv=document.getElementById('cv');const cx=cv.getContext('2d');let vw=cv.width,vh=cv.height,dpr=1;
-function sync(){vw=cv.width;vh=cv.height;dpr=Math.max(1,Math.min(devicePixelRatio||1,2));}
-sync();addEventListener('resize',sync);
-
-/* ================= 背景 ================= */
-let scrollX=0,meters=0,speed=G.runSpeed,kmh=0;let groundY=0;let patterns={sky:null,field:null,road:null};
-function updateGroundY(){groundY=Math.floor(vh*G.groundTopRatio);}function makePatterns(){const mk=i=>i&&cx.createPattern(i,'repeat');patterns.sky=mk(IMGS.sky);patterns.field=mk(IMGS.field);patterns.road=mk(IMGS.road);}
-function drawBG(){const skyH=Math.floor(vh*.55),fieldH=Math.floor(vh*.30),roadH=vh-groundY+Math.floor(vh*.12);
- if(patterns.sky){cx.save();cx.translate(-(scrollX*.18)%vw,0);cx.fillStyle=patterns.sky;cx.fillRect(-vw,0,vw*3,skyH);cx.restore();}else{cx.fillStyle='#102133';cx.fillRect(0,0,vw,skyH);}
- if(patterns.field){const y=skyH-8;cx.save();cx.translate(-(scrollX*.45)%vw,y);cx.fillStyle=patterns.field;cx.fillRect(-vw,0,vw*3,fieldH);cx.restore();}else{cx.fillStyle='#214016';cx.fillRect(0,skyH-8,vw,fieldH);}
- if(patterns.road){cx.save();cx.translate(-(scrollX)%vw,groundY);cx.fillStyle=patterns.road;cx.fillRect(-vw,0,vw*3,roadH);cx.restore();}else{cx.fillStyle='#2b2b2b';cx.fillRect(0,groundY,vw,roadH);}}
-
-/* ================= プレイヤー ================= */
-const CHAR={A:'A',B:'B'};let selectedChar=CHAR.A;
-const player={xRatio:.22,x:0,y:0,w:72,h:80,vy:0,onGround:false,onRamp:null,rampT:0,jumpsLeft:2,maxJumps:2,alive:true,inv:false,invUntil:0,wingsUntil:0,enUntil:0,boost:0,boosting:false,boostHold:false,coins:0};
-function resetPlayer(){player.x=Math.floor(vw*player.xRatio);player.y=groundY-player.h;player.vy=0;player.onGround=true;player.onRamp=null;player.jumpsLeft=player.maxJumps=2;player.alive=true;player.inv=false;player.invUntil=0;player.wingsUntil=0;player.enUntil=0;player.boost=0;player.boosting=false;player.boostHold=false;player.coins=0;}
-
-/* ================= オブジェクト ================= */
-const OBJ={CORN:'CORN',PIPE:'PIPE',RAMP:'RAMP',SIGN:'SIGN',COIN:'COIN',ITEM:'ITEM',FIRE:'FIRE'};
-let objects=[];
-function spawnCorn(x){const s=Math.max(56,player.h*.9);objects.push({type:OBJ.CORN,x,y:groundY-s,w:s,h:s,deadly:true});}
-function spawnPipe(x){const w=72,hMax=Math.max(120,player.h*1.2);objects.push({type:OBJ.PIPE,x,baseY:groundY,w,h:24,hMax,phase:'up',t:0,y:groundY-24,deadlySide:true,topRide:true});}
-function updPipe(o,dt){if(o.phase==='up'){o.t+=dt;const k=Math.min(1,o.t/G.pipeCycleUpSec);o.h=24+(o.hMax-24)*k;o.y=o.baseY-o.h;if(k>=1){o.phase='hold';o.t=0;}}else if(o.phase==='hold'){o.t+=dt;o.h=o.hMax;o.y=o.baseY-o.h;if(o.t>=G.pipeHoldSec){o.phase='down';o.t=0;}}else{ o.t+=dt;const k=Math.min(1,o.t/G.pipeDownSec);o.h=o.hMax-(o.hMax-24)*k;o.y=o.baseY-o.h;if(k>=1){o.phase='up';o.t=0;}}}
-function spawnRamp(x){const w=160,h=90;objects.push({type:OBJ.RAMP,x,y:groundY-h,w,h});}
-function spawnSign(x){const img=(IMGS.signs&&IMGS.signs.length)?IMGS.signs[randi(0,IMGS.signs.length-1)]:null;const h=Math.min(Math.floor(vh*.22),img?.naturalHeight||160);const w=Math.floor((img?.naturalWidth||(h*1.6))*(h/(img?.naturalHeight||h)));objects.push({type:OBJ.SIGN,x,y:groundY-h,w,h,img});}
-function spawnCoin(x){const s=44;objects.push({type:OBJ.COIN,x,y:groundY-s-randi(40,140),w:s,h:s});}
-function spawnItem(x){const s=52,ks=['wing','jump','en'],k=ks[randi(0,2)];objects.push({type:OBJ.ITEM,kind:k,x,y:groundY-s-randi(80,180),w:s,h:s,vy:Math.random()<.5?-30:30});}
-function spawnFireResidue(x,yBottom){const s=G.fireballSize;objects.push({type:OBJ.FIRE,x,y:yBottom-s,w:s,h:s,deadly:true});}
-
-/* ================= ヴィラン ================= */
-const villain={alive:false,entering:false,leaving:false,y:-200,x:0,targetY:0,firesLeft:0,nextFireAt:0,opShown:false};
-let nextVillAt=600;function scheduleNextVill(){nextVillAt=meters+randi(G.villIntervalMin,G.villIntervalMax);}
-function triggerVill(){showCutIn(IMGS.viranOP);Object.assign(villain,{alive:true,entering:true,leaving:false,opShown:true,y:-200,firesLeft:randi(G.villFiresMin,G.villFiresMax),nextFireAt:now_ms()+randi(600,1300)});}
-function updVill(dt){if(!villain.alive)return;villain.x=scrollX+Math.floor(vw*G.villAheadXRatio);const tgt=Math.floor(vh*G.villHoverYRatio);villain.targetY=tgt;
- if(villain.entering){villain.y+=G.villDescendSpeed*dt;if(villain.y>=tgt){villain.y=tgt;villain.entering=false;}}
- else if(villain.leaving){villain.y-=G.villDescendSpeed*.8*dt;if(villain.y+20<-200){villain.alive=false;scheduleNextVill();}}
- else {villain.y=lerp(villain.y,tgt+Math.sin(now_ms()/900)*8,.08);if(villain.firesLeft>0 && now_ms()>=villain.nextFireAt){villain.firesLeft--;villain.nextFireAt=now_ms()+randi(G.villFireDelayMin*1000,G.villFireDelayMax*1000);const ahead=scrollX+Math.floor(vw*(.18+Math.random()*.22));spawnFireResidue(ahead,groundY);if(chance(.25))spawnFireResidue(ahead-randi(40,120),groundY);}if(villain.firesLeft<=0)villain.leaving=true;}}
-function drawVill(){if(!villain.alive)return;const sx=villain.x-scrollX,sy=villain.y,img=IMGS.viran;const w=Math.min(Math.floor(vw*.22),img?.naturalWidth||200);const h=Math.floor(w*((img?.naturalHeight||200)/(img?.naturalWidth||200)));cx.save();cx.imageSmoothingEnabled=false;if(img&&img.complete)cx.drawImage(img,sx-w/2,sy-h/2,w,h);else{cx.fillStyle='#933';cx.fillRect(sx-w/2,sy-h/2,w,h);}cx.restore();}
-
-/* ================= アイテムスロット ================= */
-const slots=[null,null];function pushItem(k){const icon=k==='wing'?IMGS.itemWing:k==='jump'?IMGS.itemJump:IMGS.itemEn;for(let i=0;i<2;i++){if(!slots[i]){slots[i]={kind:k,img:icon};refreshSlots();return true;}}return false;}
-function useSlot(i){const it=slots[i];if(!it)return;if(it.kind==='wing'){player.wingsUntil=now_ms()+G.itemWingTime*1000;player.maxJumps=4;player.jumpsLeft=Math.max(player.jumpsLeft,2);}else if(it.kind==='jump'){let nearest=null,nd=1e9;for(const o of objects){if(o.type===OBJ.CORN||o.type===OBJ.PIPE){const d=o.x-(scrollX+player.x);if(d>0&&d<nd){nd=d;nearest=o;}}}if(nearest){const x=nearest.x;nearest.type='__REMOVED__';spawnRamp(x);}}else{player.enUntil=now_ms()+G.itemEnTime*1000;}slots[i]=null;refreshSlots();}
-function refreshSlots(){const set=(btn,imgEl,slot)=>{if(slot){imgEl.src=slot.img?.src||'';imgEl.style.opacity='1';btn.removeAttribute('disabled');}else{imgEl.removeAttribute('src');imgEl.style.opacity='.3';btn.setAttribute('disabled','');}};set(document.getElementById('btnItem1'),document.getElementById('itemIcon1'),slots[0]);set(document.getElementById('btnItem2'),document.getElementById('itemIcon2'),slots[1]);}
-
-/* ================= 衝突 ================= */
-function aabb(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
-function rampTop(o,px){const t=clamp((px-o.x)/o.w,0,1);return {t,y:o.y+(1-t)*o.h};}
-
-/* ================= 入力 ================= */
-document.getElementById('btnItem1').addEventListener('click',()=>useSlot(0));
-document.getElementById('btnItem2').addEventListener('click',()=>useSlot(1));
-document.getElementById('btnJump').addEventListener('click',onJump);
-document.getElementById('btnBoost').addEventListener('mousedown',()=>player.boostHold=true);
-document.getElementById('btnBoost').addEventListener('mouseup',()=>player.boostHold=false);
-document.getElementById('btnBoost').addEventListener('touchstart',()=>player.boostHold=true,{passive:true});
-document.getElementById('btnBoost').addEventListener('touchend',()=>player.boostHold=false,{passive:true});
-addEventListener('keydown',e=>{if(e.repeat)return;if(e.code==='Space'||e.code==='ArrowUp')onJump();if(e.code==='ShiftLeft'||e.code==='KeyX')player.boostHold=true;});
-addEventListener('keyup',e=>{if(e.code==='ShiftLeft'||e.code==='KeyX')player.boostHold=false;});
-function onJump(){if(!player.alive||state!==State.RUN)return;if(player.jumpsLeft>0){player.vy=-(player.onRamp?(G.rampKickVY*.72):980);player.jumpsLeft--;}} 
-
-/* ================= OP / カウントダウン ================= */
-const elOP=document.getElementById('op'), elOPImg=document.getElementById('opImg'), tapBtn=document.getElementById('tapStart');
-const elCD=document.getElementById('countdown'), elModal=document.getElementById('modal');
-let opShownAt=0, opWatchDog=null, opHardTimer=null, opExited=false;
-function showOP(){
-  try{
-    state=State.OP; opExited=false;
-    elOPImg.src=IMGS.op?.src||''; elOP.style.display='flex'; opShownAt=performance.now();
-
-    // どこを触ってもスキップ
-    const skip=()=>proceedFromOP('gesture');
-    ['pointerdown','touchstart','click'].forEach(ev=>{
-      window.addEventListener(ev,skip,{once:true,passive:true});
-      document.addEventListener(ev,skip,{once:true,passive:true});
-      document.body.addEventListener(ev,skip,{once:true,passive:true});
-      elOP.addEventListener(ev,skip,{once:true,passive:true});
-      tapBtn.addEventListener(ev,skip,{once:true,passive:true});
-    });
-
-    // 自動進行（2秒）＋保険（3.5秒）
-    setTimeout(()=>proceedFromOP('auto2s'),2000);
-    opHardTimer=setTimeout(()=>proceedFromOP('auto3_5s'),3500);
-
-    // 監視：1秒ごとにOPが残っていたら進める
-    opWatchDog=setInterval(()=>{
-      if(state===State.OP && elOP.style.display!=='none' && !opExited){
-        const elapsed=(performance.now()-opShownAt)/1000;
-        if(elapsed>4.5) proceedFromOP('watchdog');
-      }
-    },1000);
-  }catch(e){ proceedFromOP('catch'); }
-}
-function proceedFromOP(reason){
-  if(opExited) return; opExited=true;
-  try{
-    if(opHardTimer){clearTimeout(opHardTimer);opHardTimer=null;}
-    if(opWatchDog){clearInterval(opWatchDog);opWatchDog=null;}
-    elOP.style.display='none';
-  }finally{
-    autoChooseChar(); startCountDown();
+  let DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+  let vw=0, vh=0;   // CSS pixels of canvas
+  let W=0, H=0;     // backing store pixels
+  function resize() {
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    vw = window.innerWidth;
+    vh = window.innerHeight
+         - 0 // we already use fixed grid with HUD/CTL outside canvas
+    ;
+    cv.width = Math.floor(vw * DPR);
+    cv.height = Math.floor((document.getElementById('stage').clientHeight) * DPR);
+    W = cv.width; H = cv.height;
+    sparkCv.width = W; sparkCv.height = H;
+    sparkCv.style.width = cv.style.width = '100%';
+    sparkCv.style.height = cv.style.height = '100%';
   }
-}
-function startCountDown(){state=State.COUNT;let n=3;elCD.style.display='flex';elCD.textContent='3';
- const tick=()=>{if(n>0){elCD.textContent=String(n);n--;setTimeout(tick,700);}else{elCD.textContent='GO';setTimeout(()=>{elCD.style.display='none';startRun();},500);}};setTimeout(tick,700);}
+  window.addEventListener('resize', resize, { passive:true });
+  resize();
 
-/* ================= 再開/終了 ================= */
-elModal.addEventListener('click',e=>{
-  const act=e.target?.dataset?.act; if(!act) return;
-  if(act==='restart'){ elModal.style.display='none'; autoChooseChar(false); startCountDown(); }
-  else if(act==='choose'){ elModal.style.display='none'; chooseChar(); }
-  else if(act==='quit'){ elModal.style.display='none'; hardReset(); }
-});
-function hardReset(){scrollX=0;meters=0;speed=G.runSpeed;kmh=0;objects.length=0;scheduleNextVill();Object.assign(villain,{alive:false,entering:false,leaving:false,opShown:false});slots[0]=slots[1]=null;refreshSlots();resetPlayer();state=State.OP;showOP();}
-function autoChooseChar(rand=true){selectedChar = rand ? (Math.random()<.5?CHAR.A:CHAR.B) : selectedChar;}
-function chooseChar(){state=State.PAUSE;const lay=document.createElement('div');lay.className='overlay';lay.innerHTML=`<div class="card"><div style="font-weight:900;margin-bottom:12px">キャラクター選択</div><div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center"><div class="btn" data-c="A">🍊 orange.png</div><div class="btn" data-c="B">🎮 VR.png</div></div></div>`;document.body.appendChild(lay);lay.addEventListener('click',e=>{const c=e.target?.dataset?.c;if(c==='A'||c==='B'){selectedChar=c;document.body.removeChild(lay);startCountDown();}});}
+  // ---------- DOM refs ----------
+  const hudM = document.getElementById('m');
+  const hudK = document.getElementById('kmh');
+  const hudJ = document.getElementById('j');
+  const hudC = document.getElementById('c');
+  const boostFill = document.getElementById('boostFill');
 
-/* ================= ラン開始 ================= */
-let lastT=0;
-function startRun(){
-  updateGroundY(); makePatterns(); resetPlayer();
-  objects.length=0; let x=scrollX+vw+240;
-  for(let i=0;i<10;i++){x+=randi(220,420);spawnCorn(x);if(chance(.5))spawnPipe(x+randi(160,260));if(chance(.4))spawnRamp(x+randi(300,480));}
-  scheduleNextVill(); state=State.RUN; lastT=now_ms();
-}
+  const btnJump = document.getElementById('btnJump');
+  const btnBoost = document.getElementById('btnBoost');
+  const slotEl = [document.getElementById('slot0'), document.getElementById('slot1')];
 
-/* ================= ランダムスポーン ================= */
-function randomSpawns(){ if(chance(G.signRareP))spawnSign(scrollX+vw+randi(80,260)); if(chance(G.coinRareP))spawnCoin(scrollX+vw+randi(140,340)); if(chance(G.itemRareP))spawnItem(scrollX+vw+randi(240,520)); if(chance(.035)){const x=scrollX+vw+randi(260,560);const r=Math.random(); if(r<.45)spawnCorn(x); else if(r<.78)spawnPipe(x); else spawnRamp(x);} }
+  const overlayOP = document.getElementById('op');
+  const overlaySelect = document.getElementById('select');
+  const overlayCutin = document.getElementById('cutin');
+  const cutinImg = document.getElementById('cutinImg');
+  const overlayGO = document.getElementById('gameover');
+  const recordTxt = document.getElementById('recordTxt');
+  const opImg = document.getElementById('opImg');
 
-/* ================= 更新 ================= */
-function update(dt){
-  if(state!==State.RUN) return;
-  const canBoost=(player.boost>0)||(now_ms()<player.enUntil);
-  player.boosting = player.boostHold && canBoost;
-  if(player.boosting){speed=lerp(speed,G.maxSpeed,.15); if(now_ms()>=player.enUntil) player.boost=clamp(player.boost-G.boostDrainPerSec*dt,0,100);}
-  else{speed=lerp(speed,G.runSpeed,.10); player.boost=clamp(player.boost+G.boostFillPerSec*dt,0,100);}
-  scrollX+=speed*dt; meters=Math.floor(scrollX/100*6); kmh=Math.round(speed*3.6/dpr*.6);
+  document.getElementById('againSelect').onclick = () => startSelection();
+  document.getElementById('againStart').onclick  = () => restartSameChar();
+  document.getElementById('quitBtn').onclick     = () => { location.reload(); };
 
-  randomSpawns();
+  // ---------- Assets (filenames exact) ----------
+  // Required tiles/sprites (user supplies the PNGs with exact names):
+  const files = {
+    bg: 'sora.PNG',           // background sky (note: PNG uppercase)
+    ground: 'hatake2.png',    // ground (run on green area)
+    road: 'do-ro.png',        // optional mid layer road line (decorative)
+    coin: 'coin.png',
+    gold: 'gold.png',
+    hoshi1: 'hoshi1.png',
+    hoshi2: 'hoshi2.png',
+    muteki: 'mutekiop.png',
+    op: 'op.png',
 
-  player.vy+=G.gravity*dt; let nextY=player.y+player.vy*dt; player.onGround=false; player.onRamp=null;
+    // character choices (body)
+    ch_orange: 'orange.png',
+    ch_vr: 'VR.png',
 
-  for(const o of objects){ if(o.type===OBJ.RAMP){ const px=player.x+player.w*.5; if(px>=o.x&&px<=o.x+o.w){ const info=rampTop(o,px); const top=info.y; const btm=nextY+player.h; if(btm>=top-2&&btm<=top+28){ nextY=top-player.h; player.vy=0; player.onRamp=o; if(info.t>=G.rampAutoJumpPct&&info.t<G.rampAutoJumpPct+.05){ player.vy=-G.rampKickVY; speed=clamp(speed+G.rampKickVX,0,G.maxSpeed); } } } } }
-  for(const o of objects){ if(o.type===OBJ.PIPE){ const px=player.x+player.w*.5; if(px>=o.x&&px<=o.x+o.w){ const top=o.y; const btm=nextY+player.h; if(Math.abs(btm-top)<=G.pipeTopSnapTol && player.vy>=0){ nextY=top-player.h; player.vy=0; player.onGround=true; } } } }
-  if(nextY+player.h>=groundY){nextY=groundY-player.h;player.vy=0;player.onGround=true;}
-  if(player.onGround){player.maxJumps=(now_ms()<player.wingsUntil)?4:2;player.jumpsLeft=player.maxJumps;}
-  player.y=nextY;
+    // obstacles
+    corn: 'corn.PNG',         // instant death
+    dokan: 'dokan.png',       // extends/retracts, rideable top
+    wedge: 'jumpdai.png',     // triangular ramp
+    kanban1: 'kanban1.png',
+    kanban2: 'kanban2.png',
+    kanban3: 'kanban3.png',
+    kanban4: 'kanban4.png',
+    kanban5: 'kanban5.png',
+    kanban6: 'kanban6.png',
 
-  for(const o of objects){ if(o.type===OBJ.PIPE)updPipe(o,dt); if(o.type===OBJ.ITEM){o.y+=o.vy*dt; if(o.y<groundY-220)o.vy=Math.abs(o.vy); if(o.y>groundY-80)o.vy=-Math.abs(o.vy);} }
+    // new obstacles (追加仕様)
+    bucket: 'gomi.png',       // moves left-right; size ~ player
+    contena: 'contena.png',   // tall, rideable top; can chain 2-3
+    tramp: 'tora.png',        // trampoline: bounce high if land on top
 
-  if(meters>=nextVillAt && !villain.alive) triggerVill(); updVill(dt);
+    // villain
+    viranOP: 'viran op.png',
+    viran: 'viran.png',
+    fire: 'tama.png',
 
-  const pBB={x:scrollX+player.x,y:player.y,w:player.w,h:player.h};
-  for(const o of objects){
-    if(o.type==='__REMOVED__') continue;
-    const bb={x:o.x,y:o.y,w:o.w,h:o.h};
-    const hit=aabb(pBB,bb);
-    if(o.type===OBJ.COIN){ if(hit){o.type='__REMOVED__';player.coins++; if(player.coins%G.coinToInv===0){player.inv=true;player.invUntil=now_ms()+G.invTime*1000; showCutIn(IMGS.invOP);} } }
-    else if(o.type===OBJ.ITEM){ if(hit){ if(pushItem(o.kind)) o.type='__REMOVED__'; } }
-    else if(o.type===OBJ.SIGN){ /* no-op */ }
-    else if(o.type===OBJ.RAMP){ /* handled */ }
-    else { // CORN / PIPE / FIRE
-      if(hit){
-        const fromSide=(pBB.x+pBB.w)<= (o.x+12) || (pBB.x)>= (o.x+o.w-12);
-        const sidePipe=(o.type===OBJ.PIPE)?fromSide:false;
-        if(player.inv){} else if(o.type===OBJ.PIPE && !sidePipe){} else { gameOver(); return; }
+    // items (float pickups)
+    itemWing: 'tsubasa.png',  // 4段ジャンプ 5s
+    itemJump: 'jump.png',     // nearest corn/dokan -> wedge
+    itemEN: 'en.png',         // 5s unlimited boost
+  };
+
+  const IM = {}; // image objects
+  const PAT = {}; // patterns
+  function loadImage(name, src) {
+    return new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => { IM[name] = img; res(img); };
+      img.onerror = () => rej(new Error('Image load failed: ' + src));
+      img.src = src;
+    });
+  }
+  async function loadAll() {
+    const tasks = [];
+    for (const [k, v] of Object.entries(files)) tasks.push(loadImage(k, v));
+    await Promise.all(tasks);
+    // patterns
+    PAT.bg = ctx.createPattern(IM.bg, 'repeat');
+    PAT.ground = ctx.createPattern(IM.ground, 'repeat-x');
+    if (IM.road) PAT.road = ctx.createPattern(IM.road, 'repeat-x');
+    opImg.src = IM.op.src;
+  }
+
+  // ---------- Game State ----------
+  const STATE = {
+    time: 0,
+    dt: 0,
+    running: false,
+    inCountdown: false,
+    inOP: true,
+    inSelect: false,
+    inGO: false,
+    playerChoice: 'orange', // 'orange' | 'VR'
+    distance: 0, // meters
+    speed: 8.0, // m/s (game world); 1 m ≈ 48px (approx)
+    maxSpeed: 14.0,
+    baseSpeed: 8.0,
+    boostSpeed: 15.0,
+    pxPerM: 48, // pixel-to-meter
+    scrollX: 0, // world scroll
+    groundY: 0, // computed (px from top)
+    safeZoneM: 35, // no obstacles for first N meters
+    coins: 0,
+    jumps: 0,
+    maxJumps: 2,
+    invincible: 0, // seconds left
+    boostGauge: 0, // 0..1
+    boosting: 0,   // seconds left in active boost
+    unlimitedBoost: 0, // EN item effect seconds remaining
+    fourJump: 0,   // seconds remaining (tsubasa)
+    villainDueM: 1200, // next villain trigger distance (random between 1000-2000)
+    villain: null,
+    cutinTimer: 0,
+
+    // Items in slots (at most 2)
+    slots: [null, null], // { kind:'wing'|'jump'|'en', img }
+    // Active item floating pickups
+    pickups: [],
+    // Obstacles currently in world
+    obs: [],
+    // Coins in world
+    coinsWorld: [],
+    // Fireballs
+    fires: [],
+
+    // spawn control
+    lastSpawnX: 0,
+    minGapPx: 420,            // minimal gap between obstacle groups
+    groupGapRangePx: [520, 960],
+    kanbanChance: 0.12,       // rare
+    coinChance: 0.07,         // rare
+    itemChance: 0.05,         // rare
+  };
+
+  // Player
+  const player = {
+    x: 0, y: 0, w: 64, h: 64,
+    vy: 0, onGround: false, onDokan: null, onContena: null, onTramp: null, onWedge: null,
+    facing: 1,
+    tilt: 0, // radians for wedge
+    sprite: null, // current body image
+    goldBody: false, // invincible body swap
+  };
+
+  // Utility
+  const clamp = (v,min,max)=> v<min?min:v>max?max:v;
+  const rand = (a,b)=> Math.random()*(b-a)+a|0; // int
+  const frand = (a,b)=> Math.random()*(b-a)+a;
+  const chance = p => Math.random()<p;
+
+  // ---------- Flow ----------
+  let rafId = 0, prevT = 0;
+  function loop(t){
+    rafId = requestAnimationFrame(loop);
+    if (!prevT) prevT = t;
+    const dt = Math.min(0.035, (t - prevT)/1000);
+    prevT = t;
+    STATE.dt = dt;
+    STATE.time += dt;
+
+    tick(dt);
+    draw();
+  }
+
+  // ---------- Init ----------
+  const key = { jump:false, boost:false, slot0:false, slot1:false };
+
+  function bindControls(){
+    const eat = e => { e.preventDefault(); e.stopPropagation(); };
+    const onTap = (el, fn) => {
+      el.addEventListener('touchstart', (e)=>{eat(e); fn();}, {passive:false});
+      el.addEventListener('mousedown', (e)=>{eat(e); fn();});
+    };
+    onTap(btnJump, ()=> tryJump());
+    onTap(btnBoost, ()=> tryBoost());
+
+    // item slots (use oldest first by default, but both are clickable)
+    slotEl[0].addEventListener('touchstart', e=>{e.preventDefault(); useSlot(0);}, {passive:false});
+    slotEl[1].addEventListener('touchstart', e=>{e.preventDefault(); useSlot(1);}, {passive:false});
+    slotEl[0].addEventListener('mousedown', e=>{e.preventDefault(); useSlot(0);});
+    slotEl[1].addEventListener('mousedown', e=>{e.preventDefault(); useSlot(1);});
+
+    // Keyboard (desktop debug)
+    window.addEventListener('keydown', (e)=>{
+      if (e.code==='Space') { tryJump(); }
+      if (e.code==='ShiftLeft' || e.code==='ShiftRight') { tryBoost(); }
+      if (e.code==='Digit1') useSlot(0);
+      if (e.code==='Digit2') useSlot(1);
+    });
+  }
+
+  function setSlotsUI(){
+    for (let i=0;i<2;i++){
+      const el = slotEl[i];
+      el.innerHTML = '';
+      if (!STATE.slots[i]) {
+        const d = document.createElement('div'); d.className='empty'; d.textContent='ITEM';
+        el.appendChild(d);
+      } else {
+        const im = document.createElement('img');
+        im.src = STATE.slots[i].img.src;
+        el.appendChild(im);
       }
     }
   }
-  if(player.inv && now_ms()>=player.invUntil) player.inv=false;
-  objects = objects.filter(o=> (o.type!=='__REMOVED__') && (o.x>scrollX-vw*.5));
-  updateHUD();
-}
 
-/* ================= 描画 ================= */
-function draw(){
-  cx.clearRect(0,0,vw,vh); drawBG();
-  for(const o of objects){ const sx=Math.floor(o.x-scrollX), sy=Math.floor(o.y); if(sx>vw||sx+o.w<-10)continue; cx.save(); cx.imageSmoothingEnabled=false;
-    if(o.type===OBJ.COIN){const img=IMGS.coin; img&&img.complete?cx.drawImage(img,sx,sy,o.w,o.h):cx.fillRect(sx,sy,o.w,o.h);}
-    else if(o.type===OBJ.ITEM){const img=o.kind==='wing'?IMGS.itemWing:o.kind==='jump'?IMGS.itemJump:IMGS.itemEn; img&&img.complete?cx.drawImage(img,sx,sy,o.w,o.h):cx.fillRect(sx,sy,o.w,o.h);}
-    else if(o.type===OBJ.SIGN){const img=o.img; img&&img.complete?cx.drawImage(img,sx,sy,o.w,o.h):cx.fillRect(sx,sy,o.w,o.h);}
-    else if(o.type===OBJ.CORN){const img=IMGS.corn; img&&img.complete?cx.drawImage(img,sx,sy,o.w,o.h):cx.fillRect(sx,sy,o.w,o.h);}
-    else if(o.type===OBJ.PIPE){const img=IMGS.pipe; img&&img.complete?cx.drawImage(img,sx,sy,o.w,o.h):cx.fillRect(sx,sy,o.w,o.h);}
-    else if(o.type===OBJ.RAMP){const img=IMGS.ramp; if(img&&img.complete)cx.drawImage(img,sx,sy,o.w,o.h); else {cx.fillStyle='#68c';cx.beginPath();cx.moveTo(sx,sy+o.h);cx.lineTo(sx+o.w,sy);cx.lineTo(sx+o.w,sy+o.h);cx.closePath();cx.fill();}}
-    else if(o.type===OBJ.FIRE){const img=IMGS.fire; const s=o.w; img&&img.complete?cx.drawImage(img,sx,sy,s,s):cx.fillRect(sx,sy,s,s);}
-    cx.restore();
+  function pushItem(kind){
+    // rare, only if slot available
+    let img, label;
+    if (kind==='wing') { img = IM.itemWing; label='tsubasa'; }
+    else if (kind==='jump') { img = IM.itemJump; label='jump'; }
+    else { img = IM.itemEN; label='en'; }
+    const itm = { kind, img, label };
+    for (let i=0;i<2;i++){
+      if (!STATE.slots[i]) { STATE.slots[i] = itm; setSlotsUI(); return true; }
+    }
+    return false; // full
   }
-  drawVill();
-  // プレイヤー影で“浮き”防止
-  cx.save();cx.fillStyle='rgba(0,0,0,.35)';cx.beginPath();cx.ellipse(player.x+player.w*.5,groundY+6,(player.w*.45),10,0,0,Math.PI*2);cx.fill();cx.restore();
-  const body=player.inv?IMGS.gold:(selectedChar===CHAR.A?IMGS.charA:IMGS.charB);
-  cx.save();cx.imageSmoothingEnabled=false; if(body&&body.complete)cx.drawImage(body,player.x,player.y,player.w,player.h); else{cx.fillStyle='#ccc';cx.fillRect(player.x,player.y,player.w,player.h);} cx.restore();
-}
 
-/* ================= HUD/ゲームオーバー ================= */
-function updateHUD(){document.getElementById('uiDist').textContent=`${meters} m`;document.getElementById('uiSpeed').textContent=`${Math.round(speed*3.6/dpr*.6)} km/h`;document.getElementById('uiJump').textContent=`${player.jumpsLeft}/${player.maxJumps}`;document.getElementById('uiCoin').textContent=`${player.coins}`;document.getElementById('uiBoost').style.width=`${Math.round(player.boost)}%`;document.getElementById('btnBoost').disabled=!((player.boost>0)||(now_ms()<player.enUntil));}
-function gameOver(){player.alive=false;state=State.OVER;document.getElementById('modalMain').textContent=`記録 ${meters} m！`;setTimeout(()=>{elModal.style.display='flex';},800);}
+  function useSlot(i){
+    const itm = STATE.slots[i];
+    if (!itm) return;
+    if (itm.kind==='wing'){
+      STATE.fourJump = 5.0; // 5s
+      STATE.maxJumps = 4;
+      showCutin(IM.itemWing, 1.2);
+    } else if (itm.kind==='jump'){
+      // nearest corn/dokan to player -> wedge
+      let nearest = null, dmin = 1e9;
+      for (const o of STATE.obs){
+        if (o.type==='corn' || o.type==='dokan'){
+          const d = (o.x - STATE.scrollX) - player.x;
+          if (d > 40 && d < dmin) { dmin = d; nearest = o; }
+        }
+      }
+      if (nearest){
+        // replace with wedge at same base position
+        const w = createWedge(nearest.x, nearest.baseY);
+        w.width = 140; w.height = 64;
+        // remove nearest
+        nearest.dead = true;
+        STATE.obs.push(w);
+        showCutin(IM.itemJump, 1.0);
+      }
+    } else if (itm.kind==='en'){
+      STATE.unlimitedBoost = 5.0;
+      showCutin(IM.itemEN, 1.2);
+    }
+    STATE.slots[i] = null;
+    setSlotsUI();
+  }
 
-/* ================= ループ ================= */
-function loop(ts){if(!lastT)lastT=ts;const dt=Math.min(0.032,(ts-lastT)/1000);lastT=ts;if(state===State.RUN){update(dt);draw();}else{draw();}requestAnimationFrame(loop);}
+  function showCutin(img, sec=2){
+    cutinImg.src = img.src;
+    overlayCutin.style.display = 'grid';
+    STATE.cutinTimer = sec;
+  }
 
-/* ================= カットイン（無敵/ヴィラン） ================= */
-function showCutIn(img){/* 画面中央に2秒フェード、簡易：モーダル流用なし */}
+  function startOP(){
+    overlayOP.style.display = 'grid';
+    // 2s later -> selection
+    setTimeout(()=>{overlayOP.style.display='none'; startSelection();}, 2000);
+  }
 
-/* ================= 初期化 ================= */
-loadImages(()=>{updateGroundY();makePatterns();draw();scheduleNextVill();requestAnimationFrame(loop);showOP();});
-addEventListener('resize',updateGroundY);
+  function startSelection(){
+    STATE.inGO = false;
+    overlayGO.style.display='none';
+    overlaySelect.style.display = 'grid';
+    document.querySelectorAll('.choice').forEach(btn=>{
+      btn.onclick = ()=>{
+        STATE.playerChoice = btn.dataset.ch;
+        overlaySelect.style.display='none';
+        prepareStart();
+      };
+    });
+  }
+
+  function restartSameChar(){
+    overlayGO.style.display='none';
+    prepareStart();
+  }
+
+  function prepareStart(){
+    // Reset run state
+    STATE.distance = 0;
+    STATE.speed = STATE.baseSpeed;
+    STATE.scrollX = 0;
+    STATE.coins = 0;
+    STATE.jumps = 0;
+    STATE.invincible = 0;
+    STATE.boostGauge = 0;
+    STATE.boosting = 0;
+    STATE.unlimitedBoost = 0;
+    STATE.fourJump = 0;
+    STATE.maxJumps = 2;
+    STATE.obs.length = 0;
+    STATE.pickups.length = 0;
+    STATE.fires.length = 0;
+    STATE.coinsWorld.length = 0;
+    STATE.slots = [null, null];
+    STATE.lastSpawnX = 0;
+    STATE.villainDueM = rand(1000, 2000);
+    STATE.villain = null;
+    setSlotsUI();
+
+    // player position (fixed-X run)
+    player.w = 64; player.h = 64;
+    player.x = Math.floor((W/DPR)*0.28) * DPR; // fixed screen X (in backing px)
+    player.y = 0; player.vy = 0; player.onGround = false;
+    player.onDokan = player.onContena = player.onTramp = player.onWedge = null;
+    player.tilt = 0;
+    player.sprite = (STATE.playerChoice==='orange') ? IM.ch_orange : IM.ch_vr;
+    player.goldBody = false;
+
+    // 3-2-1-GO
+    STATE.inCountdown = true;
+    showCountdown(()=>{
+      STATE.inCountdown = false;
+      STATE.running = true;
+    });
+  }
+
+  function showCountdown(done){
+    const box = document.createElement('div');
+    box.className='centerBox';
+    box.style.position='fixed'; box.style.inset='0'; box.style.margin='auto';
+    box.style.width='min(55vw,320px)';
+    box.style.height='min(40vh,220px)';
+    box.style.zIndex='90';
+    box.innerHTML = `<div class="big" id="cdNum">3</div>`;
+    document.body.appendChild(box);
+    let i=3;
+    const timer = setInterval(()=>{
+      i--;
+      const el = box.querySelector('#cdNum');
+      if (i>0) el.textContent = String(i);
+      else if (i===0){ el.textContent = 'GO'; }
+      else {
+        clearInterval(timer);
+        box.remove();
+        done && done();
+      }
+    }, 800);
+  }
+
+  function gameOver(){
+    if (STATE.inGO) return;
+    STATE.running = false;
+    STATE.inGO = true;
+    player.vy = 0;
+    const meters = Math.floor(STATE.distance);
+    recordTxt.textContent = `記録 ${meters}m！`;
+    overlayGO.style.display = 'grid';
+    // fade out text after 2s (overlay stays with buttons)
+    setTimeout(()=>{ /* keep overlay with buttons */ }, 2000);
+  }
+
+  // ---------- World Builders ----------
+  function createCorn(x, baseY){
+    return {type:'corn', x, y:0, baseY, w:48, h:64, deadly:true};
+  }
+  function createBucket(x, baseY){
+    return {
+      type:'bucket', x, y:0, baseY, w:54, h:60, deadly:true,
+      phase: Math.random()*Math.PI*2, amp: 14, speed: 1.4 // small lateral oscillation
+    };
+  }
+  function createContena(x, baseY){
+    return {type:'contena', x, y:0, baseY, w:72, h:96, deadlySide:true, ride:true};
+  }
+  function createTramp(x, baseY){
+    return {type:'tramp', x, y:0, baseY, w:92, h:64, deadlySide:true, bounce:true};
+  }
+  function createDokan(x, baseY){
+    return {
+      type:'dokan', x, y:0, baseY, w:64, h:40, deadlySide:true, ride:true,
+      t:0, phase:'up', // up->hold->down
+      minH: 28, maxH: 120, hold: 2.0
+    };
+  }
+  function createWedge(x, baseY){
+    return {
+      type:'wedge', x, y:0, baseY, width:140, height:64, deadlySide:false, ride:true
+    };
+  }
+  function createKanban(x, baseY){
+    const idx = rand(1,7); // 1..6
+    const name = 'kanban'+Math.min(idx,6);
+    return {
+      type:'kanban', kind: name, x, y:0, baseY, w:140, h:110, deadly:false
+    };
+  }
+  function createCoin(x, baseY){
+    return {type:'coin', x, y: baseY-90-frand(0,40), r:16, vy: Math.sin(Math.random()*6.28)*8, t:Math.random()*6.28 };
+  }
+  function createPickup(x, baseY, kind){
+    const img = (kind==='wing')?IM.itemWing:(kind==='jump')?IM.itemJump:IM.itemEN;
+    return { kind, img, x, y: baseY-120-frand(0,40), vy:0, t:Math.random()*6.28 };
+  }
+  function createVillain(){
+    // floats from sky; never gets behind the player
+    const v = {
+      x: STATE.scrollX + player.x + 480, // ahead
+      y: -120,
+      vy: 24,
+      phase: 'enter', // enter->attack->leave
+      timer: 0,
+      dropCount: 0,
+      dropTarget: rand(5,9), // 5-8
+      alive: true
+    };
+    return v;
+  }
+  function createFire(x, y){
+    return {x, y, r:20, vy:0, vx: frand(-30,-10), ay: 900, landed:false}; // throw forward-ish
+  }
+
+  // ---------- Spawning ----------
+  function trySpawn(){
+    // Ensure spacing by group gap
+    const screenRightWorldX = STATE.scrollX + W/DPR + 60;
+    if (STATE.inCountdown || !STATE.running) return;
+    if (STATE.distance < STATE.safeZoneM) return; // safe at start
+
+    // place next group when far enough
+    if (screenRightWorldX - STATE.lastSpawnX < STATE.minGapPx) return;
+
+    // compute base Y (ground top)
+    const baseY = STATE.groundY;
+
+    // choose a group type
+    const options = ['corn','bucket','contena','tramp','dokan','wedge'];
+    // Bias common obstacles: corn, bucket, contena
+    const rnd = Math.random();
+    let type;
+    if (rnd < 0.28) type='corn';
+    else if (rnd < 0.52) type='bucket';
+    else if (rnd < 0.73) type='contena';
+    else if (rnd < 0.86) type='dokan';
+    else if (rnd < 0.94) type='tramp';
+    else type='wedge';
+
+    let x = screenRightWorldX + frand(80, 160);
+    const gap = frand(STATE.groupGapRangePx[0], STATE.groupGapRangePx[1]);
+
+    if (type==='corn'){
+      STATE.obs.push(createCorn(x, baseY));
+    } else if (type==='bucket'){
+      STATE.obs.push(createBucket(x, baseY));
+    } else if (type==='contena'){
+      const chain = Math.random()<0.5?2:3;
+      for (let i=0;i<chain;i++){
+        STATE.obs.push(createContena(x + i*76, baseY));
+      }
+    } else if (type==='tramp'){
+      STATE.obs.push(createTramp(x, baseY));
+    } else if (type==='dokan'){
+      STATE.obs.push(createDokan(x, baseY));
+    } else if (type==='wedge'){
+      STATE.obs.push(createWedge(x, baseY));
+    }
+
+    // Rare: kanban (big sign) – ensure aligned to ground, not floating
+    if (chance(STATE.kanbanChance)){
+      STATE.obs.push(createKanban(x + frand(120, 260), baseY));
+    }
+    // Rare: coin cluster
+    if (chance(STATE.coinChance)){
+      const count = rand(3,7);
+      for (let i=0;i<count;i++){
+        STATE.coinsWorld.push(createCoin(x + i*36, baseY));
+      }
+    }
+    // Rare: item pickup (wing/jump/en)
+    if (chance(STATE.itemChance)){
+      const roll = Math.random();
+      const kind = (roll<0.34)?'wing':(roll<0.67)?'jump':'en';
+      STATE.pickups.push(createPickup(x + frand(60,180), baseY, kind));
+    }
+
+    STATE.lastSpawnX = x + gap;
+  }
+
+  // ---------- Physics & Logic ----------
+  function tryJump(){
+    if (!STATE.running) return;
+    let maxJ = STATE.maxJumps;
+    if (STATE.boosting>0 && STATE.unlimitedBoost<=0) {
+      // boosting still allows jumping; already counted in maxJ
+    }
+    if (STATE.jumps < maxJ){
+      player.vy = -420; // jump impulse
+      STATE.jumps++;
+      player.onGround = false;
+      player.onDokan = player.onContena = player.onTramp = player.onWedge = null;
+    }
+  }
+
+  function tryBoost(){
+    if (!STATE.running) return;
+    if (STATE.unlimitedBoost>0) {
+      // always allow during EN effect
+      STATE.boosting = 2.5;
+      return;
+    }
+    if (STATE.boostGauge >= 1){
+      STATE.boostGauge = 0;
+      STATE.boosting = 2.5;
+    }
+  }
+
+  function addCoin(n=1){
+    STATE.coins += n;
+    if (STATE.coins >= 10){
+      STATE.coins -= 10;
+      // 5秒無敵
+      STATE.invincible = 5.0;
+      player.goldBody = true;
+      showCutin(IM.muteki, 2.0);
+      // sparkle on
+      document.getElementById('spark').style.display='block';
+    }
+  }
+
+  function kill(){
+    if (STATE.invincible>0) return; // ignore
+    gameOver();
+  }
+
+  // ---------- Tick ----------
+  function tick(dt){
+    // UI cutin
+    if (STATE.cutinTimer>0){
+      STATE.cutinTimer -= dt;
+      if (STATE.cutinTimer<=0){ overlayCutin.style.display='none'; }
+    }
+
+    // OP and Selection
+    // (handled by overlay timing)
+
+    // Boost gauge fill (when not boosting); slow trickle + faster by speed
+    if (!STATE.inCountdown && STATE.running && STATE.unlimitedBoost<=0){
+      STATE.boostGauge = clamp(STATE.boostGauge + dt*0.08 + dt*(STATE.speed-STATE.baseSpeed)*0.02, 0, 1);
+    }
+
+    // Effects timers
+    if (STATE.invincible>0){
+      STATE.invincible -= dt;
+      if (STATE.invincible<=0){ player.goldBody = false; document.getElementById('spark').style.display='none'; }
+    }
+    if (STATE.boosting>0){
+      STATE.boosting -= dt;
+    }
+    if (STATE.unlimitedBoost>0){
+      STATE.unlimitedBoost -= dt;
+      STATE.boosting = 0.25; // keep refreshing small burst to maintain speed
+    }
+    if (STATE.fourJump>0){
+      STATE.fourJump -= dt;
+      if (STATE.fourJump<=0){ STATE.maxJumps = 2; }
+    }
+
+    // Update speed
+    const targetSpeed = (STATE.boosting>0) ? STATE.boostSpeed : STATE.baseSpeed + Math.min(4.5, STATE.distance/1200*2.5);
+    STATE.speed += (targetSpeed - STATE.speed)*Math.min(1, dt*3.0);
+
+    // Distance and scroll
+    if (STATE.running){
+      const dx = STATE.speed * dt * STATE.pxPerM;
+      STATE.scrollX += dx;
+      STATE.distance += (dx / STATE.pxPerM);
+    }
+
+    // Ground snap Y (top of green area). For simplicity, run at H*0.75 baseline.
+    STATE.groundY = Math.floor((H/DPR) - 120); // 120px margin from bottom as ground level
+
+    // Player gravity
+    const G = 980; // px/s^2
+    if (!player.onGround){
+      player.vy += G * dt;
+    }
+
+    // Villain control
+    handleVillain(dt);
+
+    // Fireballs
+    for (const f of STATE.fires){
+      if (!f.landed){
+        f.vy += f.ay * dt;
+        f.x += f.vx * dt;
+        f.y += f.vy * dt;
+        if (f.y + f.r >= STATE.groundY){
+          f.y = STATE.groundY - f.r;
+          f.vy = 0; f.vx = 0; f.landed = true;
+        }
+      }
+    }
+    // Remove far-left fires
+    pruneList(STATE.fires, obj => (obj.x - STATE.scrollX) < -300);
+
+    // Obstacles update (animate dokan, bucket oscillation)
+    for (const o of STATE.obs){
+      if (o.type==='dokan'){
+        o.t += dt;
+        if (o.phase==='up'){
+          o.h += 90*dt;
+          if (o.h >= o.maxH){ o.h = o.maxH; o.phase='hold'; o.t=0; }
+        } else if (o.phase==='hold'){
+          if (o.t >= o.hold){ o.phase = 'down'; }
+        } else {
+          o.h -= 90*dt;
+          if (o.h <= o.minH){ o.h = o.minH; o.phase='up'; }
+        }
+      } else if (o.type==='bucket'){
+        o.phase += o.speed*dt;
+        o.x += Math.sin(o.phase)*14*dt; // slight x wobble
+      }
+    }
+
+    // Spawn
+    trySpawn();
+
+    // Player horizontal is fixed; update vertical position with collisions
+    resolvePlayer(dt);
+
+    // Coins
+    for (const c of STATE.coinsWorld){
+      c.t += dt*2.4;
+      c.y += Math.sin(c.t)*12*dt; // bobbing
+    }
+    // Pickups
+    for (const p of STATE.pickups){
+      p.t += dt*2.2;
+      p.y += Math.sin(p.t)*10*dt;
+    }
+
+    // Cleanup: remove offscreen obstacles/coins/pickups
+    pruneList(STATE.obs,    o => ((o.x - STATE.scrollX) < -300) || o.dead);
+    pruneList(STATE.coinsWorld, c => ((c.x - STATE.scrollX) < -300));
+    pruneList(STATE.pickups, p => ((p.x - STATE.scrollX) < -300));
+
+    // HUD
+    hudM.textContent = Math.floor(STATE.distance);
+    hudK.textContent = Math.floor(STATE.speed * 3.6);
+    hudJ.textContent = `${Math.min(STATE.jumps, STATE.maxJumps)}/${STATE.maxJumps}`;
+    hudC.textContent = STATE.coins;
+    boostFill.style.width = `${Math.floor(STATE.unlimitedBoost>0 ? 100 : STATE.boostGauge*100)}%`;
+  }
+
+  function pruneList(arr, cond){
+    for (let i=arr.length-1;i>=0;i--) if (cond(arr[i])) arr.splice(i,1);
+  }
+
+  function handleVillain(dt){
+    // When to appear (1000~2000m intervals)
+    const m = Math.floor(STATE.distance);
+    if (!STATE.villain && m >= STATE.villainDueM){
+      // Cut-in
+      showCutin(IM.viranOP, 2.0);
+      STATE.villain = createVillain();
+      // schedule next
+      STATE.villainDueM = m + rand(1000,2000);
+    }
+    const V = STATE.villain;
+    if (!V) return;
+
+    // Always stay ahead of player (never be passed)
+    const targetX = STATE.scrollX + player.x + 280;
+    if (V.x < targetX) V.x += (targetX - V.x) * Math.min(1, dt*1.5);
+
+    if (V.phase==='enter'){
+      V.y += V.vy * dt;
+      if (V.y >= STATE.groundY - 220){ V.y = STATE.groundY - 220; V.phase='attack'; V.timer=0; }
+    } else if (V.phase==='attack'){
+      V.timer += dt;
+      // random drop timing (normal-long intervals)
+      if (V.dropCount < V.dropTarget){
+        if (Math.random() < 0.01 + Math.min(.25, V.timer*0.05)){
+          V.timer = 0;
+          // drop forward to player's path
+          const fx = V.x - 20 + frand(-20, 40);
+          const fy = V.y + 20;
+          const f = createFire(fx, fy);
+          // aim forward (toward run direction)
+          f.vx = frand(-20, 20); // gentle horizontal; will still land ahead due to spawn x
+          f.vy = -frand(220, 320);
+          STATE.fires.push(f);
+          V.dropCount++;
+        }
+      } else {
+        V.phase = 'leave';
+      }
+    } else if (V.phase==='leave'){
+      V.y -= 18 * dt; // drift upward
+      if (V.y < -140){ STATE.villain = null; }
+    }
+  }
+
+  function resolvePlayer(dt){
+    // Baseline desired y
+    const baseY = STATE.groundY;
+
+    // Apply vertical velocity
+    player.y += player.vy * dt;
+
+    // Colliders & platforms
+    player.onGround = false;
+    let snapY = baseY - player.h; // ground top snap
+
+    // 1) Check wedge incline first (allows angle & auto jump)
+    player.onWedge = null;
+    for (const o of STATE.obs){
+      const sx = o.x - STATE.scrollX;
+      if (o.type==='wedge'){
+        const left = sx, right = sx + o.width, top = o.baseY - o.height;
+        const px = player.x + player.w*0.5;
+        const pyBottom = player.y + player.h;
+
+        if (px >= left && px <= right){
+          // height along wedge (linear from top-left to base-right)
+          const t = (px - left)/o.width; // 0..1
+          const yLine = o.baseY - o.height*(1-t);
+          if (pyBottom > yLine - 12 && pyBottom < yLine + 14 && player.vy >= 0){
+            // snap to wedge
+            player.y = yLine - player.h;
+            player.vy = 0;
+            player.onGround = true;
+            player.onWedge = o;
+            // tilt character to slope
+            player.tilt = Math.atan2(o.height, o.width);
+            // auto jump at ~60%
+            if (t > 0.60){
+              player.vy = -460;
+              STATE.jumps = 1; // consume jump-like
+              STATE.speed += 2.0; // small accel
+              player.onWedge = null;
+            }
+          }
+        }
+      }
+    }
+    if (!player.onWedge){ player.tilt = 0; }
+
+    // 2) Trampoline (top surface bounce; side deadly)
+    player.onTramp = null;
+    for (const o of STATE.obs){
+      const sx = o.x - STATE.scrollX, sy = o.baseY - o.h;
+      if (o.type==='tramp'){
+        // top landing
+        const hitTop = rectsOverlap(player.x, player.y+player.h-6, player.w, 6, sx, o.baseY - o.h, o.w, 6);
+        const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, sy, 6, o.h) ||
+                        rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-6, sy, 6, o.h);
+        if (hitSide) kill();
+        else if (hitTop && player.vy >= 0){
+          player.y = o.baseY - o.h - player.h;
+          player.vy = -640; // high bounce
+          STATE.jumps = 1;  // allow in-air follow-up
+          player.onTramp = o;
+        }
+      }
+    }
+
+    // 3) Dokan platform (top ride & side deadly)
+    player.onDokan = null;
+    for (const o of STATE.obs){
+      if (o.type!=='dokan') continue;
+      const sx = o.x - STATE.scrollX;
+      const top = o.baseY - o.h;
+      const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, top, 4, o.h) ||
+                      rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-4, top, 4, o.h);
+      if (hitSide) kill();
+      // top snap with ±12px tolerance
+      const withinX = (player.x + player.w*0.5) >= sx && (player.x + player.w*0.5) <= sx+o.w;
+      const pyBottom = player.y + player.h;
+      if (withinX && Math.abs(pyBottom - top) <= 12 && player.vy >= 0){
+        player.y = top - player.h;
+        player.vy = 0;
+        player.onGround = true;
+        player.onDokan = o;
+      }
+    }
+
+    // 4) Contena platform (ride & side deadly; can chain)
+    player.onContena = null;
+    for (const o of STATE.obs){
+      if (o.type!=='contena') continue;
+      const sx = o.x - STATE.scrollX, top = o.baseY - o.h;
+      const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, top, 4, o.h) ||
+                      rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-4, top, 4, o.h);
+      if (hitSide) kill();
+      const centerX = player.x + player.w*0.5;
+      const within = centerX >= sx && centerX <= sx+o.w;
+      const pyBottom = player.y + player.h;
+      if (within && Math.abs(pyBottom - top) <= 12 && player.vy >= 0){
+        player.y = top - player.h; player.vy=0; player.onGround=true; player.onContena=o;
+      }
+    }
+
+    // 5) Corn & Bucket side collisions (deadly)
+    for (const o of STATE.obs){
+      const sx = o.x - STATE.scrollX, top = o.baseY - (o.h||0);
+      if (o.type==='corn' || o.type==='bucket'){
+        if (rectsOverlap(player.x, player.y, player.w, player.h, sx, top, o.w, o.h)) kill();
+      }
+      if (o.type==='kanban'){
+        // ensure it's at ground and solid only visually (not deadly)
+        // no collision
+      }
+    }
+
+    // 6) Ground snap if no platform
+    if (!player.onGround && player.vy>=0 && (player.y + player.h) >= snapY){
+      player.y = snapY - player.h;
+      player.vy = 0;
+      player.onGround = true;
+      STATE.jumps = 0;
+    }
+    if (player.onGround){
+      STATE.jumps = 0;
+    }
+
+    // 7) Fireballs collision (deadly on touch, unless invincible)
+    for (const f of STATE.fires){
+      if (circleRectOverlap(f.x - STATE.scrollX, f.y, f.r, player.x, player.y, player.w, player.h)){
+        kill();
+      }
+    }
+
+    // 8) Coins collection
+    for (const c of STATE.coinsWorld){
+      if (circleRectOverlap(c.x - STATE.scrollX, c.y, c.r, player.x, player.y, player.w, player.h)){
+        c.x = -99999; addCoin(1);
+      }
+    }
+
+    // 9) Pickups collection (only if slot available)
+    for (const p of STATE.pickups){
+      if (rectsOverlap(player.x, player.y, player.w, player.h, p.x - STATE.scrollX, p.y, 36, 36)){
+        // try to add to slots
+        if (pushItem(p.kind)){
+          p.x = -99999;
+        }
+      }
+    }
+
+    // 10) If player runs into side of wedge/tramp/contena/dokan as a side collision (handled above)
+    // Already processed.
+
+    // Limit vertical below screen
+    if (player.y > H/DPR) kill();
+  }
+
+  function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){
+    return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+  }
+  function circleRectOverlap(cx, cy, cr, rx, ry, rw, rh){
+    const nx = clamp(cx, rx, rx+rw);
+    const ny = clamp(cy, ry, ry+rh);
+    const dx = cx - nx, dy = cy - ny;
+    return (dx*dx + dy*dy) <= cr*cr;
+  }
+
+  // ---------- Draw ----------
+  function draw(){
+    // Clear
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0,0,W,H);
+
+    // Sky
+    if (PAT.bg){
+      ctx.save();
+      ctx.fillStyle = PAT.bg;
+      // parallax slight
+      const ox = - (STATE.scrollX*0.1) % IM.bg.width;
+      ctx.translate(ox*DPR, 0);
+      ctx.fillRect(-IM.bg.width*DPR,0, (IM.bg.width*3)*DPR, H);
+      ctx.restore();
+    }
+
+    // Ground (infinite repeat)
+    const groundTop = STATE.groundY*DPR;
+    const gImg = IM.ground;
+    if (gImg){
+      const tw = gImg.width*DPR, th = gImg.height*DPR;
+      // Tile only horizontally; align top of green area visually at groundTop-th
+      const gy = groundTop - th + 16*DPR; // small tweak so the "green" sits at run line
+      const ox = - (STATE.scrollX*DPR) % tw;
+      for (let x = ox - tw; x < W+tw; x += tw){
+        ctx.drawImage(gImg, x, gy, tw, th);
+      }
+    }
+
+    // Optional: road stripe mid-layer (if provided)
+    if (IM.road){
+      const tw = IM.road.width*DPR, th = IM.road.height*DPR;
+      const ry = (STATE.groundY - 64)*DPR;
+      const ox = - (STATE.scrollX*1.2*DPR) % tw;
+      for (let x=ox-tw; x<W+tw; x+=tw) ctx.drawImage(IM.road, x, ry, tw, th);
+    }
+
+    // Coins
+    for (const c of STATE.coinsWorld){
+      const sx = (c.x - STATE.scrollX)*DPR;
+      const sy = c.y*DPR;
+      drawCentered(IM.coin, sx, sy, 28*DPR, 28*DPR);
+    }
+
+    // Pickups
+    for (const p of STATE.pickups){
+      const sx = (p.x - STATE.scrollX)*DPR;
+      const sy = p.y*DPR;
+      drawCentered(p.img, sx, sy, 36*DPR, 36*DPR);
+    }
+
+    // Obstacles (draw behind player except front-facing as needed)
+    for (const o of STATE.obs){
+      const sx = (o.x - STATE.scrollX)*DPR;
+      if (o.type==='dokan'){
+        ctx.drawImage(IM.dokan, sx, (o.baseY - o.h)*DPR, IM.dokan.width*DPR, o.h*DPR);
+      } else if (o.type==='contena'){
+        ctx.drawImage(IM.contena, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
+      } else if (o.type==='tramp'){
+        ctx.drawImage(IM.tramp, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
+      } else if (o.type==='wedge'){
+        // draw wedge image stretched to width/height, matching its triangular look
+        ctx.save();
+        ctx.drawImage(IM.wedge, sx, (o.baseY - o.height)*DPR, o.width*DPR, o.height*DPR);
+        ctx.restore();
+      } else if (o.type==='kanban'){
+        const img = IM[o.kind];
+        ctx.drawImage(img, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
+      } else if (o.type==='bucket'){
+        ctx.drawImage(IM.bucket, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
+      } else if (o.type==='corn'){
+        ctx.drawImage(IM.corn, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
+      }
+    }
+
+    // Fireballs
+    for (const f of STATE.fires){
+      drawCentered(IM.fire, (f.x - STATE.scrollX)*DPR, f.y*DPR, 40*DPR, 40*DPR);
+    }
+
+    // Villain
+    if (STATE.villain){
+      drawCentered(IM.viran, (STATE.villain.x - STATE.scrollX)*DPR, STATE.villain.y*DPR, 180*DPR, 180*DPR);
+    }
+
+    // Player (sprite; change to gold body if invincible)
+    ctx.save();
+    ctx.translate((player.x + player.w/2)*DPR, (player.y + player.h/2)*DPR);
+    if (player.tilt) ctx.rotate(player.tilt);
+    const img = player.goldBody ? IM.gold : player.sprite;
+    drawCentered(img, 0, 0, player.w*DPR, player.h*DPR);
+    // sparkle overlay if invincible
+    if (STATE.invincible>0){
+      // draw small star flickers
+      const t = STATE.time*12;
+      const sImg = (Math.floor(t)%2===0) ? IM.hoshi1 : IM.hoshi2;
+      drawCentered(sImg, -player.w*DPR*0.35, -player.h*DPR*0.35, 20*DPR, 20*DPR);
+      drawCentered(sImg,  player.w*DPR*0.32, -player.h*DPR*0.28, 24*DPR, 24*DPR);
+      drawCentered(sImg,  0, player.h*DPR*0.35, 18*DPR, 18*DPR);
+    }
+    ctx.restore();
+
+    // Sparkle full-screen (for extra glam during muteki)
+    if (STATE.invincible>0){
+      sparkCtx.clearRect(0,0,W,H);
+      const count = 18;
+      for (let i=0;i<count;i++){
+        const x = (Math.sin(STATE.time*2 + i)*0.5+0.5) * W;
+        const y = (i/count) * H;
+        const sz = (Math.sin(STATE.time*4 + i)*0.5+0.5) * 18 + 8;
+        drawCenteredTo(sparkCtx, (Math.floor(STATE.time*8+i)%2)?IM.hoshi1:IM.hoshi2, x, y, sz, sz);
+      }
+    } else {
+      sparkCtx.clearRect(0,0,W,H);
+    }
+  }
+
+  function drawCentered(img, cx, cy, w, h){
+    ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
+  }
+  function drawCenteredTo(c2d, img, cx, cy, w, h){
+    c2d.drawImage(img, cx - w/2, cy - h/2, w, h);
+  }
+
+  // ---------- Boot ----------
+  bindControls();
+  loadAll().then(()=>{
+    startOP();
+    loop(0);
+  }).catch(err=>{
+    console.error(err);
+    alert('画像の読み込みに失敗しました。ファイル名（大文字/小文字）を確認してください。');
+  });
+
+})();
 </script>
 </body>
 </html>
