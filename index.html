@@ -2,1216 +2,833 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no, maximum-scale=1">
-<title>MOB Runner (Mobile, 1-file, Canvas)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>MOB CART Runner — v3 安定版（復元）</title>
 <style>
   :root{
-    --hud-bg: rgba(10,10,14,.72);
-    --hud-fg: #fff;
-    --hud-dim:#9aa4b2;
-    --accent:#13c4ff;
-    --danger:#ff4d4f;
-    --ok:#3bd671;
-    --gold:#ffcc33;
-    --btn:#171a21;
-    --btn2:#222633;
-    --edge:#2e3445;
+    --ui-bg:#0b0d10;--ui-fg:#fff;--ui-dim:#a8b0bf;--ui-ac:#2bd3ff;
+    --pill:#1a1e26;--pill2:#202532;--ok:#23c55e;--warn:#ef4444;--btn:#11141a;--btn2:#1b202a;
+    --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px);
   }
-
-  html,body{height:100%;margin:0;background:#000;color:var(--hud-fg);-webkit-text-size-adjust:100%;}
-  /* Full-bleed game area; canvas pixels are managed for DPR inside JS */
-  #wrap{
-    position:fixed; inset:0;
-    display:grid;
-    grid-template-rows: auto 1fr auto;
-    background:#000;
-    padding-top:env(safe-area-inset-top);
-    padding-bottom:calc(env(safe-area-inset-bottom) + 0px);
-  }
-
-  /* === HUD (top) === */
-  #hud{
-    position:sticky; top:0; z-index:50;
-    display:flex; gap:10px; align-items:center; justify-content:space-between;
-    padding:10px 12px;
-    background:var(--hud-bg); backdrop-filter: blur(8px);
-    border-bottom:1px solid #000a;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Hiragino Sans", "Yu Gothic", sans-serif;
-  }
-  .metric{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-  .m{display:flex; gap:6px; align-items:center; font-weight:600; font-size:13px}
-  .m span{color:var(--hud-dim); font-weight:500}
-  .bar{
-    width:min(42vw,260px); height:10px; border-radius:999px;
-    background:#1b2030; border:1px solid #0008; overflow:hidden;
-  }
-  .fill{height:100%; background:linear-gradient(90deg, #31d0ff, #6df2ff); width:0%}
-
-  /* === Canvas layer === */
-  #stage{
-    position:relative; z-index:1;
-  }
-  canvas{display:block; width:100%; height:100%; background:#000;}
-
-  /* === Controls (bottom fixed, outside canvas scaling) === */
-  #ctl{
-    position:sticky; bottom:0; z-index:60;
-    background:var(--hud-bg); backdrop-filter: blur(8px);
-    border-top:1px solid #000a;
-    padding:10px 10px calc(10px + env(safe-area-inset-bottom));
-    display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; align-items:center;
-  }
-  .btn{
-    -webkit-tap-highlight-color: transparent;
-    user-select:none;
-    background:linear-gradient(180deg, var(--btn2), var(--btn));
-    border:1px solid var(--edge);
-    box-shadow: inset 0 1px 0 #fff1, 0 2px 8px #0006;
-    color:#eef;
-    font-weight:700; font-size:14px; letter-spacing:.02em;
-    padding:14px 10px; border-radius:14px; text-align:center;
-  }
-  .btn:active{transform:translateY(1px); box-shadow: inset 0 1px 0 #fff1;}
-  .slotWrap{display:flex; gap:8px; justify-content:flex-end}
-  .slot{
-    width:52px; height:52px; border-radius:12px;
-    background:linear-gradient(180deg, #1e2230, #111521);
-    border:1px solid var(--edge);
-    position:relative; overflow:hidden;
-    display:flex; align-items:center; justify-content:center;
-  }
-  .slot img{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; image-rendering: pixelated;}
-  .slot .empty{color:#678; font-size:10px}
-
-  /* overlays */
-  #overlay, #cutin, #gameover, #op, #select{
-    position:fixed; inset:0; display:none; place-items:center; z-index:80; pointer-events:none;
-  }
-  #overlay{z-index:40}
-  .fade{animation:fade .35s ease-out}
-  @keyframes fade{from{opacity:0} to{opacity:1}}
-
-  .centerBox{
-    pointer-events:auto;
-    background:rgba(0,0,0,.75);
-    border:1px solid #000; border-radius:16px; padding:16px;
-    display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:center;
-    text-align:center;
-    box-shadow: 0 10px 40px #000a;
-  }
-  .big{font-size:34px; font-weight:800; letter-spacing:.06em}
-  .mid{font-size:18px; font-weight:700; color:#cbd5e1}
-
-  /* Selection */
-  #select .chrs{display:flex; gap:16px}
-  .choice{
-    width:min(44vw,180px); aspect-ratio:1; border-radius:18px;
-    background:#0f1220; border:1px solid #2a3044; overflow:hidden;
-    display:grid; place-items:center;
-  }
-  .choice img{width:100%; height:100%; object-fit:contain}
-
-  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:center}
-  .bSm{padding:10px 14px; border-radius:12px; border:1px solid #2a3044; background:#121626; color:#def; font-weight:700}
-
-  /* Muteki sparkle overlay (stars) */
-  .sparkle{position:fixed; inset:0; pointer-events:none; z-index:70; display:none}
-
-  /* Prevent long-press menus / text selection on iOS */
-  *{ -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; }
+  html,body{margin:0;padding:0;height:100%;background:#000;color:var(--ui-fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,'Hiragino Sans','Yu Gothic',sans-serif;}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;overflow:hidden;background:#000;}
+  /* ==== TOP BAR ==== */
+  .topbar{position:fixed;left:0;right:0;top:0;padding:calc(8px + var(--safe-top)) 12px 8px 12px;background:rgba(10,12,16,.9);backdrop-filter:saturate(140%) blur(10px);display:flex;align-items:center;gap:12px;z-index:50}
+  .title{display:flex;flex-direction:column;line-height:1.05}
+  .title b{font-size:16px;letter-spacing:.3px}
+  .title small{font-size:11px;color:var(--ui-dim)}
+  .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .ghost{background:linear-gradient(#11161d,#0b0f14);border:1px solid #2b3342;color:#dbe3f3;border-radius:14px;padding:8px 12px;font-size:13px}
+  /* ==== HUD ==== */
+  .hud{position:fixed;left:0;right:0;top:calc(48px + var(--safe-top));display:flex;gap:10px;align-items:center;z-index:40;padding:8px 12px;pointer-events:none}
+  .pill{pointer-events:auto;min-width:72px; padding:8px 12px;border-radius:18px;background:var(--pill);border:1px solid #2b3342;color:#e7ecf8;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+  .pill h6{margin:0;font-size:10px;color:#9fb0ce;font-weight:600}
+  .pill .v{font-size:14px;margin-top:2px}
+  .meter{width:16px;height:44px;border-radius:12px;background:var(--pill2);border:1px solid #2b3342;position:relative;overflow:hidden}
+  .meter .fill{position:absolute;left:2px;right:2px;bottom:2px;top:auto;height:0;border-radius:10px;background:linear-gradient(#6ee7ff,#38bdf8)}
+  .meter.ready{box-shadow:0 0 0 2px rgba(43,211,255,.15),0 0 14px rgba(55,194,255,.35) inset}
+  .pill.gold{background:linear-gradient(#3b2a00,#201800);border-color:#6b4e0d}
+  .pill.gold .v{color:#ffd76a}
+  .btn-mini{pointer-events:auto;margin-left:auto}
+  /* ==== CANVAS ==== */
+  #stageWrap{position:fixed;inset:0;display:flex;align-items:stretch;justify-content:stretch}
+  #cv{display:block;width:100%;height:100%;background:#000;touch-action:none}
+  /* ==== BOTTOM CONTROLS ==== */
+  .controls{position:fixed;left:0;right:0;bottom:0;z-index:45;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;padding:10px 12px calc(10px + var(--safe-bottom))}
+  .cbtn{font-size:15px;border-radius:16px;padding:14px 10px;border:1px solid #2b3342;background:#0e1218;box-shadow:0 8px 24px rgba(0,0,0,.35);color:#dfe7f7}
+  .cbtn:active{transform:translateY(1px)}
+  .jump{background:#0f1523}
+  .boost{background:#1a0f12}
+  .item{background:#0f171a}
+  .cbtn[disabled]{opacity:.35}
+  /* ==== OVERLAYS / CUT-INS ==== */
+  .cut{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:60}
+  .cut img{max-width:70vw;max-height:60vh;filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));opacity:0;transform:scale(.95);transition:opacity .25s ease, transform .25s ease}
+  .cut.show img{opacity:1;transform:scale(1)}
+  .countdown{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:64px;letter-spacing:2px;text-shadow:0 8px 30px rgba(0,0,0,.6);z-index:55;opacity:0;transition:opacity .2s}
+  .countdown.show{opacity:1}
+  .centerModal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:70}
+  .card{background:#0b0f15;border:1px solid #253044;border-radius:16px;padding:16px;min-width:260px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
+  .row{display:flex;gap:10px;align-items:center;justify-content:center}
+  .opt{border:1px solid #2b3342;background:#0d121a;border-radius:12px;padding:8px 10px}
+  .opt img{height:64px}
+  .stack{display:flex;gap:10px;justify-content:center;margin-top:10px}
+  .ghost2{background:#0e141c;border:1px solid #2a3547;border-radius:12px;padding:10px 12px}
+  .big{font-size:22px;font-weight:700;margin:0 0 8px 0}
+  .small{color:#a5b3cc;font-size:13px}
+  .stack .cbtn{padding:10px 12px}
 </style>
 </head>
 <body>
-<div id="wrap">
-  <div id="hud">
-    <div class="metric">
-      <div class="m"><span>距離</span><b id="m">0</b>m</div>
-      <div class="m"><span>速度</span><b id="kmh">0</b>km/h</div>
-      <div class="m"><span>ジャンプ</span><b id="j">0</b>/2</div>
-      <div class="m"><span>コイン</span><b id="c">0</b></div>
+  <div id="app">
+    <!-- Top bar -->
+    <div class="topbar">
+      <div class="title">
+        <b>MOB CART Runner</b>
+        <small>v3 安定版（復元）</small>
+      </div>
+      <div class="right">
+        <button id="btnFS" class="ghost">全画面</button>
+      </div>
     </div>
-    <div class="metric">
-      <div class="m"><span>BOOST</span></div>
-      <div class="bar"><div class="fill" id="boostFill"></div></div>
+
+    <!-- HUD -->
+    <div class="hud">
+      <div class="pill"><h6>距離</h6><div class="v" id="hudDist">0 m</div></div>
+      <div class="pill"><h6>速度</h6><div class="v" id="hudSpeed">0 km/h</div></div>
+      <div class="pill"><h6>ジャンプ</h6><div class="v" id="hudJump">×2</div></div>
+      <div class="meter" id="hudBoost"><div class="fill"></div></div>
+      <div class="pill" id="hudCoin"><h6>コイン</h6><div class="v">0/10</div></div>
+      <div class="btn-mini">
+        <button id="btnChange" class="ghost">キャラ変更</button>
+      </div>
+    </div>
+
+    <!-- Canvas Stage -->
+    <div id="stageWrap"><canvas id="cv" width="480" height="720"></canvas></div>
+
+    <!-- Bottom Controls -->
+    <div class="controls">
+      <button id="btnJump" class="cbtn jump">ジャンプ</button>
+      <button id="btnBoost" class="cbtn boost">ブースト</button>
+      <button id="btnItem1" class="cbtn item" disabled>アイテム1</button>
+      <button id="btnItem2" class="cbtn item" disabled>アイテム2</button>
+    </div>
+
+    <!-- Cut-in / overlays -->
+    <div class="cut" id="cut"><img id="cutImg" alt=""></div>
+    <div class="countdown" id="countdown">3</div>
+
+    <!-- Character select modal -->
+    <div class="centerModal" id="charSel" style="display:none">
+      <div class="card">
+        <div class="big">キャラ選択</div>
+        <div class="row">
+          <button class="opt" data-ch="orange"><img src="orange.png" alt="orange"></button>
+          <button class="opt" data-ch="VR"><img src="VR.png" alt="VR"></button>
+        </div>
+        <div class="stack">
+          <button id="btnStart" class="cbtn">スタート</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gameover modal -->
+    <div class="centerModal" id="gameOver" style="display:none">
+      <div class="card">
+        <div id="goMsg" class="big">記録 0m！</div>
+        <div class="small">2秒後にフェードします</div>
+        <div class="stack" style="margin-top:12px">
+          <button id="goRestart" class="cbtn">スタート</button>
+          <button id="goChange" class="cbtn">キャラ選択</button>
+          <button id="goQuit" class="cbtn">やめる</button>
+        </div>
+      </div>
     </div>
   </div>
-
-  <div id="stage"><canvas id="cv"></canvas></div>
-
-  <div id="ctl">
-    <div class="btn" id="btnJump">ジャンプ</div>
-    <div class="btn" id="btnBoost">ブースト</div>
-    <div class="slotWrap">
-      <div class="slot" id="slot0"><div class="empty">ITEM</div></div>
-      <div class="slot" id="slot1"><div class="empty">ITEM</div></div>
-    </div>
-  </div>
-</div>
-
-<!-- Overlays -->
-<div id="op" class="fade"><div class="centerBox">
-  <img id="opImg" alt="op" style="width:min(70vw,420px); height:auto; image-rendering:pixelated;">
-  <div class="mid">ロード中...</div>
-</div></div>
-
-<div id="select" class="fade"><div class="centerBox">
-  <div class="mid">キャラクターを選択</div>
-  <div class="chrs">
-    <button class="choice" data-ch="orange"><img src="orange.png" alt="orange"></button>
-    <button class="choice" data-ch="VR"><img src="VR.png" alt="vr"></button>
-  </div>
-</div></div>
-
-<div id="cutin" class="fade"><div class="centerBox">
-  <img id="cutinImg" style="width:min(70vw,420px);height:auto; image-rendering: pixelated;">
-</div></div>
-
-<div id="gameover" class="fade"><div class="centerBox">
-  <div class="big" id="recordTxt">記録 0m！</div>
-  <div class="row">
-    <button class="bSm" id="againSelect">キャラ選択</button>
-    <button class="bSm" id="againStart">スタート</button>
-    <button class="bSm" id="quitBtn">やめる</button>
-  </div>
-</div></div>
-
-<canvas id="spark" class="sparkle"></canvas>
 
 <script>
-/* ============================================================
-   Mobile 横スクロールランナー（1ファイル）
-   - 画像はリポジトリ直下に配置（大文字/小文字 厳守）
-   - iPhone Safari 対応（safe-area, address bar対策, touch操作）
-   - 外部ライブラリ不使用
-   ============================================================ */
+/* =========================================================
+   MOB CART Runner — 1ファイル 完成版（GitHub Pages 動作）
+   画像はリポジトリ直下／ファイル名・大文字小文字 厳守！
+   ========================================================= */
+
 (() => {
-  // ---------- Canvas / DPR ----------
+  // ---------- Safe 100vh fix ----------
+  const setVH = () => {
+    const h = window.innerHeight;
+    document.documentElement.style.setProperty('--vh', h+'px');
+  };
+  setVH(); addEventListener('resize', setVH);
+
+  // ---------- Canvas & context ----------
   const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d', { alpha: false });
-  const sparkCv = document.getElementById('spark');
-  const sparkCtx = sparkCv.getContext('2d', { alpha: true });
+  const ctx = cv.getContext('2d');
 
-  let DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-  let vw=0, vh=0;   // CSS pixels of canvas
-  let W=0, H=0;     // backing store pixels
-  function resize() {
-    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
-    vw = window.innerWidth;
-    vh = window.innerHeight
-         - 0 // we already use fixed grid with HUD/CTL outside canvas
-    ;
-    cv.width = Math.floor(vw * DPR);
-    cv.height = Math.floor((document.getElementById('stage').clientHeight) * DPR);
-    W = cv.width; H = cv.height;
-    sparkCv.width = W; sparkCv.height = H;
-    sparkCv.style.width = cv.style.width = '100%';
-    sparkCv.style.height = cv.style.height = '100%';
+  // Fit canvas to screen (cover style, keep aspect by scaling draw coords)
+  let vw=480, vh=720, scale=1;
+  function fitCanvas(){
+    const W = window.innerWidth, H = window.innerHeight;
+    // base logical size
+    vw = 540; vh = Math.max(900, Math.min(1080, Math.round(H*1))); // tall logical
+    cv.width = vw; cv.height = vh;
+    scale = 1; // drawing uses logical px directly
   }
-  window.addEventListener('resize', resize, { passive:true });
-  resize();
+  fitCanvas(); addEventListener('resize', fitCanvas);
 
-  // ---------- DOM refs ----------
-  const hudM = document.getElementById('m');
-  const hudK = document.getElementById('kmh');
-  const hudJ = document.getElementById('j');
-  const hudC = document.getElementById('c');
-  const boostFill = document.getElementById('boostFill');
+  // ---------- UI refs ----------
+  const elDist = document.getElementById('hudDist');
+  const elSpeed = document.getElementById('hudSpeed');
+  const elJump = document.getElementById('hudJump');
+  const elBoost = document.getElementById('hudBoost');
+  const elBoostFill = elBoost.querySelector('.fill');
+  const elCoin = document.getElementById('hudCoin').querySelector('.v');
 
   const btnJump = document.getElementById('btnJump');
   const btnBoost = document.getElementById('btnBoost');
-  const slotEl = [document.getElementById('slot0'), document.getElementById('slot1')];
+  const btnItem1 = document.getElementById('btnItem1');
+  const btnItem2 = document.getElementById('btnItem2');
+  const btnFS = document.getElementById('btnFS');
+  const btnChange = document.getElementById('btnChange');
+  const cut = document.getElementById('cut');
+  const cutImg = document.getElementById('cutImg');
+  const countdown = document.getElementById('countdown');
+  const charSel = document.getElementById('charSel');
+  const goModal = document.getElementById('gameOver');
+  const goMsg = document.getElementById('goMsg');
+  const goRestart = document.getElementById('goRestart');
+  const goChange = document.getElementById('goChange');
+  const goQuit = document.getElementById('goQuit');
+  const startBtn = document.getElementById('btnStart');
 
-  const overlayOP = document.getElementById('op');
-  const overlaySelect = document.getElementById('select');
-  const overlayCutin = document.getElementById('cutin');
-  const cutinImg = document.getElementById('cutinImg');
-  const overlayGO = document.getElementById('gameover');
-  const recordTxt = document.getElementById('recordTxt');
-  const opImg = document.getElementById('opImg');
-
-  document.getElementById('againSelect').onclick = () => startSelection();
-  document.getElementById('againStart').onclick  = () => restartSameChar();
-  document.getElementById('quitBtn').onclick     = () => { location.reload(); };
-
-  // ---------- Assets (filenames exact) ----------
-  // Required tiles/sprites (user supplies the PNGs with exact names):
-  const files = {
-    bg: 'sora.PNG',           // background sky (note: PNG uppercase)
-    ground: 'hatake2.png',    // ground (run on green area)
-    road: 'do-ro.png',        // optional mid layer road line (decorative)
-    coin: 'coin.png',
-    gold: 'gold.png',
-    hoshi1: 'hoshi1.png',
-    hoshi2: 'hoshi2.png',
-    muteki: 'mutekiop.png',
-    op: 'op.png',
-
-    // character choices (body)
-    ch_orange: 'orange.png',
-    ch_vr: 'VR.png',
-
-    // obstacles
-    corn: 'corn.PNG',         // instant death
-    dokan: 'dokan.png',       // extends/retracts, rideable top
-    wedge: 'jumpdai.png',     // triangular ramp
-    kanban1: 'kanban1.png',
-    kanban2: 'kanban2.png',
-    kanban3: 'kanban3.png',
-    kanban4: 'kanban4.png',
-    kanban5: 'kanban5.png',
-    kanban6: 'kanban6.png',
-
-    // new obstacles (追加仕様)
-    bucket: 'gomi.png',       // moves left-right; size ~ player
-    contena: 'contena.png',   // tall, rideable top; can chain 2-3
-    tramp: 'tora.png',        // trampoline: bounce high if land on top
-
-    // villain
-    viranOP: 'viran op.png',
-    viran: 'viran.png',
-    fire: 'tama.png',
-
-    // items (float pickups)
-    itemWing: 'tsubasa.png',  // 4段ジャンプ 5s
-    itemJump: 'jump.png',     // nearest corn/dokan -> wedge
-    itemEN: 'en.png',         // 5s unlimited boost
-  };
-
-  const IM = {}; // image objects
-  const PAT = {}; // patterns
-  function loadImage(name, src) {
-    return new Promise((res, rej) => {
+  // ---------- Assets ----------
+  const files = [
+    'sora.PNG','hatake2.png','do-ro.png',
+    'corn.PNG','dokan.png','jumpdai.png',
+    'orange.png','VR.png','op.png',
+    'kanban1.png','kanban2.png','kanban3.png','kanban4.png','kanban5.png','kanban6.png',
+    'coin.png','gold.png','hoshi1.png','hoshi2.png','mutekiop.png','viran op.png','viran.png','tama.png',
+    'tsubasa.png','jump.png','en.png',
+    // added
+    'gomi.png','contena.png','tora.png'
+  ];
+  const IMG = {};
+  let loaded = 0;
+  function loadAll(onDone){
+    files.forEach(fn=>{
       const img = new Image();
-      img.onload = () => { IM[name] = img; res(img); };
-      img.onerror = () => rej(new Error('Image load failed: ' + src));
-      img.src = src;
+      img.src = encodeURI(fn); // keep spaces like "viran op.png"
+      img.onload = ()=>{ IMG[fn]=img; loaded++; if(loaded===files.length) onDone(); };
+      img.onerror = ()=>{ console.warn('画像読み込み失敗:', fn); IMG[fn]=img; loaded++; if(loaded===files.length) onDone(); };
     });
   }
-  async function loadAll() {
-    const tasks = [];
-    for (const [k, v] of Object.entries(files)) tasks.push(loadImage(k, v));
-    await Promise.all(tasks);
-    // patterns
-    PAT.bg = ctx.createPattern(IM.bg, 'repeat');
-    PAT.ground = ctx.createPattern(IM.ground, 'repeat-x');
-    if (IM.road) PAT.road = ctx.createPattern(IM.road, 'repeat-x');
-    opImg.src = IM.op.src;
+
+  // ---------- Game state ----------
+  const RNG = (min,max)=>Math.random()*(max-min)+min;
+  const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+
+  const GROUND_Y = () => Math.floor(vh*0.74); // logical ground line
+  const RUN_X = () => Math.floor(vw*0.28);    // player fixed X
+  const SAFE_METERS = 200;                    // 安全地帯（即死障害なし）
+
+  const KMH_PER_PX = 0.06*3.6; // rough conversion tuning
+  const BOOST_MULT = 1.6;
+  const BOOST_TIME = 2.5;
+  const EN_TIME = 5.0;
+  const INV_TIME = 5.0;
+  const WING_TIME = 5.0;
+
+  let state = 'boot'; // boot->op->select->ready->countdown->play->gameover
+  let scrollX = 0;    // world distance in px
+  let meters = 0;     // display meters
+  let baseSpeed = 180; // px/s
+  let speed = baseSpeed;
+  let boostGauge = 0, boostMax = 100, boosting=0, enFree=0;
+  let invincible = 0;
+  let wingTime=0;
+  let coins = 0;
+  let coinNeed = 10;
+  let sparkleT=0, sparkleFrame=0;
+
+  let player = {
+    sprite:'orange.png', w:72, h:56,
+    x: RUN_X(), y: GROUND_Y()-56,
+    vy:0, onGround:true, jumpsLeft:2, tilt:0
+  };
+
+  const items=[]; // world items (coins & powerups)
+  const obstacles=[]; // world obstacles / signs
+  const fires=[]; // fireballs remain on ground
+  const vill=[]; // villain instances (rare, one at a time)
+  let nextVillAtM = RNG(1000,2000);
+
+  // item slots
+  const slots=[null,null];
+  function refreshSlotButtons(){
+    btnItem1.disabled = !slots[0];
+    btnItem2.disabled = !slots[1];
+    if(slots[0]) btnItem1.textContent = slots[0].type.toUpperCase();
+    else btnItem1.textContent = 'アイテム1';
+    if(slots[1]) btnItem2.textContent = slots[1].type.toUpperCase();
+    else btnItem2.textContent = 'アイテム2';
+  }
+  refreshSlotButtons();
+
+  // ---------- Helpers ----------
+  function showCut(fn, ms=2000){
+    cutImg.src = encodeURI(fn);
+    cut.classList.add('show');
+    setTimeout(()=>cut.classList.remove('show'), ms);
+  }
+  function showCountdown(seq=['3','2','1','GO'],step=700,cb){
+    let i=0;
+    function tick(){
+      countdown.textContent = seq[i];
+      countdown.classList.add('show');
+      setTimeout(()=>{countdown.classList.remove('show');}, step-150);
+      i++;
+      if(i<seq.length) setTimeout(tick, step);
+      else setTimeout(cb, step);
+    }
+    tick();
+  }
+  function pushItemSlot(type){
+    // 2枠まで
+    const has2 = slots[0] && slots[1];
+    if(has2) return false;
+    const obj = {type}; // {type:'tsubasa'|'jump'|'en'}
+    if(!slots[0]) slots[0]=obj; else slots[1]=obj;
+    refreshSlotButtons(); return true;
+  }
+  function useSlot(idx){
+    const it = slots[idx];
+    if(!it) return;
+    if(it.type==='tsubasa'){ wingTime = WING_TIME; }
+    if(it.type==='en'){ enFree = EN_TIME; }
+    if(it.type==='jump'){
+      // 最も近い致死障害物をジャンプ台化
+      let nearest=null, dmin=1e9;
+      obstacles.forEach(o=>{
+        if(!o.deadly) return; // only deadly
+        const d = o.x - scrollX - RUN_X();
+        if(d>0 && d<dmin){ dmin=d; nearest=o; }
+      });
+      if(nearest){
+        nearest.toJumpTimer = 4.0; // 4秒間ジャンプ台化
+        nearest.kind = 'jumpdai';
+        nearest.deadly=false;
+      }
+    }
+    slots[idx]=null; refreshSlotButtons();
   }
 
-  // ---------- Game State ----------
-  const STATE = {
-    time: 0,
-    dt: 0,
-    running: false,
-    inCountdown: false,
-    inOP: true,
-    inSelect: false,
-    inGO: false,
-    playerChoice: 'orange', // 'orange' | 'VR'
-    distance: 0, // meters
-    speed: 8.0, // m/s (game world); 1 m ≈ 48px (approx)
-    maxSpeed: 14.0,
-    baseSpeed: 8.0,
-    boostSpeed: 15.0,
-    pxPerM: 48, // pixel-to-meter
-    scrollX: 0, // world scroll
-    groundY: 0, // computed (px from top)
-    safeZoneM: 35, // no obstacles for first N meters
-    coins: 0,
-    jumps: 0,
-    maxJumps: 2,
-    invincible: 0, // seconds left
-    boostGauge: 0, // 0..1
-    boosting: 0,   // seconds left in active boost
-    unlimitedBoost: 0, // EN item effect seconds remaining
-    fourJump: 0,   // seconds remaining (tsubasa)
-    villainDueM: 1200, // next villain trigger distance (random between 1000-2000)
-    villain: null,
-    cutinTimer: 0,
+  // ---------- Obstacles / items spawner ----------
+  let lastSpawnX = 0, lastKind = '';
+  function canSpawn(kind){
+    const dx = (scrollX - lastSpawnX);
+    const minDiff = (kind===lastKind)? RNG(360,480) : RNG(240,360);
+    return dx>minDiff;
+  }
+  function spawnAt(kind, x){
+    const gy = GROUND_Y();
+    if(kind==='corn'){ // 即死
+      obstacles.push({kind:'corn', x, y:gy-48, w:40, h:48, deadly:true});
+    } else if(kind==='gomi'){ // バケツ ゆらゆら
+      obstacles.push({kind:'gomi', x, y:gy-44, w:42, h:44, deadly:true, sway:RNG(0,Math.PI*2)});
+    } else if(kind==='contena'){ // 上乗れる/横死 連結あり
+      const blocks = Math.random()<0.5?2:3;
+      for(let i=0;i<blocks;i++){
+        obstacles.push({kind:'contena', x:x+i*64, y:gy-72, w:64, h:72, deadlySide:true});
+      }
+    } else if(kind==='tora'){ // トランポリン
+      obstacles.push({kind:'tora', x, y:gy-54, w:64, h:54, deadlySide:true, bounceCd:0});
+    } else if(kind==='dokan'){ // 伸縮
+      obstacles.push({kind:'dokan', x, baseY:gy, phase:0, y:gy-20, w:48, h:20, deadlySide:true, topRide:true});
+    } else if(kind==='jumpdai'){
+      obstacles.push({kind:'jumpdai', x, y:gy-30, w:90, h:30, deadly:false});
+    } else if(kind==='kanban'){
+      const i = Math.floor(RNG(1,7));
+      obstacles.push({kind:'kanban', img:'kanban'+i+'.png', x, y:gy-100, w:110, h:100, deadly:false});
+    }
+  }
+  function spawnRandom(){
+    // 安全地帯中は即死系弱め
+    const m = meters;
+    let pool = ['corn','gomi','contena','tora','dokan','jumpdai','kanban'];
+    if(m<SAFE_METERS){
+      pool = ['jumpdai','kanban']; // 即死避け
+    }
+    const kind = pool[Math.floor(Math.random()*pool.length)];
+    if(!canSpawn(kind)) return;
+    const x = scrollX + vw + RNG(80,180);
+    spawnAt(kind, x);
+    lastSpawnX = scrollX; lastKind = kind;
+  }
+  function spawnCoinsAndItems(){
+    // 低頻度：コイン／アイテム
+    if(Math.random()<0.02){ // coin line / single
+      const gy = GROUND_Y();
+      const n = Math.random()<0.5?3:5;
+      const startX = scrollX + vw + RNG(100,240);
+      const baseY = gy - RNG(120,200);
+      for(let i=0;i<n;i++){
+        items.push({type:'coin', x:startX+i*28, y:baseY + Math.sin(i)*8, w:20,h:20});
+      }
+    }
+    if(Math.random()<0.006){ // rare item
+      const types = ['tsubasa','jump','en'];
+      const t = types[Math.floor(Math.random()*types.length)];
+      const gy = GROUND_Y();
+      items.push({type:t, x:scrollX+vw+RNG(140,300), y:gy-RNG(160,220), w:30,h:30, floatT:RNG(0,Math.PI*2)});
+    }
+  }
 
-    // Items in slots (at most 2)
-    slots: [null, null], // { kind:'wing'|'jump'|'en', img }
-    // Active item floating pickups
-    pickups: [],
-    // Obstacles currently in world
-    obs: [],
-    // Coins in world
-    coinsWorld: [],
-    // Fireballs
-    fires: [],
+  // ---------- Villain ----------
+  function maybeVillain(){
+    if(meters >= nextVillAtM && vill.length===0){
+      showCut('viran op.png', 2000);
+      // spawn after short delay
+      setTimeout(()=>{
+        vill.push({
+          x: scrollX + RUN_X() + 240,
+          y: -80,
+          vy: 20,
+          state:'descend', // descend -> hover -> throw -> ascend -> done
+          hoverY: GROUND_Y()-220,
+          throwLeft: Math.floor(RNG(5,9)),
+          throwT: RNG(1.0,1.8),
+        });
+      }, 450);
+      nextVillAtM += RNG(1000,2000);
+    }
+  }
+  function updateVill(dt){
+    for(const v of vill){
+      if(v.state==='descend'){
+        v.y += v.vy*dt;
+        if(v.y >= v.hoverY){ v.y = v.hoverY; v.state='hover'; }
+      } else if(v.state==='hover'){
+        // prevent overtake: keep in front
+        const targetX = scrollX + RUN_X() + 240;
+        v.x += (targetX - v.x) * 0.03;
+        v.throwT -= dt;
+        if(v.throwT<=0){
+          v.state='throw';
+          v.throwT = RNG(.6,1.2);
+        }
+      } else if(v.state==='throw'){
+        // drop fireball to player's forward direction
+        const tx = scrollX + RUN_X() + RNG(60,160);
+        fires.push({ x: v.x, y: v.y+20, vx:(tx-v.x)*0.6, vy:40, ay:520, w:28, h:28, landed:false});
+        v.throwLeft--;
+        v.state='hover';
+        if(v.throwLeft<=0) v.state='ascend';
+      } else if(v.state==='ascend'){
+        v.y -= 18*dt*60;
+        v.x += Math.sin(perfNow()*0.002)*0.3;
+        if(v.y<-120) v.state='done';
+      }
+    }
+    while(vill.length && vill[0].state==='done') vill.shift();
+  }
 
-    // spawn control
-    lastSpawnX: 0,
-    minGapPx: 420,            // minimal gap between obstacle groups
-    groupGapRangePx: [520, 960],
-    kanbanChance: 0.12,       // rare
-    coinChance: 0.07,         // rare
-    itemChance: 0.05,         // rare
-  };
+  // ---------- Input ----------
+  const press = {jump:false, boost:false};
+  btnJump.addEventListener('touchstart',e=>{e.preventDefault(); jump();});
+  btnJump.addEventListener('click',e=>{ jump(); });
+  btnBoost.addEventListener('touchstart',e=>{e.preventDefault(); tryBoost();});
+  btnBoost.addEventListener('click',e=>{ tryBoost(); });
 
-  // Player
-  const player = {
-    x: 0, y: 0, w: 64, h: 64,
-    vy: 0, onGround: false, onDokan: null, onContena: null, onTramp: null, onWedge: null,
-    facing: 1,
-    tilt: 0, // radians for wedge
-    sprite: null, // current body image
-    goldBody: false, // invincible body swap
-  };
+  btnItem1.addEventListener('click',()=>useSlot(0));
+  btnItem2.addEventListener('click',()=>useSlot(1));
 
-  // Utility
-  const clamp = (v,min,max)=> v<min?min:v>max?max:v;
-  const rand = (a,b)=> Math.random()*(b-a)+a|0; // int
-  const frand = (a,b)=> Math.random()*(b-a)+a;
-  const chance = p => Math.random()<p;
+  btnFS.addEventListener('click',()=>{
+    const el = document.documentElement;
+    if(!document.fullscreenElement){ el.requestFullscreen?.(); btnFS.textContent='全画面解除'; }
+    else{ document.exitFullscreen?.(); btnFS.textContent='全画面'; }
+  });
+  btnChange.addEventListener('click',()=> openSelect());
+
+  document.querySelectorAll('#charSel .opt').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const ch = btn.dataset.ch;
+      player.sprite = ch==='VR'?'VR.png':'orange.png';
+      [...document.querySelectorAll('#charSel .opt')].forEach(b=>b.style.outline='');
+      btn.style.outline = '2px solid #2bd3ff';
+    });
+  });
+  startBtn.addEventListener('click',()=>beginFromCountdown());
+
+  goRestart.addEventListener('click',()=>{ hideGo(); beginFromCountdown(); });
+  goChange.addEventListener('click',()=>{ hideGo(); openSelect(); });
+  goQuit.addEventListener('click',()=>{ location.reload(); });
 
   // ---------- Flow ----------
-  let rafId = 0, prevT = 0;
-  function loop(t){
-    rafId = requestAnimationFrame(loop);
-    if (!prevT) prevT = t;
-    const dt = Math.min(0.035, (t - prevT)/1000);
-    prevT = t;
-    STATE.dt = dt;
-    STATE.time += dt;
-
-    tick(dt);
-    draw();
+  function openSelect(){
+    state='select';
+    charSel.style.display='flex';
   }
-
-  // ---------- Init ----------
-  const key = { jump:false, boost:false, slot0:false, slot1:false };
-
-  function bindControls(){
-    const eat = e => { e.preventDefault(); e.stopPropagation(); };
-    const onTap = (el, fn) => {
-      el.addEventListener('touchstart', (e)=>{eat(e); fn();}, {passive:false});
-      el.addEventListener('mousedown', (e)=>{eat(e); fn();});
-    };
-    onTap(btnJump, ()=> tryJump());
-    onTap(btnBoost, ()=> tryBoost());
-
-    // item slots (use oldest first by default, but both are clickable)
-    slotEl[0].addEventListener('touchstart', e=>{e.preventDefault(); useSlot(0);}, {passive:false});
-    slotEl[1].addEventListener('touchstart', e=>{e.preventDefault(); useSlot(1);}, {passive:false});
-    slotEl[0].addEventListener('mousedown', e=>{e.preventDefault(); useSlot(0);});
-    slotEl[1].addEventListener('mousedown', e=>{e.preventDefault(); useSlot(1);});
-
-    // Keyboard (desktop debug)
-    window.addEventListener('keydown', (e)=>{
-      if (e.code==='Space') { tryJump(); }
-      if (e.code==='ShiftLeft' || e.code==='ShiftRight') { tryBoost(); }
-      if (e.code==='Digit1') useSlot(0);
-      if (e.code==='Digit2') useSlot(1);
+  function closeSelect(){ charSel.style.display='none'; }
+  function beginFromCountdown(){
+    closeSelect();
+    state='ready';
+    // move to start pos
+    player.x = RUN_X();
+    player.y = GROUND_Y()-player.h; player.vy=0; player.onGround=true; player.jumpsLeft=2; player.tilt=0;
+    // reset run vars
+    scrollX = 0; meters = 0; speed = baseSpeed; boostGauge=100; boosting=0; enFree=0; invincible=0; wingTime=0;
+    coins=0; elBoost.classList.remove('ready'); sparkleT=0; sparkleFrame=0;
+    items.length=0; obstacles.length=0; fires.length=0; vill.length=0;
+    nextVillAtM = RNG(1000,2000);
+    slots[0]=null; slots[1]=null; refreshSlotButtons();
+    // count down then play
+    state='countdown';
+    showCountdown(['3','2','1','GO'], 700, ()=>{
+      state='play';
     });
   }
 
-  function setSlotsUI(){
-    for (let i=0;i<2;i++){
-      const el = slotEl[i];
-      el.innerHTML = '';
-      if (!STATE.slots[i]) {
-        const d = document.createElement('div'); d.className='empty'; d.textContent='ITEM';
-        el.appendChild(d);
-      } else {
-        const im = document.createElement('img');
-        im.src = STATE.slots[i].img.src;
-        el.appendChild(im);
-      }
+  function showGo(){
+    goMsg.textContent = `記録 ${Math.floor(meters)}m！`;
+    goModal.style.display='flex';
+    // auto fade text info after 2s (UI stays until user presses)
+    setTimeout(()=>{}, 2000);
+  }
+  function hideGo(){ goModal.style.display='none'; }
+
+  // ---------- Start (OP → select) ----------
+  function boot(){
+    state='op';
+    showCut('op.png', 2000);
+    setTimeout(()=>openSelect(), 2000);
+  }
+
+  // ---------- Player actions ----------
+  function jump(){
+    if(state!=='play') return;
+    const maxJumps = (wingTime>0)?4:2;
+    if(player.onGround){
+      player.vy = -380; player.onGround=false; player.jumpsLeft = maxJumps-1; updateJumpHUD();
+    }else if(player.jumpsLeft>0){
+      player.vy = -360; player.jumpsLeft--; updateJumpHUD();
     }
   }
-
-  function pushItem(kind){
-    // rare, only if slot available
-    let img, label;
-    if (kind==='wing') { img = IM.itemWing; label='tsubasa'; }
-    else if (kind==='jump') { img = IM.itemJump; label='jump'; }
-    else { img = IM.itemEN; label='en'; }
-    const itm = { kind, img, label };
-    for (let i=0;i<2;i++){
-      if (!STATE.slots[i]) { STATE.slots[i] = itm; setSlotsUI(); return true; }
-    }
-    return false; // full
-  }
-
-  function useSlot(i){
-    const itm = STATE.slots[i];
-    if (!itm) return;
-    if (itm.kind==='wing'){
-      STATE.fourJump = 5.0; // 5s
-      STATE.maxJumps = 4;
-      showCutin(IM.itemWing, 1.2);
-    } else if (itm.kind==='jump'){
-      // nearest corn/dokan to player -> wedge
-      let nearest = null, dmin = 1e9;
-      for (const o of STATE.obs){
-        if (o.type==='corn' || o.type==='dokan'){
-          const d = (o.x - STATE.scrollX) - player.x;
-          if (d > 40 && d < dmin) { dmin = d; nearest = o; }
-        }
-      }
-      if (nearest){
-        // replace with wedge at same base position
-        const w = createWedge(nearest.x, nearest.baseY);
-        w.width = 140; w.height = 64;
-        // remove nearest
-        nearest.dead = true;
-        STATE.obs.push(w);
-        showCutin(IM.itemJump, 1.0);
-      }
-    } else if (itm.kind==='en'){
-      STATE.unlimitedBoost = 5.0;
-      showCutin(IM.itemEN, 1.2);
-    }
-    STATE.slots[i] = null;
-    setSlotsUI();
-  }
-
-  function showCutin(img, sec=2){
-    cutinImg.src = img.src;
-    overlayCutin.style.display = 'grid';
-    STATE.cutinTimer = sec;
-  }
-
-  function startOP(){
-    overlayOP.style.display = 'grid';
-    // 2s later -> selection
-    setTimeout(()=>{overlayOP.style.display='none'; startSelection();}, 2000);
-  }
-
-  function startSelection(){
-    STATE.inGO = false;
-    overlayGO.style.display='none';
-    overlaySelect.style.display = 'grid';
-    document.querySelectorAll('.choice').forEach(btn=>{
-      btn.onclick = ()=>{
-        STATE.playerChoice = btn.dataset.ch;
-        overlaySelect.style.display='none';
-        prepareStart();
-      };
-    });
-  }
-
-  function restartSameChar(){
-    overlayGO.style.display='none';
-    prepareStart();
-  }
-
-  function prepareStart(){
-    // Reset run state
-    STATE.distance = 0;
-    STATE.speed = STATE.baseSpeed;
-    STATE.scrollX = 0;
-    STATE.coins = 0;
-    STATE.jumps = 0;
-    STATE.invincible = 0;
-    STATE.boostGauge = 0;
-    STATE.boosting = 0;
-    STATE.unlimitedBoost = 0;
-    STATE.fourJump = 0;
-    STATE.maxJumps = 2;
-    STATE.obs.length = 0;
-    STATE.pickups.length = 0;
-    STATE.fires.length = 0;
-    STATE.coinsWorld.length = 0;
-    STATE.slots = [null, null];
-    STATE.lastSpawnX = 0;
-    STATE.villainDueM = rand(1000, 2000);
-    STATE.villain = null;
-    setSlotsUI();
-
-    // player position (fixed-X run)
-    player.w = 64; player.h = 64;
-    player.x = Math.floor((W/DPR)*0.28) * DPR; // fixed screen X (in backing px)
-    player.y = 0; player.vy = 0; player.onGround = false;
-    player.onDokan = player.onContena = player.onTramp = player.onWedge = null;
-    player.tilt = 0;
-    player.sprite = (STATE.playerChoice==='orange') ? IM.ch_orange : IM.ch_vr;
-    player.goldBody = false;
-
-    // 3-2-1-GO
-    STATE.inCountdown = true;
-    showCountdown(()=>{
-      STATE.inCountdown = false;
-      STATE.running = true;
-    });
-  }
-
-  function showCountdown(done){
-    const box = document.createElement('div');
-    box.className='centerBox';
-    box.style.position='fixed'; box.style.inset='0'; box.style.margin='auto';
-    box.style.width='min(55vw,320px)';
-    box.style.height='min(40vh,220px)';
-    box.style.zIndex='90';
-    box.innerHTML = `<div class="big" id="cdNum">3</div>`;
-    document.body.appendChild(box);
-    let i=3;
-    const timer = setInterval(()=>{
-      i--;
-      const el = box.querySelector('#cdNum');
-      if (i>0) el.textContent = String(i);
-      else if (i===0){ el.textContent = 'GO'; }
-      else {
-        clearInterval(timer);
-        box.remove();
-        done && done();
-      }
-    }, 800);
-  }
-
-  function gameOver(){
-    if (STATE.inGO) return;
-    STATE.running = false;
-    STATE.inGO = true;
-    player.vy = 0;
-    const meters = Math.floor(STATE.distance);
-    recordTxt.textContent = `記録 ${meters}m！`;
-    overlayGO.style.display = 'grid';
-    // fade out text after 2s (overlay stays with buttons)
-    setTimeout(()=>{ /* keep overlay with buttons */ }, 2000);
-  }
-
-  // ---------- World Builders ----------
-  function createCorn(x, baseY){
-    return {type:'corn', x, y:0, baseY, w:48, h:64, deadly:true};
-  }
-  function createBucket(x, baseY){
-    return {
-      type:'bucket', x, y:0, baseY, w:54, h:60, deadly:true,
-      phase: Math.random()*Math.PI*2, amp: 14, speed: 1.4 // small lateral oscillation
-    };
-  }
-  function createContena(x, baseY){
-    return {type:'contena', x, y:0, baseY, w:72, h:96, deadlySide:true, ride:true};
-  }
-  function createTramp(x, baseY){
-    return {type:'tramp', x, y:0, baseY, w:92, h:64, deadlySide:true, bounce:true};
-  }
-  function createDokan(x, baseY){
-    return {
-      type:'dokan', x, y:0, baseY, w:64, h:40, deadlySide:true, ride:true,
-      t:0, phase:'up', // up->hold->down
-      minH: 28, maxH: 120, hold: 2.0
-    };
-  }
-  function createWedge(x, baseY){
-    return {
-      type:'wedge', x, y:0, baseY, width:140, height:64, deadlySide:false, ride:true
-    };
-  }
-  function createKanban(x, baseY){
-    const idx = rand(1,7); // 1..6
-    const name = 'kanban'+Math.min(idx,6);
-    return {
-      type:'kanban', kind: name, x, y:0, baseY, w:140, h:110, deadly:false
-    };
-  }
-  function createCoin(x, baseY){
-    return {type:'coin', x, y: baseY-90-frand(0,40), r:16, vy: Math.sin(Math.random()*6.28)*8, t:Math.random()*6.28 };
-  }
-  function createPickup(x, baseY, kind){
-    const img = (kind==='wing')?IM.itemWing:(kind==='jump')?IM.itemJump:IM.itemEN;
-    return { kind, img, x, y: baseY-120-frand(0,40), vy:0, t:Math.random()*6.28 };
-  }
-  function createVillain(){
-    // floats from sky; never gets behind the player
-    const v = {
-      x: STATE.scrollX + player.x + 480, // ahead
-      y: -120,
-      vy: 24,
-      phase: 'enter', // enter->attack->leave
-      timer: 0,
-      dropCount: 0,
-      dropTarget: rand(5,9), // 5-8
-      alive: true
-    };
-    return v;
-  }
-  function createFire(x, y){
-    return {x, y, r:20, vy:0, vx: frand(-30,-10), ay: 900, landed:false}; // throw forward-ish
-  }
-
-  // ---------- Spawning ----------
-  function trySpawn(){
-    // Ensure spacing by group gap
-    const screenRightWorldX = STATE.scrollX + W/DPR + 60;
-    if (STATE.inCountdown || !STATE.running) return;
-    if (STATE.distance < STATE.safeZoneM) return; // safe at start
-
-    // place next group when far enough
-    if (screenRightWorldX - STATE.lastSpawnX < STATE.minGapPx) return;
-
-    // compute base Y (ground top)
-    const baseY = STATE.groundY;
-
-    // choose a group type
-    const options = ['corn','bucket','contena','tramp','dokan','wedge'];
-    // Bias common obstacles: corn, bucket, contena
-    const rnd = Math.random();
-    let type;
-    if (rnd < 0.28) type='corn';
-    else if (rnd < 0.52) type='bucket';
-    else if (rnd < 0.73) type='contena';
-    else if (rnd < 0.86) type='dokan';
-    else if (rnd < 0.94) type='tramp';
-    else type='wedge';
-
-    let x = screenRightWorldX + frand(80, 160);
-    const gap = frand(STATE.groupGapRangePx[0], STATE.groupGapRangePx[1]);
-
-    if (type==='corn'){
-      STATE.obs.push(createCorn(x, baseY));
-    } else if (type==='bucket'){
-      STATE.obs.push(createBucket(x, baseY));
-    } else if (type==='contena'){
-      const chain = Math.random()<0.5?2:3;
-      for (let i=0;i<chain;i++){
-        STATE.obs.push(createContena(x + i*76, baseY));
-      }
-    } else if (type==='tramp'){
-      STATE.obs.push(createTramp(x, baseY));
-    } else if (type==='dokan'){
-      STATE.obs.push(createDokan(x, baseY));
-    } else if (type==='wedge'){
-      STATE.obs.push(createWedge(x, baseY));
-    }
-
-    // Rare: kanban (big sign) – ensure aligned to ground, not floating
-    if (chance(STATE.kanbanChance)){
-      STATE.obs.push(createKanban(x + frand(120, 260), baseY));
-    }
-    // Rare: coin cluster
-    if (chance(STATE.coinChance)){
-      const count = rand(3,7);
-      for (let i=0;i<count;i++){
-        STATE.coinsWorld.push(createCoin(x + i*36, baseY));
-      }
-    }
-    // Rare: item pickup (wing/jump/en)
-    if (chance(STATE.itemChance)){
-      const roll = Math.random();
-      const kind = (roll<0.34)?'wing':(roll<0.67)?'jump':'en';
-      STATE.pickups.push(createPickup(x + frand(60,180), baseY, kind));
-    }
-
-    STATE.lastSpawnX = x + gap;
-  }
-
-  // ---------- Physics & Logic ----------
-  function tryJump(){
-    if (!STATE.running) return;
-    let maxJ = STATE.maxJumps;
-    if (STATE.boosting>0 && STATE.unlimitedBoost<=0) {
-      // boosting still allows jumping; already counted in maxJ
-    }
-    if (STATE.jumps < maxJ){
-      player.vy = -420; // jump impulse
-      STATE.jumps++;
-      player.onGround = false;
-      player.onDokan = player.onContena = player.onTramp = player.onWedge = null;
-    }
-  }
-
   function tryBoost(){
-    if (!STATE.running) return;
-    if (STATE.unlimitedBoost>0) {
-      // always allow during EN effect
-      STATE.boosting = 2.5;
-      return;
-    }
-    if (STATE.boostGauge >= 1){
-      STATE.boostGauge = 0;
-      STATE.boosting = 2.5;
+    if(state!=='play') return;
+    if(enFree>0){ boosting = BOOST_TIME; return; }
+    if(boostGauge>=boostMax){
+      boosting = BOOST_TIME;
+      boostGauge = 0;
+      elBoost.classList.remove('ready');
     }
   }
-
-  function addCoin(n=1){
-    STATE.coins += n;
-    if (STATE.coins >= 10){
-      STATE.coins -= 10;
-      // 5秒無敵
-      STATE.invincible = 5.0;
-      player.goldBody = true;
-      showCutin(IM.muteki, 2.0);
-      // sparkle on
-      document.getElementById('spark').style.display='block';
-    }
+  function updateJumpHUD(){
+    const maxJumps = (wingTime>0)?4:2;
+    const used = maxJumps - (player.onGround?maxJumps:player.jumpsLeft+1);
+    const remain = player.onGround?maxJumps:player.jumpsLeft;
+    elJump.textContent = '×'+remain;
   }
 
-  function kill(){
-    if (STATE.invincible>0) return; // ignore
-    gameOver();
-  }
+  // ---------- Collision ----------
+  function rects(a,b){ return !(a.x+a.w<b.x || b.x+b.w<a.x || a.y+a.h<b.y || b.y+b.h<a.y); }
 
-  // ---------- Tick ----------
-  function tick(dt){
-    // UI cutin
-    if (STATE.cutinTimer>0){
-      STATE.cutinTimer -= dt;
-      if (STATE.cutinTimer<=0){ overlayCutin.style.display='none'; }
-    }
+  // ---------- Main loop ----------
+  let last=0;
+  const perfNow = ()=>performance.now();
+  function tick(ts){
+    if(!last) last = ts;
+    let dt = (ts-last)/1000; last=ts;
+    dt = Math.min(dt, 1/30); // clamp
 
-    // OP and Selection
-    // (handled by overlay timing)
+    if(state==='play'){
+      // meters
+      const mult = boosting>0?BOOST_MULT:1;
+      const spd = speed*mult;
+      scrollX += spd*dt;
+      meters = scrollX/30; // rough convert
+      // build up boost
+      if(enFree<=0){
+        boostGauge = clamp(boostGauge + dt*22, 0, boostMax);
+        if(boostGauge>=boostMax) elBoost.classList.add('ready');
+      }
+      if(boosting>0) boosting -= dt;
+      if(enFree>0) enFree -= dt;
+      if(invincible>0) invincible -= dt;
+      if(wingTime>0){ wingTime -= dt; if(wingTime<=0 && !player.onGround){ player.jumpsLeft = 0; } }
 
-    // Boost gauge fill (when not boosting); slow trickle + faster by speed
-    if (!STATE.inCountdown && STATE.running && STATE.unlimitedBoost<=0){
-      STATE.boostGauge = clamp(STATE.boostGauge + dt*0.08 + dt*(STATE.speed-STATE.baseSpeed)*0.02, 0, 1);
-    }
+      // spawns
+      spawnRandom();
+      spawnCoinsAndItems();
+      maybeVillain();
 
-    // Effects timers
-    if (STATE.invincible>0){
-      STATE.invincible -= dt;
-      if (STATE.invincible<=0){ player.goldBody = false; document.getElementById('spark').style.display='none'; }
-    }
-    if (STATE.boosting>0){
-      STATE.boosting -= dt;
-    }
-    if (STATE.unlimitedBoost>0){
-      STATE.unlimitedBoost -= dt;
-      STATE.boosting = 0.25; // keep refreshing small burst to maintain speed
-    }
-    if (STATE.fourJump>0){
-      STATE.fourJump -= dt;
-      if (STATE.fourJump<=0){ STATE.maxJumps = 2; }
-    }
-
-    // Update speed
-    const targetSpeed = (STATE.boosting>0) ? STATE.boostSpeed : STATE.baseSpeed + Math.min(4.5, STATE.distance/1200*2.5);
-    STATE.speed += (targetSpeed - STATE.speed)*Math.min(1, dt*3.0);
-
-    // Distance and scroll
-    if (STATE.running){
-      const dx = STATE.speed * dt * STATE.pxPerM;
-      STATE.scrollX += dx;
-      STATE.distance += (dx / STATE.pxPerM);
-    }
-
-    // Ground snap Y (top of green area). For simplicity, run at H*0.75 baseline.
-    STATE.groundY = Math.floor((H/DPR) - 120); // 120px margin from bottom as ground level
-
-    // Player gravity
-    const G = 980; // px/s^2
-    if (!player.onGround){
-      player.vy += G * dt;
-    }
-
-    // Villain control
-    handleVillain(dt);
-
-    // Fireballs
-    for (const f of STATE.fires){
-      if (!f.landed){
-        f.vy += f.ay * dt;
-        f.x += f.vx * dt;
-        f.y += f.vy * dt;
-        if (f.y + f.r >= STATE.groundY){
-          f.y = STATE.groundY - f.r;
-          f.vy = 0; f.vx = 0; f.landed = true;
+      // update obstacles
+      const gy = GROUND_Y();
+      for(const o of obstacles){
+        // dokan伸縮
+        if(o.kind==='dokan'){
+          o.phase = (o.phase + dt) % 4.0; // 0-2 rise,2-4 fall (with top wait)
+          let t=o.phase;
+          let height;
+          if(t<1.0){ height = 20 + t*60; }       // rise
+          else if(t<3.0){ height = 80; }         // top wait (2s)
+          else{ height = 80 - (t-3.0)*60; }      // fall
+          o.h = height; o.y = o.baseY - o.h;
+        }
+        // gomi sway
+        if(o.kind==='gomi'){
+          o.sway += dt*2.2;
+          o.y = gy-44 + Math.sin(o.sway)*4;
+          o.x += Math.sin(o.sway*0.7)*0.12; // ほんの少しガサゴソ
+        }
+        // tora cd
+        if(o.kind==='tora'){ if(o.bounceCd>0) o.bounceCd-=dt; }
+        // jump化タイマー
+        if(o.toJumpTimer){
+          o.toJumpTimer -= dt;
+          if(o.toJumpTimer<=0){
+            // もとに戻す（安全のためcorn扱いに）
+            o.kind='corn'; o.w=40;o.h=48;o.y=gy-48; o.deadly=true; o.toJumpTimer=0;
+          }
         }
       }
-    }
-    // Remove far-left fires
-    pruneList(STATE.fires, obj => (obj.x - STATE.scrollX) < -300);
+      // clean old
+      while(obstacles.length && obstacles[0].x < scrollX - 200) obstacles.shift();
 
-    // Obstacles update (animate dokan, bucket oscillation)
-    for (const o of STATE.obs){
-      if (o.type==='dokan'){
-        o.t += dt;
-        if (o.phase==='up'){
-          o.h += 90*dt;
-          if (o.h >= o.maxH){ o.h = o.maxH; o.phase='hold'; o.t=0; }
-        } else if (o.phase==='hold'){
-          if (o.t >= o.hold){ o.phase = 'down'; }
-        } else {
-          o.h -= 90*dt;
-          if (o.h <= o.minH){ o.h = o.minH; o.phase='up'; }
+      // fireballs
+      for(const f of fires){
+        if(!f.landed){
+          f.vy += f.ay*dt;
+          f.x += f.vx*dt;
+          f.y += f.vy*dt;
+          if(f.y + f.h >= gy-2){ f.y = gy-f.h; f.vx=0; f.vy=0; f.landed=true; }
         }
-      } else if (o.type==='bucket'){
-        o.phase += o.speed*dt;
-        o.x += Math.sin(o.phase)*14*dt; // slight x wobble
       }
-    }
+      while(fires.length && fires[0].x < scrollX - 200) fires.shift();
 
-    // Spawn
-    trySpawn();
+      // villain
+      updateVill(dt);
 
-    // Player horizontal is fixed; update vertical position with collisions
-    resolvePlayer(dt);
+      // player physics
+      player.vy += 900*dt; // gravity
+      player.y += player.vy*dt;
 
-    // Coins
-    for (const c of STATE.coinsWorld){
-      c.t += dt*2.4;
-      c.y += Math.sin(c.t)*12*dt; // bobbing
-    }
-    // Pickups
-    for (const p of STATE.pickups){
-      p.t += dt*2.2;
-      p.y += Math.sin(p.t)*10*dt;
-    }
-
-    // Cleanup: remove offscreen obstacles/coins/pickups
-    pruneList(STATE.obs,    o => ((o.x - STATE.scrollX) < -300) || o.dead);
-    pruneList(STATE.coinsWorld, c => ((c.x - STATE.scrollX) < -300));
-    pruneList(STATE.pickups, p => ((p.x - STATE.scrollX) < -300));
-
-    // HUD
-    hudM.textContent = Math.floor(STATE.distance);
-    hudK.textContent = Math.floor(STATE.speed * 3.6);
-    hudJ.textContent = `${Math.min(STATE.jumps, STATE.maxJumps)}/${STATE.maxJumps}`;
-    hudC.textContent = STATE.coins;
-    boostFill.style.width = `${Math.floor(STATE.unlimitedBoost>0 ? 100 : STATE.boostGauge*100)}%`;
-  }
-
-  function pruneList(arr, cond){
-    for (let i=arr.length-1;i>=0;i--) if (cond(arr[i])) arr.splice(i,1);
-  }
-
-  function handleVillain(dt){
-    // When to appear (1000~2000m intervals)
-    const m = Math.floor(STATE.distance);
-    if (!STATE.villain && m >= STATE.villainDueM){
-      // Cut-in
-      showCutin(IM.viranOP, 2.0);
-      STATE.villain = createVillain();
-      // schedule next
-      STATE.villainDueM = m + rand(1000,2000);
-    }
-    const V = STATE.villain;
-    if (!V) return;
-
-    // Always stay ahead of player (never be passed)
-    const targetX = STATE.scrollX + player.x + 280;
-    if (V.x < targetX) V.x += (targetX - V.x) * Math.min(1, dt*1.5);
-
-    if (V.phase==='enter'){
-      V.y += V.vy * dt;
-      if (V.y >= STATE.groundY - 220){ V.y = STATE.groundY - 220; V.phase='attack'; V.timer=0; }
-    } else if (V.phase==='attack'){
-      V.timer += dt;
-      // random drop timing (normal-long intervals)
-      if (V.dropCount < V.dropTarget){
-        if (Math.random() < 0.01 + Math.min(.25, V.timer*0.05)){
-          V.timer = 0;
-          // drop forward to player's path
-          const fx = V.x - 20 + frand(-20, 40);
-          const fy = V.y + 20;
-          const f = createFire(fx, fy);
-          // aim forward (toward run direction)
-          f.vx = frand(-20, 20); // gentle horizontal; will still land ahead due to spawn x
-          f.vy = -frand(220, 320);
-          STATE.fires.push(f);
-          V.dropCount++;
-        }
-      } else {
-        V.phase = 'leave';
-      }
-    } else if (V.phase==='leave'){
-      V.y -= 18 * dt; // drift upward
-      if (V.y < -140){ STATE.villain = null; }
-    }
-  }
-
-  function resolvePlayer(dt){
-    // Baseline desired y
-    const baseY = STATE.groundY;
-
-    // Apply vertical velocity
-    player.y += player.vy * dt;
-
-    // Colliders & platforms
-    player.onGround = false;
-    let snapY = baseY - player.h; // ground top snap
-
-    // 1) Check wedge incline first (allows angle & auto jump)
-    player.onWedge = null;
-    for (const o of STATE.obs){
-      const sx = o.x - STATE.scrollX;
-      if (o.type==='wedge'){
-        const left = sx, right = sx + o.width, top = o.baseY - o.height;
-        const px = player.x + player.w*0.5;
-        const pyBottom = player.y + player.h;
-
-        if (px >= left && px <= right){
-          // height along wedge (linear from top-left to base-right)
-          const t = (px - left)/o.width; // 0..1
-          const yLine = o.baseY - o.height*(1-t);
-          if (pyBottom > yLine - 12 && pyBottom < yLine + 14 && player.vy >= 0){
-            // snap to wedge
-            player.y = yLine - player.h;
-            player.vy = 0;
-            player.onGround = true;
-            player.onWedge = o;
-            // tilt character to slope
-            player.tilt = Math.atan2(o.height, o.width);
-            // auto jump at ~60%
-            if (t > 0.60){
-              player.vy = -460;
-              STATE.jumps = 1; // consume jump-like
-              STATE.speed += 2.0; // small accel
-              player.onWedge = null;
+      // ground snap
+      const groundTop = gy - player.h;
+      let onTop = false;
+      // check ride on contena/tora/dokan/jumpdai (top)
+      let rideTopY = groundTop;
+      for(const o of obstacles){
+        const rx = o.x - scrollX; // screenX
+        const a = {x:player.x, y:player.y, w:player.w, h:player.h};
+        const b = {x:rx, y:o.y, w:o.w, h:o.h};
+        // rideable kinds
+        const ride = (o.kind==='contena' || o.kind==='tora' || o.kind==='dokan' || o.kind==='jumpdai');
+        if(ride){
+          // vertical snap if horizontally overlapping and feet near top within ±12px
+          const feet = player.y + player.h;
+          const overlapX = !(a.x+a.w < b.x || b.x+b.w < a.x);
+          if(overlapX){
+            const top = o.y;
+            if(feet > top-12 && feet < top+14 && player.vy>=0){
+              rideTopY = Math.min(rideTopY, top - player.h);
+              onTop = true;
+              // tora bounce
+              if(o.kind==='tora' && o.bounceCd<=0){
+                player.vy = -520; o.bounceCd = 0.5;
+              }
+              // jumpdai auto jump at 60% width
+              if(o.kind==='jumpdai'){
+                const rel = ( (player.x + player.w*0.5) - b.x) / b.w;
+                // tilt while on slope
+                player.tilt = clamp((rel-0.3)*0.6, -0.15, 0.15);
+                if(rel>0.6 && rel<0.8){ player.vy = -420; speed += 20; } // small boost
+              } else {
+                player.tilt *= 0.9;
+              }
             }
           }
         }
       }
-    }
-    if (!player.onWedge){ player.tilt = 0; }
+      if(player.y >= rideTopY){
+        player.y = rideTopY; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); updateJumpHUD(); }
+      } else { player.onGround=false; }
 
-    // 2) Trampoline (top surface bounce; side deadly)
-    player.onTramp = null;
-    for (const o of STATE.obs){
-      const sx = o.x - STATE.scrollX, sy = o.baseY - o.h;
-      if (o.type==='tramp'){
-        // top landing
-        const hitTop = rectsOverlap(player.x, player.y+player.h-6, player.w, 6, sx, o.baseY - o.h, o.w, 6);
-        const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, sy, 6, o.h) ||
-                        rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-6, sy, 6, o.h);
-        if (hitSide) kill();
-        else if (hitTop && player.vy >= 0){
-          player.y = o.baseY - o.h - player.h;
-          player.vy = -640; // high bounce
-          STATE.jumps = 1;  // allow in-air follow-up
-          player.onTramp = o;
+      // collisions deadly
+      if(invincible<=0){
+        // fireballs
+        for(const f of fires){
+          const rx = f.x - scrollX;
+          if(rects({x:player.x,y:player.y,w:player.w,h:player.h},{x:rx,y:f.y,w:f.w,h:f.h})){
+            die();
+            break;
+          }
+        }
+        // obstacles
+        for(const o of obstacles){
+          const rx = o.x - scrollX;
+          const a = {x:player.x,y:player.y,w:player.w,h:player.h};
+          const b = {x:rx,y:o.y,w:o.w,h:o.h};
+          if(rects(a,b)){
+            if(o.kind==='contena'){
+              // top ride allowed, sides deadly
+              const feet = player.y+player.h;
+              if(!(feet<=o.y+4)) { die(); break; }
+            } else if(o.kind==='tora'){
+              const feet = player.y+player.h;
+              if(!(feet<=o.y+6)) { die(); break; }
+            } else if(o.kind==='dokan'){
+              const feet = player.y+player.h;
+              if(!(feet<=o.y+12)) { die(); break; }
+            } else if(o.kind==='jumpdai'){
+              // safe
+            } else if(o.kind==='kanban'){
+              // decorative (no collision)
+            } else {
+              die(); break;
+            }
+          }
         }
       }
-    }
 
-    // 3) Dokan platform (top ride & side deadly)
-    player.onDokan = null;
-    for (const o of STATE.obs){
-      if (o.type!=='dokan') continue;
-      const sx = o.x - STATE.scrollX;
-      const top = o.baseY - o.h;
-      const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, top, 4, o.h) ||
-                      rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-4, top, 4, o.h);
-      if (hitSide) kill();
-      // top snap with ±12px tolerance
-      const withinX = (player.x + player.w*0.5) >= sx && (player.x + player.w*0.5) <= sx+o.w;
-      const pyBottom = player.y + player.h;
-      if (withinX && Math.abs(pyBottom - top) <= 12 && player.vy >= 0){
-        player.y = top - player.h;
-        player.vy = 0;
-        player.onGround = true;
-        player.onDokan = o;
-      }
-    }
-
-    // 4) Contena platform (ride & side deadly; can chain)
-    player.onContena = null;
-    for (const o of STATE.obs){
-      if (o.type!=='contena') continue;
-      const sx = o.x - STATE.scrollX, top = o.baseY - o.h;
-      const hitSide = rectsOverlap(player.x, player.y, player.w, player.h, sx, top, 4, o.h) ||
-                      rectsOverlap(player.x, player.y, player.w, player.h, sx+o.w-4, top, 4, o.h);
-      if (hitSide) kill();
-      const centerX = player.x + player.w*0.5;
-      const within = centerX >= sx && centerX <= sx+o.w;
-      const pyBottom = player.y + player.h;
-      if (within && Math.abs(pyBottom - top) <= 12 && player.vy >= 0){
-        player.y = top - player.h; player.vy=0; player.onGround=true; player.onContena=o;
-      }
-    }
-
-    // 5) Corn & Bucket side collisions (deadly)
-    for (const o of STATE.obs){
-      const sx = o.x - STATE.scrollX, top = o.baseY - (o.h||0);
-      if (o.type==='corn' || o.type==='bucket'){
-        if (rectsOverlap(player.x, player.y, player.w, player.h, sx, top, o.w, o.h)) kill();
-      }
-      if (o.type==='kanban'){
-        // ensure it's at ground and solid only visually (not deadly)
-        // no collision
-      }
-    }
-
-    // 6) Ground snap if no platform
-    if (!player.onGround && player.vy>=0 && (player.y + player.h) >= snapY){
-      player.y = snapY - player.h;
-      player.vy = 0;
-      player.onGround = true;
-      STATE.jumps = 0;
-    }
-    if (player.onGround){
-      STATE.jumps = 0;
-    }
-
-    // 7) Fireballs collision (deadly on touch, unless invincible)
-    for (const f of STATE.fires){
-      if (circleRectOverlap(f.x - STATE.scrollX, f.y, f.r, player.x, player.y, player.w, player.h)){
-        kill();
-      }
-    }
-
-    // 8) Coins collection
-    for (const c of STATE.coinsWorld){
-      if (circleRectOverlap(c.x - STATE.scrollX, c.y, c.r, player.x, player.y, player.w, player.h)){
-        c.x = -99999; addCoin(1);
-      }
-    }
-
-    // 9) Pickups collection (only if slot available)
-    for (const p of STATE.pickups){
-      if (rectsOverlap(player.x, player.y, player.w, player.h, p.x - STATE.scrollX, p.y, 36, 36)){
-        // try to add to slots
-        if (pushItem(p.kind)){
-          p.x = -99999;
+      // item pickups
+      for(let i=items.length-1;i>=0;i--){
+        const it = items[i];
+        // float
+        if(it.type!=='coin'){
+          it.floatT += dt*1.6;
+          it.y += Math.sin(it.floatT)*0.4;
         }
+        const rx = it.x - scrollX;
+        if(rects({x:player.x,y:player.y,w:player.w,h:player.h},{x:rx,y:it.y,w:it.w,h:it.h})){
+          if(it.type==='coin'){
+            coins++; sparkleT=0; // start sparkle
+            if(coins>=coinNeed){
+              coins=0; invincible = INV_TIME; showCut('mutekiop.png', 2000);
+            }
+          }else{
+            pushItemSlot(it.type);
+          }
+          items.splice(i,1);
+        } else if(rx < -80){ items.splice(i,1); }
       }
+
+      // HUD visuals
+      elDist.textContent = `${Math.floor(meters)} m`;
+      // smooth speed display
+      dispSpeedT += dt;
+      if(dispSpeedT>=0.2){ dispSpeed = Math.round(spd*KMH_PER_PX); dispSpeedT=0; }
+      elSpeed.textContent = `${dispSpeed} km/h`;
+      elCoin.textContent = `${coins}/${coinNeed}`;
+      elJump.textContent = '×' + (player.onGround?(wingTime>0?4:2):player.jumpsLeft);
+      elBoostFill.style.height = `${(boostGauge/boostMax)*100}%`;
+
+      // sparkle anim for invincible
+      if(invincible>0){ sparkleT += dt*8; if(sparkleT>1){ sparkleT=0; sparkleFrame^=1; } }
     }
 
-    // 10) If player runs into side of wedge/tramp/contena/dokan as a side collision (handled above)
-    // Already processed.
+    // Render
+    draw();
 
-    // Limit vertical below screen
-    if (player.y > H/DPR) kill();
+    requestAnimationFrame(tick);
   }
+  let dispSpeed=0, dispSpeedT=0;
 
-  function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){
-    return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
-  }
-  function circleRectOverlap(cx, cy, cr, rx, ry, rw, rh){
-    const nx = clamp(cx, rx, rx+rw);
-    const ny = clamp(cy, ry, ry+rh);
-    const dx = cx - nx, dy = cy - ny;
-    return (dx*dx + dy*dy) <= cr*cr;
+  function die(){
+    state='gameover';
+    showGo();
+    // after 2s fade text (UI remains)
+    setTimeout(()=>{}, 2000);
   }
 
   // ---------- Draw ----------
   function draw(){
-    // Clear
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0,0,W,H);
+    ctx.clearRect(0,0,vw,vh);
 
-    // Sky
-    if (PAT.bg){
+    // Background pattern: sky
+    const sky = IMG['sora.PNG'];
+    if(sky && sky.width){
+      const pw = sky.width, ph = sky.height;
+      const tx = - (scrollX*0.25 % pw);
+      for(let x=tx-pw; x<vw+pw; x+=pw){
+        ctx.drawImage(sky, x, 0, pw, ph);
+      }
+    }else{
+      // fallback gradient
+      const g=ctx.createLinearGradient(0,0,0,vh); g.addColorStop(0,'#66c5f5'); g.addColorStop(1,'#b7e6ff');
+      ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
+    }
+
+    // mid ground (field)
+    const field = IMG['hatake2.png'];
+    const gy = GROUND_Y();
+    if(field && field.width){
+      const pw = field.width, ph = field.height;
+      const y = gy - Math.min(ph, Math.floor(vh*0.35));
+      const tx = - (scrollX*0.6 % pw);
+      for(let x=tx-pw; x<vw+pw; x+=pw) ctx.drawImage(field, x, y, pw, ph);
+    }
+
+    // road/deco
+    const road = IMG['do-ro.png'];
+    if(road && road.width){
+      const pw = road.width, ph = road.height;
+      const y = gy - Math.floor(ph*0.5);
+      const tx = - (scrollX % pw);
+      for(let x=tx-pw; x<vw+pw; x+=pw) ctx.drawImage(road, x, y, pw, ph);
+    }
+
+    // Obstacles / signs
+    for(const o of obstacles){
+      const sx = o.x - scrollX;
+      if(sx < -200 || sx>vw+200) continue;
       ctx.save();
-      ctx.fillStyle = PAT.bg;
-      // parallax slight
-      const ox = - (STATE.scrollX*0.1) % IM.bg.width;
-      ctx.translate(ox*DPR, 0);
-      ctx.fillRect(-IM.bg.width*DPR,0, (IM.bg.width*3)*DPR, H);
+      if(o.kind==='corn'){
+        const img=IMG['corn.PNG']; if(img&&img.width) ctx.drawImage(img, sx, o.y, 40, 48);
+        else drawBox('#f7b500',sx,o.y,40,48);
+      } else if(o.kind==='gomi'){
+        const img=IMG['gomi.png']; if(img&&img.width) ctx.drawImage(img, sx, o.y, o.w, o.h);
+        else drawBox('#9aa',sx,o.y,o.w,o.h);
+      } else if(o.kind==='contena'){
+        const img=IMG['contena.png']; if(img&&img.width) ctx.drawImage(img, sx, o.y, o.w, o.h);
+        else drawBox('#597',sx,o.y,o.w,o.h);
+      } else if(o.kind==='tora'){
+        const img=IMG['tora.png']; if(img&&img.width) ctx.drawImage(img, sx, o.y, o.w, o.h);
+        else drawBox('#946',sx,o.y,o.w,o.h);
+      } else if(o.kind==='dokan'){
+        const img=IMG['dokan.png']; if(img&&img.width) ctx.drawImage(img, sx, o.y, 48, o.h);
+        else drawBox('#2a5',sx,o.y,48,o.h);
+      } else if(o.kind==='jumpdai'){
+        const img=IMG['jumpdai.png']; if(img&&img.width) ctx.drawImage(img, sx, o.y, o.w, o.h);
+        else drawBox('#58a',sx,o.y,o.w,o.h);
+      } else if(o.kind==='kanban'){
+        const img=IMG[o.img]; if(img&&img.width) ctx.drawImage(img, sx, o.y, o.w, o.h);
+        else drawBox('#777',sx,o.y,o.w,o.h);
+      }
       ctx.restore();
     }
 
-    // Ground (infinite repeat)
-    const groundTop = STATE.groundY*DPR;
-    const gImg = IM.ground;
-    if (gImg){
-      const tw = gImg.width*DPR, th = gImg.height*DPR;
-      // Tile only horizontally; align top of green area visually at groundTop-th
-      const gy = groundTop - th + 16*DPR; // small tweak so the "green" sits at run line
-      const ox = - (STATE.scrollX*DPR) % tw;
-      for (let x = ox - tw; x < W+tw; x += tw){
-        ctx.drawImage(gImg, x, gy, tw, th);
-      }
-    }
-
-    // Optional: road stripe mid-layer (if provided)
-    if (IM.road){
-      const tw = IM.road.width*DPR, th = IM.road.height*DPR;
-      const ry = (STATE.groundY - 64)*DPR;
-      const ox = - (STATE.scrollX*1.2*DPR) % tw;
-      for (let x=ox-tw; x<W+tw; x+=tw) ctx.drawImage(IM.road, x, ry, tw, th);
-    }
-
-    // Coins
-    for (const c of STATE.coinsWorld){
-      const sx = (c.x - STATE.scrollX)*DPR;
-      const sy = c.y*DPR;
-      drawCentered(IM.coin, sx, sy, 28*DPR, 28*DPR);
-    }
-
-    // Pickups
-    for (const p of STATE.pickups){
-      const sx = (p.x - STATE.scrollX)*DPR;
-      const sy = p.y*DPR;
-      drawCentered(p.img, sx, sy, 36*DPR, 36*DPR);
-    }
-
-    // Obstacles (draw behind player except front-facing as needed)
-    for (const o of STATE.obs){
-      const sx = (o.x - STATE.scrollX)*DPR;
-      if (o.type==='dokan'){
-        ctx.drawImage(IM.dokan, sx, (o.baseY - o.h)*DPR, IM.dokan.width*DPR, o.h*DPR);
-      } else if (o.type==='contena'){
-        ctx.drawImage(IM.contena, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
-      } else if (o.type==='tramp'){
-        ctx.drawImage(IM.tramp, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
-      } else if (o.type==='wedge'){
-        // draw wedge image stretched to width/height, matching its triangular look
-        ctx.save();
-        ctx.drawImage(IM.wedge, sx, (o.baseY - o.height)*DPR, o.width*DPR, o.height*DPR);
-        ctx.restore();
-      } else if (o.type==='kanban'){
-        const img = IM[o.kind];
-        ctx.drawImage(img, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
-      } else if (o.type==='bucket'){
-        ctx.drawImage(IM.bucket, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
-      } else if (o.type==='corn'){
-        ctx.drawImage(IM.corn, sx, (o.baseY - o.h)*DPR, o.w*DPR, o.h*DPR);
-      }
-    }
-
-    // Fireballs
-    for (const f of STATE.fires){
-      drawCentered(IM.fire, (f.x - STATE.scrollX)*DPR, f.y*DPR, 40*DPR, 40*DPR);
+    // Fireballs remain
+    for(const f of fires){
+      const sx = f.x - scrollX;
+      if(sx < -120 || sx>vw+120) continue;
+      const img=IMG['tama.png']; 
+      if(img&&img.width) ctx.drawImage(img, sx, f.y, f.w, f.h);
+      else drawBox('#d33',sx,f.y,f.w,f.h);
     }
 
     // Villain
-    if (STATE.villain){
-      drawCentered(IM.viran, (STATE.villain.x - STATE.scrollX)*DPR, STATE.villain.y*DPR, 180*DPR, 180*DPR);
+    for(const v of vill){
+      const sx = v.x - scrollX;
+      const img=IMG['viran.png'];
+      if(img&&img.width) ctx.drawImage(img, sx-60, v.y-50, 120, 100);
+      else drawBox('#933', sx-40, v.y-30, 80, 60);
     }
 
-    // Player (sprite; change to gold body if invincible)
+    // Player
     ctx.save();
-    ctx.translate((player.x + player.w/2)*DPR, (player.y + player.h/2)*DPR);
-    if (player.tilt) ctx.rotate(player.tilt);
-    const img = player.goldBody ? IM.gold : player.sprite;
-    drawCentered(img, 0, 0, player.w*DPR, player.h*DPR);
-    // sparkle overlay if invincible
-    if (STATE.invincible>0){
-      // draw small star flickers
-      const t = STATE.time*12;
-      const sImg = (Math.floor(t)%2===0) ? IM.hoshi1 : IM.hoshi2;
-      drawCentered(sImg, -player.w*DPR*0.35, -player.h*DPR*0.35, 20*DPR, 20*DPR);
-      drawCentered(sImg,  player.w*DPR*0.32, -player.h*DPR*0.28, 24*DPR, 24*DPR);
-      drawCentered(sImg,  0, player.h*DPR*0.35, 18*DPR, 18*DPR);
+    ctx.translate(player.x+player.w/2, player.y+player.h/2);
+    ctx.rotate(player.tilt);
+    ctx.translate(-player.w/2, -player.h/2);
+    let body = (invincible>0)? 'gold.png' : player.sprite;
+    const img=IMG[body];
+    if(img&&img.width){
+      ctx.drawImage(img, 0, 0, player.w, player.h);
+      // sparkle overlay
+      if(invincible>0){
+        const s = (sparkleFrame? 'hoshi1.png' : 'hoshi2.png');
+        const sp=IMG[s];
+        if(sp&&sp.width) ctx.drawImage(sp, -6, -6, player.w+12, player.h+12);
+      }
+    }else{
+      drawBox('#0bf',0,0,player.w,player.h);
     }
     ctx.restore();
-
-    // Sparkle full-screen (for extra glam during muteki)
-    if (STATE.invincible>0){
-      sparkCtx.clearRect(0,0,W,H);
-      const count = 18;
-      for (let i=0;i<count;i++){
-        const x = (Math.sin(STATE.time*2 + i)*0.5+0.5) * W;
-        const y = (i/count) * H;
-        const sz = (Math.sin(STATE.time*4 + i)*0.5+0.5) * 18 + 8;
-        drawCenteredTo(sparkCtx, (Math.floor(STATE.time*8+i)%2)?IM.hoshi1:IM.hoshi2, x, y, sz, sz);
-      }
-    } else {
-      sparkCtx.clearRect(0,0,W,H);
-    }
   }
 
-  function drawCentered(img, cx, cy, w, h){
-    ctx.drawImage(img, cx - w/2, cy - h/2, w, h);
-  }
-  function drawCenteredTo(c2d, img, cx, cy, w, h){
-    c2d.drawImage(img, cx - w/2, cy - h/2, w, h);
-  }
+  function drawBox(c,x,y,w,h){ ctx.fillStyle=c; ctx.fillRect(x,y,w,h); }
 
-  // ---------- Boot ----------
-  bindControls();
-  loadAll().then(()=>{
-    startOP();
-    loop(0);
-  }).catch(err=>{
-    console.error(err);
-    alert('画像の読み込みに失敗しました。ファイル名（大文字/小文字）を確認してください。');
-  });
+  // ---------- Start ----------
+  loadAll(()=>boot());
 
 })();
 </script>
