@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB CART Runner — v3 安定版（地形/密着/サイズ 最終修正）</title>
+<title>MOB CART Runner — v3 安定版（帯埋め/密着/頻度 修正版）</title>
 <style>
   :root{
     --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
@@ -14,7 +14,6 @@
   button{touch-action:manipulation;-webkit-user-select:none;user-select:none}
   #app{position:fixed;inset:0;overflow:hidden}
 
-  /* Top bar */
   .topbar{position:fixed;inset:0 0 auto 0;z-index:50;display:flex;gap:12px;align-items:center;
     padding:calc(8px + var(--safe-top)) 12px 8px;background:rgba(11,15,20,.9);backdrop-filter:blur(8px)}
   .title{line-height:1.05}
@@ -23,7 +22,6 @@
   .right{margin-left:auto}
   .ghost{background:#0f141b;border:1px solid var(--line);color:#dfe7f7;border-radius:14px;padding:8px 12px;font-size:13px}
 
-  /* HUD */
   .hud{position:fixed;top:calc(48px + var(--safe-top));left:0;right:0;z-index:45;display:flex;gap:10px;align-items:center;padding:8px 12px;pointer-events:none}
   .pill{pointer-events:auto;min-width:72px;padding:8px 12px;border-radius:18px;background:#182028;border:1px solid var(--line)}
   .pill h6{margin:0;font-size:10px;color:var(--ui-dim)}
@@ -33,11 +31,9 @@
   .meter.ready{box-shadow:0 0 0 2px rgba(43,211,255,.15),0 0 14px rgba(55,194,255,.35) inset}
   .btn-mini{pointer-events:auto;margin-left:auto}
 
-  /* Canvas */
   #stageWrap{position:fixed;inset:0;z-index:10}
   #cv{width:100%;height:100%;display:block;background:#000;touch-action:none}
 
-  /* Bottom controls */
   .controls{position:fixed;left:0;right:0;bottom:0;z-index:100;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;
     padding:10px 12px calc(10px + var(--safe-bottom));pointer-events:auto}
   .cbtn{border-radius:16px;padding:14px 10px;border:1px solid var(--line);background:#0e1218;box-shadow:0 8px 24px rgba(0,0,0,.35);color:#dfe7f7;font-size:15px}
@@ -47,7 +43,6 @@
   .item{background:#0f171a}
   .cbtn[disabled]{opacity:.35}
 
-  /* Overlays */
   .cut{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;pointer-events:none}
   .cut img{max-width:70vw;max-height:60vh;filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));opacity:0;transform:scale(.95);transition:.25s}
   .cut.show img{opacity:1;transform:scale(1)}
@@ -65,7 +60,7 @@
 <body>
   <div id="app">
     <div class="topbar">
-      <div class="title"><b>MOB CART Runner</b><small>v3 安定版（地形/密着/サイズ 最終修正）</small></div>
+      <div class="title"><b>MOB CART Runner</b><small>v3 安定版（帯埋め/密着/頻度 修正版）</small></div>
       <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
     </div>
 
@@ -117,6 +112,7 @@
 (() => {
   /* ====== Canvas / layout ====== */
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   let vw=cv.width|0, vh=cv.height|0;
   function fit(){
     vw = cv.width  = Math.max(540, Math.min(720, Math.round(window.innerWidth  * 1)));
@@ -161,20 +157,19 @@
   files.forEach(fn=>{ const im=new Image(); im.src = encodeURI(fn); im.onload=()=>{IMG[fn]=im;if(--left===0) boot();}; im.onerror=()=>{IMG[fn]=im;if(--left===0) boot();}; });
 
   /* ====== World constants ====== */
-  const GY = ()=> Math.floor(vh*0.80);          // 地面上端（走行ラインの基準）
+  const GY = ()=> Math.floor(vh*0.80);          // 走行ライン（地面上端）
   const RUNX = ()=> Math.floor(vw*0.25);        // プレイヤーの固定X
   const SAFE_M = 80;                            // スタート安全地帯
   const KMH_PER_PX = 0.06*3.6;
 
-  // 画像の論理サイズ（大きめ）
   const SIZE = {
     player:{w:90,h:64},
-    corn:{w:64,h:86},
-    gomi:{w:84,h:78},
-    cont:{w:128,h:120},
-    tora:{w:140,h:96},
-    dokan:{w:96,h:160}, // 最大時
-    jump:{w:200,h:64},
+    corn:{w:72,h:96},
+    gomi:{w:96,h:90},
+    cont:{w:144,h:132},
+    tora:{w:160,h:110},
+    dokan:{w:112,h:160},     // 伸び最大
+    jump:{w:220,h:70},
     kanban:{w:432,h:324},
     coin:{w:26,h:26},
     item:{w:34,h:34}
@@ -209,7 +204,7 @@
   }
   function tileX(img, y, h, factor, overlapTop=0){
     if(!(img&&img.width)) return;
-    y = (y-overlapTop)|0; h = (h+overlapTop)|0; // 1px重ねで隙間対策
+    y = (y-overlapTop)|0; h = (h+overlapTop)|0;
     const aspect = img.width/img.height;
     const pw = Math.max(16, Math.round(h * aspect));
     const tx = - ((scrollX*factor) % pw);
@@ -218,22 +213,24 @@
 
   /* ====== Spawner ====== */
   let lastSpawnAt = -9999, lastKind='';
-  let lastKanbanAt = -99999; // 看板間距離
+  let lastKanbanAt = -99999;
+
   function canSpawn(kind){
     const dx = (scrollX - lastSpawnAt);
-    const need = (kind===lastKind)? 520:380; // 全体間隔
+    const need = (kind===lastKind)? 520:380;
     return dx>need;
   }
   function spawnAt(kind,x){
     const gy=GY()|0;
-    if(kind==='corn'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.corn.h)|0,w:SIZE.corn.w,h:SIZE.corn.h, deadly:true}); }
-    else if(kind==='gomi'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.gomi.h)|0,w:SIZE.gomi.w,h:SIZE.gomi.h, deadly:true, t:Math.random()*6}); }
-    else if(kind==='contena'){ const n=(Math.random()<.5?2:3); for(let i=0;i<n;i++) obstacles.push({kind,x:(x+i*(SIZE.cont.w+8))|0,y:(gy-SIZE.cont.h)|0,w:SIZE.cont.w,h:SIZE.cont.h, deadlySide:true}); }
-    else if(kind==='tora'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.tora.h)|0,w:SIZE.tora.w,h:SIZE.tora.h, deadlySide:true, cool:0}); }
-    else if(kind==='dokan'){ obstacles.push({kind,x:x|0,baseY:gy,phase:0,y:(gy-30)|0,w:SIZE.dokan.w,h:30, deadlySide:true}); }
-    else if(kind==='jumpdai'){ obstacles.push({kind,x:x|0,y:(gy-SIZE.jump.h)|0,w:SIZE.jump.w,h:SIZE.jump.h, kicked:false}); }
+    const groundY=(h)=> (gy-h)|0;
+    if(kind==='corn'){ obstacles.push({kind,x:x|0,y:groundY(SIZE.corn.h),w:SIZE.corn.w,h:SIZE.corn.h, deadly:true}); }
+    else if(kind==='gomi'){ obstacles.push({kind,x:x|0,y:groundY(SIZE.gomi.h),w:SIZE.gomi.w,h:SIZE.gomi.h, deadly:true, t:Math.random()*6}); } // 縦は動かさない
+    else if(kind==='contena'){ const n=(Math.random()<.5?2:3); for(let i=0;i<n;i++) obstacles.push({kind,x:(x+i*(SIZE.cont.w+8))|0,y:groundY(SIZE.cont.h),w:SIZE.cont.w,h:SIZE.cont.h, deadlySide:true}); }
+    else if(kind==='tora'){ obstacles.push({kind,x:x|0,y:groundY(SIZE.tora.h),w:SIZE.tora.w,h:SIZE.tora.h, deadlySide:true, cool:0}); }
+    else if(kind==='dokan'){ obstacles.push({kind,x:x|0,baseY:gy,phase:0,y:groundY(30),w:SIZE.dokan.w,h:30, deadlySide:true}); }
+    else if(kind==='jumpdai'){ obstacles.push({kind,x:x|0,y:groundY(SIZE.jump.h),w:SIZE.jump.w,h:SIZE.jump.h, kicked:false}); }
     else if(kind==='kanban'){ const nowX = scrollX|0; if(nowX-lastKanbanAt<1200) return; lastKanbanAt = nowX;
-      const i=1+Math.floor(Math.random()*6); obstacles.push({kind,img:'kanban'+i+'.png',x:x|0,y:(gy-SIZE.kanban.h)|0,w:SIZE.kanban.w,h:SIZE.kanban.h}); }
+      const i=1+Math.floor(Math.random()*6); obstacles.push({kind,img:'kanban'+i+'.png',x:x|0,y:groundY(SIZE.kanban.h),w:SIZE.kanban.w,h:SIZE.kanban.h}); }
   }
   function weightedPick(weights){ const sum=weights.reduce((a,b)=>a+b[1],0); let r=Math.random()*sum; for(const w of weights){ r-=w[1]; if(r<=0) return w[0]; } return weights[0][0]; }
   function spawnRandom(){
@@ -247,19 +244,28 @@
     lastSpawnAt = scrollX; lastKind = kind;
   }
 
-  // コインはレア：確率 0.004、前回から400m空け、クラスター同時1つまで
-  let lastCoinAtM = -9999;
+  // コインとアイテム：低い位置＆さらにレア
+  let lastCoinAtM = -9999, lastRareAtM=-9999;
   function spawnCollectibles(){
-    const already = items.some(it=>it.type==='coin');
-    if(!already && Math.random()<0.004 && meters-lastCoinAtM>400){
-      const gy=GY(), n=(Math.random()<.5?3:5), start=scrollX+vw+180+Math.random()*260, baseY=gy-160-Math.random()*90;
-      for(let i=0;i<n;i++) items.push({type:'coin',x:(start+i*32)|0,y:(baseY+Math.sin(i)*8)|0,w:SIZE.coin.w,h:SIZE.coin.h});
+    const gy=GY()|0;
+
+    // コイン：確率 0.0015、間隔≥700m、同時1クラスターまで
+    const hasCoinCluster = items.some(it=>it.type==='coin');
+    if(!hasCoinCluster && Math.random()<0.0015 && meters-lastCoinAtM>700){
+      const n=(Math.random()<.5?3:5);
+      const start=scrollX+vw+180+Math.random()*260;
+      const baseY=gy - (80 + Math.random()*50); // GY-80..130 到達圏
+      for(let i=0;i<n;i++) items.push({type:'coin',x:(start+i*32)|0,y:(baseY+Math.sin(i)*6)|0,w:SIZE.coin.w,h:SIZE.coin.h});
       lastCoinAtM = meters;
     }
-    // レアアイテムは以前どおり（低頻度）
-    if(Math.random()<0.006){
+
+    // レア：確率 0.002、間隔≥800m、同時1つまで
+    const hasRare = items.some(it=>it.type!=='coin');
+    if(!hasRare && Math.random()<0.002 && meters-lastRareAtM>800){
       const type=['tsubasa','jump','en'][Math.floor(Math.random()*3)];
-      const gy=GY(); items.push({type, x:(scrollX+vw+200+Math.random()*260)|0, y:(gy-190-Math.random()*90)|0, w:SIZE.item.w,h:SIZE.item.h, t:Math.random()*6});
+      const y= gy - (70 + Math.random()*50); // GY-70..120
+      items.push({type, x:(scrollX+vw+200+Math.random()*260)|0, y:y|0, w:SIZE.item.w,h:SIZE.item.h, t:Math.random()*6});
+      lastRareAtM = meters;
     }
   }
 
@@ -291,7 +297,7 @@
     while(villains.length && villains[0].state==='done') villains.shift();
   }
 
-  /* ====== Input（pointerdownで確実に） ====== */
+  /* ====== Input ====== */
   const onPD=(el,fn)=>el.addEventListener('pointerdown',e=>{e.preventDefault(); fn();},{passive:false});
   onPD(btnJump,  ()=>jump());
   onPD(btnBoost, ()=>boost());
@@ -383,7 +389,7 @@
 
       spawnRandom(); spawnCollectibles(); maybeVillain();
 
-      // obstacles updates
+      // obstacles updates（常に地面密着）
       const gy=GY()|0;
       for(const o of obstacles){
         if(o.kind==='dokan'){
@@ -391,13 +397,16 @@
           let t=o.phase;
           let h = (t<1)? Math.round(30 + t*(SIZE.dokan.h-30)) : (t<3)? SIZE.dokan.h : Math.round(SIZE.dokan.h - (t-3)*(SIZE.dokan.h-30));
           o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
+        }else{
+          // 乗らない/乗るに関わらず、下端は地面に合わせる
+          o.y=(gy - o.h)|0;
         }
-        if(o.kind==='gomi'){ o.t += dt*2; o.y = (gy-SIZE.gomi.h + Math.sin(o.t)*4)|0; o.x = (o.x + Math.sin(o.t*0.7)*0.18)|0; }
         if(o.kind==='tora'){ if(o.cool>0) o.cool-=dt; }
         if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
       }
-      // cleanup old
       while(obstacles.length && obstacles[0].x < scrollX-360) obstacles.shift();
+
+      // 火の玉
       for(const f of fires){
         if(!f.landed){ f.vy+=f.ay*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; if(f.y+f.h>=gy-1){ f.y=gy-f.h; f.vx=0; f.vy=0; f.landed=true; } }
       }
@@ -408,29 +417,29 @@
       // physics
       player.vy += 900*dt; player.y = (player.y + player.vy*dt)|0;
 
-      // --------- ride & slope snap ----------
+      // ---- ride & slope snap（密着強化）----
       const groundTop = (gy - player.h)|0;
       let targetTop = groundTop;
       let onSlope = false;
 
-      // slope (jumpdai)
+      // slope (jumpdai)：理想ライン拘束＋60%地点でハイジャンプ
       for(const o of obstacles){
         if(o.kind!=='jumpdai') continue;
         const sx = (o.x - scrollX)|0;
         const half = RUNX()+player.w*0.5;
         if(half >= sx && half <= sx + o.w){
-          const p = clamp((half - sx)/o.w, 0, 1); // 0..1
-          const topY = (gy - p*o.h)|0;           // 斜面上面の足元
+          const p = clamp((half - sx)/o.w, 0, 1);
+          const topY = (gy - p*o.h)|0;
           const snapY = (topY - player.h)|0;
-          if(player.vy>=-20 || player.y>=snapY-6){
+          if(player.vy>=-20 || player.y>=snapY-8){
             targetTop = Math.min(targetTop, snapY);
             onSlope = true;
             player.tilt = clamp((p-0.3)*0.6, -0.15, 0.22);
-            if(!o.kicked && p>0.6){ o.kicked=true; player.vy=-460; speed += 24; }
+            if(!o.kicked && p>0.6){ o.kicked=true; player.y=snapY; player.vy=-460; speed += 24; }
           }
         }
       }
-      // rideables
+      // rideables（±16pxで吸着、連続スナップ）
       for(const o of obstacles){
         if(o.kind!=='contena' && o.kind!=='tora' && o.kind!=='dokan') continue;
         const sx = (o.x - scrollX)|0;
@@ -438,15 +447,15 @@
         const center = RUNX()+player.w*0.5;
         if(center < left || center > right) continue;
         const top = o.y|0, feet=player.y+player.h;
-        if(feet > top-12 && feet < top+14 && player.vy>=0){
+        if(feet > top-16 && feet < top+16 && player.vy>=0){
           targetTop = Math.min(targetTop, (top - player.h)|0);
-          if(o.kind==='tora' && o.cool<=0){ player.vy=-560; o.cool=.5; }
+          if(o.kind==='tora' && o.cool<=0){ player.y=(top - player.h)|0; player.vy=-560; o.cool=.5; } // スナップしてから跳ねる
         }
       }
       if(player.y>=targetTop){ player.y=targetTop; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); } }
       else { player.onGround=false; if(!onSlope) player.tilt*=0.9; }
 
-      // collisions（致死）
+      // 判定（致死）
       if(invincible<=0){
         for(const f of fires){
           const rx=f.x - scrollX;
@@ -469,7 +478,7 @@
       // pickups
       for(let i=items.length-1;i>=0;i--){
         const it=items[i];
-        if(it.type!=='coin'){ it.t = (it.t||0) + dt*1.6; it.y = (it.y + Math.sin(it.t)*0.4)|0; }
+        if(it.type!=='coin'){ it.t = (it.t||0) + dt*1.6; it.y = (it.y + Math.sin(it.t)*0.4)|0; } // ふわふわ少しだけ
         const rx=it.x - scrollX;
         if(rects({x:RUNX(),y:player.y,w:player.w,h:player.h},{x:rx,y:it.y,w:it.w,h:it.h})){
           if(it.type==='coin'){ coins++; sparkleT=0; if(coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000); } }
@@ -496,25 +505,21 @@
     ctx.clearRect(0,0,vw,vh);
     const gy=GY()|0;
 
-    // 背景タイル：Sky
-    tileX(IMG['sora.PNG'],    0, vh, 0.25);
+    // 背景：空
+    tileX(IMG['sora.PNG'], 0, vh, 0.25);
 
-    // 草帯（上）: hatake2 固定高さ
-    const topH = Math.round(vh*0.20);                 // 草の帯
-    const topY = (gy - topH - 120)|0;                 // 見た目合わせ（雲とのバランス）
-    tileX(IMG['hatake2.png'], topY, topH, 0.6, 1);
+    // 草帯（hatake2）…上段のみ
+    const grassH = Math.round(vh*0.20);
+    const grassTopY = Math.max(0, gy - grassH - Math.round(vh*0.24));
+    tileX(IMG['hatake2.png'], grassTopY, grassH, 0.6, 1);
 
-    // 中帯：hatake を地面直前まで（GY ちょうどに終端）
-    const midH = (gy - topY)|0;
-    tileX(IMG['hatake.png'],  (gy - midH)|0, midH, 0.9, 1);
-
-    // シーム帯：GY直上を do-ro で薄く覆い、下帯と密着（1pxオーバーラップ）
-    const seamH = 14; // 必要に応じて自動で上書きされるが、まずは14px
-    tileX(IMG['do-ro.png'], (gy - seamH)|0, seamH, 1.0, 1);
-
-    // 下帯（足元～下端）は do-ro で完全タイル（+1px 重ねで線消し）
-    const botH = (vh - gy + 1)|0;
-    tileX(IMG['do-ro.png'], gy|0, botH, 1.0, 1);
+    // 畑↔レンガの“太い帯”は **do-ro.png** で完全に埋める
+    const seamH = 10; // GY 直前の薄いシーム
+    const bandTop = (grassTopY + grassH)|0;
+    const bandH   = Math.max(0, (gy - seamH) - bandTop);
+    tileX(IMG['do-ro.png'], bandTop, bandH, 1.0, 1);     // 帯＝全部レンガ
+    tileX(IMG['do-ro.png'], (gy - seamH)|0, seamH, 1.0, 1); // シーム重ね
+    tileX(IMG['do-ro.png'], gy|0, (vh - gy + 1)|0, 1.0, 1); // 足元〜下端
 
     // 障害物
     for(const o of obstacles){
@@ -529,7 +534,7 @@
       else if(o.kind==='kanban'){ const im=IMG[o.img]; if(im&&im.width) ctx.drawImage(im,sx|0,o.y|0,o.w|0,o.h|0); else {ctx.fillStyle='#777';ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0);} }
     }
 
-    // アイテム（障害物の上・プレイヤーの下に表示）
+    // アイテム（障害物の上・プレイヤーの下）
     for(const it of items){
       const sx=it.x - scrollX; if(sx<-200||sx>vw+200) continue;
       let name = it.type==='coin' ? 'coin.png' : (it.type==='tsubasa' ? 'tsubasa.png' : (it.type==='en' ? 'en.png' : 'jump.png'));
@@ -549,7 +554,7 @@
       if(im&&im.width) ctx.drawImage(im, (sx-60)|0, (v.y-50)|0, 120, 100); else {ctx.fillStyle='#933'; ctx.fillRect((sx-40)|0,(v.y-30)|0,80,60);}
     }
 
-    // プレイヤー（最後）
+    // プレイヤー
     ctx.save();
     ctx.translate((RUNX()+player.w/2)|0, (player.y+player.h/2)|0);
     ctx.rotate(player.tilt); ctx.translate((-player.w/2)|0,(-player.h/2)|0);
@@ -562,7 +567,7 @@
   }
 
   /* ====== Start ====== */
-  requestAnimationFrame(tick); // start loop
+  requestAnimationFrame(tick);
 })();
 </script>
 </body>
