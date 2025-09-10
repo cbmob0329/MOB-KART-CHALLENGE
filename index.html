@@ -3,81 +3,68 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-<title>MOB Side-Scroll Runner (Mobile)</title>
+<title>MOB Runner (Mobile)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
-    --bg:#0b0c10; --panel:#10151f; --panel2:#141b29; --fg:#e9eef7; --dim:#9aa3b2; --acc:#13c4ff; --acc2:#ff3e7f; --ok:#25d366; --warn:#ffb020;
-    --hud-h:58px;        /* HUDの基本高さ */
-    --pad:12px;          /* 内側余白 */
-    --footer-h:96px;     /* 操作ボタンエリアの高さ */
-    --maxw:420px;        /* PC閲覧時のスマホ風最大幅 */
+    --bg:#0b0c10; --panel:#10151f; --panel2:#141b29; --fg:#e9eef7; --dim:#9aa3b2; --acc:#13c4ff; --acc2:#ff3e7f; --ok:#25d366;
+    --hud-h:58px;        /* HUD高さ */
+    --pad:12px;
+    --footer-h:96px;     /* 操作エリア高さ */
+    --maxw:420px;        /* PC閲覧時の最大幅（スマホ風） */
   }
-
-  /* iOSアドレスバー対策 */
   html,body { height:100%; }
   html { height:-webkit-fill-available; }
   body {
     margin:0; background:linear-gradient(180deg,#0b0c10 0%, #0c111a 60%, #0b0c10 100%);
     color:var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Yu Gothic", sans-serif;
-    overscroll-behavior:none;
-    touch-action:manipulation;
+    overscroll-behavior:none; touch-action:manipulation;
   }
 
-  /* スマホ画面風の中央カラム（PC確認時もスマホ見え） */
-  #app {
-    position:fixed; inset:0;
-    display:grid; place-items:center;
-  }
+  /* スマホ画面風の中央カラム（PCでもスマホ画面で確認可能） */
+  #app { position:fixed; inset:0; display:grid; place-items:center; }
   #phone {
-    width:100%;
-    max-width:var(--maxw);
-    height:100dvh; /* 端末の表示高に追従 */
+    width:100%; max-width:var(--maxw); height:100dvh;
     display:grid; grid-template-rows:auto 1fr auto;
     background:transparent;
   }
 
-  /* 上部HUD（キャンバス外、画面固定） */
+  /* 上部HUD（キャンバス外固定） */
   header.hud {
     position:sticky; top:0;
     height:calc(var(--hud-h) + env(safe-area-inset-top));
     padding:calc(env(safe-area-inset-top)) var(--pad) var(--pad);
     box-sizing:border-box;
     display:flex; align-items:flex-end; gap:8px; justify-content:space-between;
-    background:linear-gradient(180deg, rgba(20,26,38,.9), rgba(16,21,31,.8));
+    background:linear-gradient(180deg, rgba(20,26,38,.92), rgba(16,21,31,.84));
     backdrop-filter: blur(6px);
     z-index:10; border-bottom:1px solid rgba(255,255,255,.06);
   }
-  .hud .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .pill {
     background:#1b2233; padding:8px 10px; border-radius:999px; font-size:12px; color:#dfe7f5; letter-spacing:.2px; border:1px solid rgba(255,255,255,.05);
   }
-  .boost {
-    display:flex; align-items:center; gap:8px; min-width:160px;
-  }
-  .bar {
-    position:relative; width:140px; height:10px; border-radius:999px; background:#0f1420; overflow:hidden; border:1px solid rgba(255,255,255,.08);
-  }
+  .boost { display:flex; align-items:center; gap:8px; min-width:160px; }
+  .bar { position:relative; width:140px; height:10px; border-radius:999px; background:#0f1420; overflow:hidden; border:1px solid rgba(255,255,255,.08); }
   .bar > i { position:absolute; inset:0; width:0%; background:linear-gradient(90deg, var(--acc), #7af0ff); }
+  .badge { padding:4px 8px; border-radius:999px; font-size:11px; background:#172131; border:1px solid rgba(255,255,255,.08); color:#cfe7ff; }
 
-  /* 中央プレイ領域（キャンバス） */
-  main.play {
-    position:relative;
-    padding:8px 0;
-  }
+  /* プレイ領域（キャンバス） */
+  main.play { position:relative; padding:8px 0; }
+  #stageWrap { position:relative; }
   canvas#game {
-    display:block; width:100%; height:100%;
-    aspect-ratio:9/16; /* 9:16 に固定（スマホ風） */
+    display:block; width:100%; height:auto;
+    aspect-ratio:9/16; /* 9:16固定でスマホ見えを維持 */
     background:#060a12; border:1px solid rgba(255,255,255,.06); border-radius:12px;
     touch-action:none;
   }
 
-  /* 下部操作（キャンバス外、画面固定） */
+  /* 下部操作（キャンバス外固定） */
   footer.ctrl {
     position:sticky; bottom:0;
     height:calc(var(--footer-h) + env(safe-area-inset-bottom));
     padding:12px 12px calc(12px + env(safe-area-inset-bottom));
-    background:linear-gradient(180deg, rgba(16,21,31,.8), rgba(10,14,22,.95));
+    background:linear-gradient(180deg, rgba(16,21,31,.84), rgba(10,14,22,.96));
     backdrop-filter: blur(6px);
     border-top:1px solid rgba(255,255,255,.06);
     display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px;
@@ -93,25 +80,20 @@
   }
   .btn:active { transform:translateY(1px); }
   .btn.primary { background:#1c2b44; border-color:#2e4f7a; }
-  .btn.ok { background:#1d3b2b; border-color:#2a6d4f; }
-  .btn.accent { background:#1a2b3e; border-color:#256787; }
+  .btn.accent  { background:#1a2b3e; border-color:#256787; }
   .btn[disabled] { opacity:.5; filter:grayscale(.2); }
 
   .slotWrap { display:flex; gap:10px; }
   .slot {
     width:56px; height:56px; border-radius:12px; background:#0f1726; border:1px dashed rgba(255,255,255,.25);
-    display:grid; place-items:center; font-size:11px; color:#9fb3d9;
-    position:relative; overflow:hidden;
+    display:grid; place-items:center; font-size:11px; color:#9fb3d9; position:relative; overflow:hidden;
   }
   .slot.full { border-style:solid; border-color:#3c6; background:#14231b; color:#d6f6df; }
   .slot .icon { font-size:18px; opacity:.9; }
   .slot .cap { position:absolute; inset:auto 6px 4px; font-size:10px; color:#9fb3d9; }
 
   /* スタート画面（キャラ選択） */
-  #overlay {
-    position:absolute; inset:0; display:grid; place-items:center; z-index:20;
-    pointer-events:auto;
-  }
+  #overlay { position:absolute; inset:0; display:grid; place-items:center; z-index:20; pointer-events:auto; }
   .card {
     width:min(92%, 360px); background:linear-gradient(180deg,#0e1320,#0b0f1a); border:1px solid rgba(255,255,255,.08);
     border-radius:16px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.4);
@@ -127,10 +109,6 @@
   .choice img { width:72px; height:72px; object-fit:contain; background:#0c111a; border-radius:10px; border:1px solid rgba(255,255,255,.06); }
   .choice small { color:#a9b4c9; }
 
-  /* 小さなバッジ */
-  .badge { padding:4px 8px; border-radius:999px; font-size:11px; background:#172131; border:1px solid rgba(255,255,255,.08); color:#cfe7ff; }
-
-  /* 画面が極端に低い場合、フッター高さを少し抑える */
   @media (max-height: 640px) {
     :root{ --footer-h:84px; --hud-h:52px; }
     .slot { width:52px; height:52px; }
@@ -141,9 +119,9 @@
   <div id="app">
     <div id="phone">
 
-      <!-- HUD（固定 / キャンバス外） -->
+      <!-- HUD -->
       <header class="hud" aria-label="ゲームHUD">
-        <div class="row" id="statsLeft">
+        <div class="row">
           <span class="pill" id="dist">距離 0 m</span>
           <span class="pill" id="speed">速度 0 km/h</span>
           <span class="pill" id="jump">ジャンプ 2</span>
@@ -152,21 +130,21 @@
         <div class="row">
           <div class="pill boost">
             <span class="badge">BOOST</span>
-            <div class="bar" aria-label="ブーストゲージ"><i id="boostFill" style="width:0%"></i></div>
+            <div class="bar"><i id="boostFill" style="width:0%"></i></div>
           </div>
         </div>
       </header>
 
-      <!-- プレイ領域（キャンバスのみ） -->
+      <!-- プレイ領域 -->
       <main class="play">
-        <div style="position:relative">
+        <div id="stageWrap">
           <canvas id="game" width="360" height="640" aria-label="ゲーム画面"></canvas>
 
-          <!-- スタートオーバーレイ（キャラ選択） -->
+          <!-- スタート：キャラ選択 -->
           <div id="overlay">
             <div class="card">
               <p class="title">どちらか選択してスタート</p>
-              <p class="sub">画像はリポジトリ直下に <code>VR.png</code> / <code>orange.png</code> を配置してください。</p>
+              <p class="sub">画像はリポジトリ直下に <code>VR.png</code> / <code>orange.png</code> / <code>mob.png</code> を置いてください。</p>
               <div class="choices">
                 <div class="choice" data-char="VR">
                   <img src="VR.png" alt="VR プレイヤー" onerror="this.style.opacity='.3'; this.alt='VR.png 未配置';">
@@ -177,13 +155,13 @@
                   <small>orange.png</small>
                 </div>
               </div>
-              <p class="sub" style="margin-top:10px;">※ 画像が未配置でも色付きの代替シルエットで開始できます。</p>
+              <p class="sub" style="margin-top:10px;">※ 未配置でも色付きシルエットで開始できます。</p>
             </div>
           </div>
         </div>
       </main>
 
-      <!-- 操作（固定 / キャンバス外） -->
+      <!-- 操作 -->
       <footer class="ctrl" aria-label="操作パネル">
         <button class="btn primary" id="btnJump" aria-label="ジャンプ">ジャンプ</button>
         <div class="slotWrap" aria-label="アイテムスロット">
@@ -198,55 +176,78 @@
 
 <script>
 (() => {
-  // ========= 基本参照 =========
   const cvs = document.getElementById('game');
   const ctx = cvs.getContext('2d');
   const overlay = document.getElementById('overlay');
   const choices = overlay.querySelectorAll('.choice');
 
-  // HUD要素
-  const elDist = document.getElementById('dist');
+  // HUD
+  const elDist  = document.getElementById('dist');
   const elSpeed = document.getElementById('speed');
   const elJump  = document.getElementById('jump');
   const elCoin  = document.getElementById('coin');
   const elBoost = document.getElementById('boostFill');
 
-  // 操作ボタン
+  // 操作
   const btnJump  = document.getElementById('btnJump');
   const btnBoost = document.getElementById('btnBoost');
 
-  // アイテムスロット
-  const slots = [
-    document.getElementById('slot0'),
-    document.getElementById('slot1'),
-  ];
+  // スロット
+  const slots = [ document.getElementById('slot0'), document.getElementById('slot1') ];
+  const itemSlots = [null, null];
 
-  // ========= レイアウト・スケーリング（キャンバス） =========
-  // 9:16 アスペクトを維持しつつ、CSSで拡大縮小するため、内部解像度は固定でOK
-  function fitCanvasToCss() {
-    // CSSで aspect-ratio を9/16に固定してあるため、描画は内部解像度(360x640)基準でOK
-    // ここでは何もしないが、将来デバイスピクセル比に応じてスケーリングしたい時はここを拡張
+  // 画像
+  const imgVR = new Image();      imgVR.src = 'VR.png';
+  const imgOrange = new Image();  imgOrange.src = 'orange.png';
+  const imgGround = new Image();  imgGround.src = 'mob.png'; // 地面
+
+  // DPRスケーリング対応
+  let W = 360, H = 640, DPR = 1;
+  function resizeCanvasToDisplaySize() {
+    const r = cvs.getBoundingClientRect();
+    DPR = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    const newW = Math.max(1, Math.round(r.width * DPR));
+    const newH = Math.max(1, Math.round(r.height * DPR));
+
+    if (cvs.width !== newW || cvs.height !== newH) {
+      cvs.width = newW;
+      cvs.height = newH;
+    }
+    // 論理サイズ（座標系）はCSSピクセル基準で扱う
+    W = Math.round(r.width);
+    H = Math.round(r.height);
+
+    ctx.setTransform(1,0,0,1,0,0);      // リセット
+    ctx.scale(DPR, DPR);                 // CSSピクセル→実ピクセル倍率
   }
-  window.addEventListener('resize', fitCanvasToCss, {passive:true});
-  fitCanvasToCss();
+  window.addEventListener('resize', resizeCanvasToDisplaySize, {passive:true});
+  window.addEventListener('orientationchange', resizeCanvasToDisplaySize, {passive:true});
+  resizeCanvasToDisplaySize();
 
-  // ========= ゲーム状態 =========
-  const W = cvs.width, H = cvs.height;
-  const GRAV = 1500;         // 重力 (px/s^2)
-  const JUMP_V = 540;        // ジャンプ初速 (px/s)
-  const FLOOR = H - 68;      // 地面Y
-  const BASE_SPEED = 220;    // 基本移動速度 (px/s)
-  const BOOST_SPEED = 480;   // ブースト時  (px/s)
-  const BOOST_DRAIN = 24;    // ブースト消費 (ポイント/秒)
-  const BOOST_FILL  = 10;    // 自然回復 (ポイント/秒)
+  // 地面の設定：mob.png を横リピートで描画
+  let groundHeightCSS = 72; // CSSピクセルでの地面の見た目高さ（任意）
+  function setGroundHeightByImage() {
+    // 画像の縦横比から過度に薄い/厚い見た目にならないよう、最小・最大を制限
+    if (imgGround.complete && imgGround.naturalHeight > 0) {
+      const desired = Math.max(48, Math.min(128, Math.round(imgGround.naturalHeight * 0.6)));
+      groundHeightCSS = desired;
+    }
+  }
+  imgGround.onload = setGroundHeightByImage;
+
+  // 物理パラメータ（CSSピクセル基準）
+  let FLOOR = () => (H - groundHeightCSS - 8); // 地面上端（画像の厚みを考慮）
+  const GRAV = 1500;
+  const JUMP_V = 540;
+  const BASE_SPEED = 220;
+  const BOOST_SPEED = 480;
+  const BOOST_DRAIN = 24;
+  const BOOST_FILL  = 10;
   const BOOST_MAX   = 100;
-
-  // 「px/s」を「km/h」に換算する係数（適当なスケール）
-  // 1 px ≒ 0.02 m とみなす → 1 px/s ≒ 0.072 km/h
   const PXPS_TO_KMPH = 0.072;
 
   const player = {
-    x: W*0.25, y: FLOOR, vy: 0,
+    x: () => W*0.25, y: 0, vy: 0,
     w: 48, h: 48,
     jumpsLeft: 2,
     onGround: true,
@@ -254,37 +255,20 @@
     fallbackColor: '#f63'
   };
 
-  let running = false;
-  let started = false;
-  let gameTime = 0;
-  let distancePx = 0;   // px累計（表示はm換算）
-  let forwardSpeed = BASE_SPEED;
-  let boost = 0;        // 0-100
-  let boosting = false;
-  let coins = 0;
-
-  const items = [];     // ステージ上のアイテム
-  const coinsOnField = []; // ステージ上のコイン
-  const parallax = { x1:0, x2:0, x3:0 };
-
-  // アイテムスロット（2枠）
-  const itemSlots = [null, null]; // { type:'boost-pack' | 'shield', icon:'⚡' など }
-
-  // ========= 画像ロード（任意、未配置でもOK） =========
-  const imgVR = new Image(); imgVR.src = 'VR.png';
-  const imgOrange = new Image(); imgOrange.src = 'orange.png';
-
   function setPlayerImage(which) {
     if (which === 'VR') {
-      player.img = imgVR.complete ? imgVR : imgVR; // onload待ち不要（描画側でfallback）
-      player.fallbackColor = '#6cf';
+      player.img = imgVR; player.fallbackColor = '#6cf';
     } else {
-      player.img = imgOrange.complete ? imgOrange : imgOrange;
-      player.fallbackColor = '#f63';
+      player.img = imgOrange; player.fallbackColor = '#f63';
     }
+    // 開始位置を地面の上に再設定（DPRや縦横比に依存しない）
+    player.vy = 0;
+    player.y  = FLOOR();
+    player.jumpsLeft = 2;
+    player.onGround = true;
   }
 
-  // ========= スタート（キャラ選択） =========
+  // スタート
   choices.forEach(c => {
     c.addEventListener('click', () => {
       setPlayerImage(c.dataset.char);
@@ -293,7 +277,7 @@
     }, {passive:true});
   });
 
-  // ========= 操作 =========
+  // 入力
   function doJump() {
     if (!running) return;
     if (player.jumpsLeft > 0) {
@@ -303,287 +287,247 @@
       updateHUD();
     }
   }
-  function toggleBoost(on) {
-    boosting = !!on && boost > 0;
-  }
+  let boosting = false, boost = 0;
+  function toggleBoost(on){ boosting = !!on && boost > 0; }
 
   btnJump.addEventListener('pointerdown', (e)=>{ e.preventDefault(); doJump(); });
   btnBoost.addEventListener('pointerdown', (e)=>{ e.preventDefault(); toggleBoost(true); });
   btnBoost.addEventListener('pointerup',   (e)=>{ e.preventDefault(); toggleBoost(false); });
   btnBoost.addEventListener('pointercancel',(e)=>{ e.preventDefault(); toggleBoost(false); });
 
-  // デスクトップ確認用（スマホは不要）
+  // キーボード（PC確認用）
   window.addEventListener('keydown', (e)=>{
-    if (e.code === 'Space' || e.code === 'ArrowUp') doJump();
-    if (e.code === 'ShiftLeft' || e.code === 'KeyB') toggleBoost(true);
+    if (e.code==='Space'||e.code==='ArrowUp') doJump();
+    if (e.code==='ShiftLeft'||e.code==='KeyB') toggleBoost(true);
   });
   window.addEventListener('keyup', (e)=>{
-    if (e.code === 'ShiftLeft' || e.code === 'KeyB') toggleBoost(false);
+    if (e.code==='ShiftLeft'||e.code==='KeyB') toggleBoost(false);
   });
 
-  // ========= 衝突判定 =========
-  function aabb(a,b) {
-    return (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
-  }
+  // フィールド
+  let running=false, started=false, prev=0, gameTime=0, distancePx=0, forwardSpeed=BASE_SPEED;
+  const parallax = { x1:0, x2:0, x3:0 };
+  const coinsOnField=[]; const items=[];
 
-  // ========= スポーン =========
-  function spawnCoin() {
-    // 画面右側にランダム配置（簡易）
-    const y = FLOOR - 20 - Math.random()*120;
+  // スポーン
+  function spawnCoin(){
+    const y = FLOOR() - 20 - Math.random()*120;
     coinsOnField.push({ x: W + 20, y, w:14, h:14, v: 1 + (Math.random()<0.3?1:0) });
   }
-  function spawnItem() {
-    // アイテムは2種類のどちらか
+  function spawnItem(){
     const kinds = [
-      { type:'boost-pack', icon:'⚡', color:'#6cf', desc:'ブースト回復' },
-      { type:'shield',     icon:'🛡️', color:'#9f6', desc:'（将来用）' }
+      { type:'boost-pack', icon:'⚡', color:'#6cf' },
+      { type:'shield',     icon:'🛡️', color:'#9f6' } // 将来用
     ];
     const kind = kinds[Math.floor(Math.random()*kinds.length)];
-    const y = FLOOR - 24 - Math.random()*120;
+    const y = FLOOR() - 24 - Math.random()*120;
     items.push({ x: W + 40, y, w:20, h:20, kind });
   }
 
-  // ========= アイテム取得処理 =========
-  function pickupItem(kind) {
-    // 空きスロット検索
-    const idx = itemSlots.findIndex(s => s === null);
-    if (idx === -1) {
-      flashSlotsFull();
-      return false;
-    }
-    itemSlots[idx] = kind;
-    renderSlots();
-    return true;
-  }
-  function flashSlotsFull() {
-    slots.forEach((s,i)=>{
-      s.animate([{filter:'brightness(1)'},{filter:'brightness(2)'},{filter:'brightness(1)'}], {duration:420});
-    });
-  }
-  function renderSlots() {
-    itemSlots.forEach((it,i)=>{
-      const s = slots[i];
+  // アイテムスロットUI
+  function renderSlots(){
+    [0,1].forEach(i=>{
+      const s = slots[i], it = itemSlots[i];
       s.innerHTML = '';
-      if (it) {
+      if (it){
         s.classList.add('full');
-        const icon = document.createElement('div'); icon.className='icon'; icon.textContent = it.icon;
-        const cap  = document.createElement('div'); cap.className='cap';  cap.textContent  = it.type === 'boost-pack' ? '充填' : '保管';
-        s.append(icon, cap);
-        s.onclick = () => useItem(i);
-      } else {
+        const icon=document.createElement('div'); icon.className='icon'; icon.textContent=it.icon;
+        const cap=document.createElement('div'); cap.className='cap'; cap.textContent= it.type==='boost-pack'?'充填':'保管';
+        s.append(icon,cap); s.onclick=()=>useItem(i);
+      }else{
         s.classList.remove('full');
-        const icon = document.createElement('div'); icon.className='icon'; icon.textContent = '—';
-        const cap  = document.createElement('div'); cap.className='cap';  cap.textContent  = '空';
-        s.append(icon, cap);
-        s.onclick = null;
+        const icon=document.createElement('div'); icon.className='icon'; icon.textContent='—';
+        const cap=document.createElement('div'); cap.className='cap'; cap.textContent='空';
+        s.append(icon,cap); s.onclick=null;
       }
     });
   }
-  function useItem(i) {
-    const it = itemSlots[i];
-    if (!it) return;
-    if (it.type === 'boost-pack') {
-      boost = Math.min(BOOST_MAX, boost + 40);
-    }
-    // 使ったら消費
-    itemSlots[i] = null;
-    renderSlots();
-    updateHUD();
+  function useItem(i){
+    const it=itemSlots[i]; if(!it) return;
+    if (it.type==='boost-pack'){ boost=Math.min(BOOST_MAX, boost+40); }
+    itemSlots[i]=null; renderSlots(); updateHUD();
+  }
+  function pickupItem(kind){
+    const idx=itemSlots.findIndex(s=>s===null);
+    if (idx===-1){ slots.forEach(s=>s.animate([{filter:'brightness(1)'},{filter:'brightness(2)'},{filter:'brightness(1)'}],{duration:420})); return false; }
+    itemSlots[idx]=kind; renderSlots(); return true;
   }
 
-  // ========= HUD更新 =========
-  function updateHUD() {
-    const distM = Math.floor(distancePx * 0.02); // px→m換算（1px=0.02m）
+  // HUD
+  let coins=0;
+  function updateHUD(){
+    const distM = Math.floor(distancePx * 0.02);
     elDist.textContent = `距離 ${distM} m`;
-
-    const kmh = Math.round(forwardSpeed * PXPS_TO_KMPH);
-    elSpeed.textContent = `速度 ${kmh} km/h`;
-
-    elJump.textContent = `ジャンプ ${player.jumpsLeft}`;
-    elCoin.textContent = `コイン ${coins}`;
-
-    const pct = Math.max(0, Math.min(100, boost));
-    elBoost.style.width = pct + '%';
-
-    btnBoost.disabled = (pct<=0);
+    elSpeed.textContent = `速度 ${Math.round(forwardSpeed*PXPS_TO_KMPH)} km/h`;
+    elJump.textContent  = `ジャンプ ${player.jumpsLeft}`;
+    elCoin.textContent  = `コイン ${coins}`;
+    elBoost.style.width = Math.max(0, Math.min(100, boost)) + '%';
+    btnBoost.disabled = (boost<=0);
   }
 
-  // ========= ループ =========
-  let prev = 0;
-  function loop(t) {
+  // ループ
+  function loop(t){
     if (!running) return;
     const now = t || performance.now();
-    const dt = Math.min(0.033, (now - prev) / 1000); // 安定化
+    const dt = Math.min(0.033, (now - prev)/1000);
     prev = now;
-
     gameTime += dt;
 
-    // スピード
-    if (boosting && boost > 0) {
+    // スピード/ブースト
+    if (boosting && boost>0){
       forwardSpeed = BOOST_SPEED;
       boost -= BOOST_DRAIN * dt;
-      if (boost <= 0) { boost = 0; boosting = false; }
-    } else {
+      if (boost<=0){ boost=0; boosting=false; }
+    }else{
       forwardSpeed = BASE_SPEED;
-      boost = Math.min(BOOST_MAX, boost + BOOST_FILL * dt);
+      boost = Math.min(BOOST_MAX, boost + BOOST_FILL*dt);
     }
 
-    // パララックス背景
+    // 背景
     parallax.x1 -= forwardSpeed * 0.25 * dt;
     parallax.x2 -= forwardSpeed * 0.50 * dt;
     parallax.x3 -= forwardSpeed * 1.00 * dt;
-    [ 'x1','x2','x3' ].forEach(k => { if (parallax[k] <= -W) parallax[k] += W; });
+    ['x1','x2','x3'].forEach(k=>{ if (parallax[k] <= -W) parallax[k] += W; });
 
-    // プレイヤー物理
-    player.vy += GRAV * dt;
-    player.y  += player.vy * dt;
-    if (player.y > FLOOR) {
-      player.y = FLOOR;
+    // 物理
+    player.vy += GRAV*dt;
+    player.y  += player.vy*dt;
+    if (player.y > FLOOR()){
+      player.y = FLOOR();
       player.vy = 0;
-      if (!player.onGround) {
-        player.onGround = true;
-        player.jumpsLeft = 2; // 着地でリセット
-      }
+      if (!player.onGround){ player.onGround=true; player.jumpsLeft=2; }
     }
 
-    // フィールド更新（右→左へ流れる）
+    // 流れ物
     const flow = forwardSpeed * dt;
-    coinsOnField.forEach(c => c.x -= flow);
+    coinsOnField.forEach(c=>c.x -= flow);
     while (coinsOnField.length && coinsOnField[0].x < -30) coinsOnField.shift();
 
-    items.forEach(it => it.x -= flow);
+    items.forEach(it=>it.x -= flow);
     while (items.length && items[0].x < -30) items.shift();
 
-    // スポーン（簡易ランダム）
-    if (Math.random() < 0.02) spawnCoin();
-    if (Math.random() < 0.006) spawnItem();
+    // スポーン
+    if (Math.random()<0.02)  spawnCoin();
+    if (Math.random()<0.006) spawnItem();
 
-    // 取得判定
-    // コイン
-    for (let i=coinsOnField.length-1; i>=0; i--) {
-      const c = coinsOnField[i];
-      if (aabb(player, c)) {
-        coins += c.v; // 1 or 2
-        // コイン取得で微量ブースト回復
-        boost = Math.min(BOOST_MAX, boost + 4 * c.v);
-        coinsOnField.splice(i,1);
-      }
+    // 取得
+    for (let i=coinsOnField.length-1; i>=0; i--){
+      const c=coinsOnField[i];
+      if (aabb(player, c)){ coins += c.v; boost = Math.min(BOOST_MAX, boost + 4*c.v); coinsOnField.splice(i,1); }
     }
-    // アイテム
-    for (let i=items.length-1; i>=0; i--) {
-      const it = items[i];
-      if (aabb(player, it)) {
-        if (pickupItem(it.kind)) {
-          items.splice(i,1);
-        } else {
-          // 満杯時は拾えない→そのまま流す
-        }
-      }
+    for (let i=items.length-1; i>=0; i--){
+      const it=items[i];
+      if (aabb(player, it)){ if (pickupItem(it.kind)) items.splice(i,1); }
     }
 
-    // 距離加算
+    // 距離
     distancePx += flow;
 
     // 描画
     draw();
 
-    // HUD更新
+    // HUD
     updateHUD();
 
     requestAnimationFrame(loop);
   }
 
-  // ========= 描画 =========
-  function draw() {
+  // 当たり判定（AABB）
+  function aabb(a,b){ return (a.x()< b.x + b.w && a.x() + a.w > b.x && (a.y - a.h) < b.y + b.h && a.y > b.y); }
+
+  // 描画
+  function draw(){
+    // クリア（DPRスケール済なので論理座標でOK）
     ctx.clearRect(0,0,W,H);
 
-    // 背景レイヤ（簡易グラデ＋パララックス矩形）
-    // sky
+    // 背景グラデ
     const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#08101c');
-    g.addColorStop(1,'#0a1322');
-    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+    g.addColorStop(0,'#08101c'); g.addColorStop(1,'#0a1322');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-    // 遠景ビル
-    ctx.fillStyle = '#0d1a2a';
+    // 遠景（簡易）
+    ctx.fillStyle='#0d1a2a';
     for (let i=0;i<2;i++){
       const ox = (i===0?parallax.x1:parallax.x2);
-      const step = 60*(i===0?1.2:1);
-      for (let x=ox; x< W+step; x+=step) {
-        const h = 60 + (i===0?40:80) * (0.3 + Math.random()*0.7);
-        ctx.fillRect(x, H-160-h, 40, h);
+      const step=60*(i===0?1.2:1);
+      for (let x=ox; x<W+step; x+=step){
+        const hh = 60 + (i===0?40:80) * (0.3 + Math.random()*0.7);
+        ctx.fillRect(x, H-160-hh, 40, hh);
       }
     }
 
-    // 地面
-    ctx.fillStyle = '#122238';
-    ctx.fillRect(0, FLOOR+16, W, H-(FLOOR+16));
+    // 地面（mob.png を横リピート）
+    const gh = groundHeightCSS;
+    if (imgGround.complete && imgGround.naturalWidth>0){
+      const pattern = ctx.createPattern(imgGround, 'repeat-x');
+      ctx.save();
+      ctx.translate(0, H-gh);
+      ctx.fillStyle = pattern;
+      // 画像の縦をghに合わせるためスケール
+      const scaleY = gh / imgGround.naturalHeight;
+      ctx.scale(1, scaleY);
+      ctx.fillRect(0, 0, W, imgGround.naturalHeight); // 横はrepeat-xでOK
+      ctx.restore();
+    } else {
+      // フォールバックの路面
+      ctx.fillStyle='#122238'; ctx.fillRect(0, H-gh, W, gh);
+    }
+
     // 路面ライン
-    ctx.strokeStyle = 'rgba(255,255,255,.06)';
-    ctx.beginPath();
-    ctx.moveTo(0, FLOOR+0.5); ctx.lineTo(W, FLOOR+0.5); ctx.stroke();
+    ctx.strokeStyle='rgba(255,255,255,.08)'; ctx.beginPath();
+    ctx.moveTo(0, H-gh+0.5); ctx.lineTo(W, H-gh+0.5); ctx.stroke();
 
     // コイン
     coinsOnField.forEach(c=>{
       ctx.beginPath();
       ctx.arc(c.x + c.w/2, c.y + c.h/2, c.w/2, 0, Math.PI*2);
-      ctx.fillStyle = '#ffd84d';
-      ctx.fill();
-      // 輪郭
-      ctx.strokeStyle = '#e7b400';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      // 輝き
-      ctx.fillStyle = 'rgba(255,255,255,.8)';
-      ctx.beginPath(); ctx.arc(c.x + 4, c.y + 4, 3, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ffd84d'; ctx.fill();
+      ctx.strokeStyle='#e7b400'; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.8)'; ctx.beginPath();
+      ctx.arc(c.x+4, c.y+4, 3, 0, Math.PI*2); ctx.fill();
     });
 
     // アイテム
     items.forEach(it=>{
-      ctx.fillStyle = it.kind.color;
-      ctx.fillRect(it.x, it.y, it.w, it.h);
-      ctx.fillStyle = '#021019';
-      ctx.font = 'bold 12px system-ui';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillStyle=it.kind.color; ctx.fillRect(it.x, it.y, it.w, it.h);
+      ctx.fillStyle='#021019'; ctx.font='bold 12px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(it.kind.icon, it.x + it.w/2, it.y + it.h/2 + 1);
     });
 
-    // プレイヤー
-    if (player.img && player.img.complete && player.img.naturalWidth>0) {
-      // 画像が正方形でない可能性を考慮して内接矩形で描画
+    // プレイヤー（画像 or シルエット）
+    const topY = player.y - player.h;
+    if (player.img && player.img.complete && player.img.naturalWidth>0){
       const sz = Math.min(player.w, player.h);
-      ctx.drawImage(player.img, player.x, player.y - player.h, sz, sz);
-    } else {
-      // 代替描画（シルエット）
-      ctx.fillStyle = player.fallbackColor;
-      ctx.fillRect(player.x, player.y - player.h, player.w, player.h);
-      ctx.fillStyle = '#00000030';
-      ctx.fillRect(player.x+6, player.y - player.h+6, player.w-12, player.h-12);
+      ctx.drawImage(player.img, player.x(), topY, sz, sz);
+    }else{
+      ctx.fillStyle=player.fallbackColor;
+      ctx.fillRect(player.x(), topY, player.w, player.h);
+      ctx.fillStyle='#00000030';
+      ctx.fillRect(player.x()+6, topY+6, player.w-12, player.h-12);
     }
 
     // 影
     ctx.fillStyle = 'rgba(0,0,0,.25)';
     ctx.beginPath();
-    ctx.ellipse(player.x + player.w/2, FLOOR+12, player.w*0.45, 6, 0, 0, Math.PI*2);
+    ctx.ellipse(player.x() + player.w/2, FLOOR()+12, player.w*0.45, 6, 0, 0, Math.PI*2);
     ctx.fill();
   }
 
-  // ========= ゲーム開始 =========
-  function startGame() {
+  // ゲーム開始
+  function startGame(){
     if (started) return;
-    started = true;
-    running = true;
-    boost = 60; // 初期ゲージ
-    renderSlots();
-    updateHUD();
+    started=true; running=true;
+    boost=60; renderSlots(); updateHUD();
+    // 初期位置：地面上
+    player.y = FLOOR();
     prev = performance.now();
     requestAnimationFrame(loop);
   }
 
-  // ========= スクロール/ダブルタップ防止 =========
+  // スクロール/ダブルタップ防止（UI以外）
   ['touchstart','touchmove','gesturestart'].forEach(ev=>{
     document.addEventListener(ev, (e)=>{
-      if (e.target.closest('button, .choice')) return; // UI操作は許可
+      if (e.target.closest('button, .choice, .slot')) return;
       e.preventDefault();
     }, {passive:false});
   });
