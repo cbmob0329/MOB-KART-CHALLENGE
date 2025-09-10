@@ -59,7 +59,7 @@
     <div class="pill">TIME: <strong id="time">60.0</strong>s</div>
     <div class="pill">SCORE: <strong id="score">0</strong></div>
     <div class="spacer"></div>
-    <div class="pill" id="hint">ドラッグで左右移動（高さ固定）／タップで投下</div>
+    <div class="pill" id="hint">ドラッグで左右移動（高さ固定：上寄り）／タップで投下</div>
   </div>
 
   <div id="wrap">
@@ -113,8 +113,8 @@ function resize(){
   canvas.style.height = vh+"px";
   groundY = H*0.86;
 
-  // 高さは固定（中段より少し上）
-  baseY = H*0.42;
+  // 高さ：もっと上に固定（以前: H*0.42）
+  baseY = H*0.25;
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
@@ -204,8 +204,8 @@ const player = {
   x: W*0.22, y: baseY, w:84*DPR, h:84*DPR,
   stunned: 0, blinkT:0,       // 失敗時の赤チカチカ
   lockDrop: 0,                // 投下不可 残り秒
-  moveEaseX: 0.12,            // ← 小さいほどゆっくり追従（以前:0.22）
-  _bob: 0                     // 高さ固定のため 0
+  moveEaseX: 0.12,            // 小さいほどゆっくり追従
+  _bob: 0
 };
 
 // 火の玉（高速落下）
@@ -262,7 +262,7 @@ function update(dt){
     player.lockDrop -= dt;
     hint.textContent = `投下ロック中… ${player.lockDrop.toFixed(1)}s`;
   }else{
-    hint.textContent = 'ドラッグで左右移動（高さ固定）／タップで投下';
+    hint.textContent = 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
   }
 
   // 移動：Xのみ追従（ゆっくり）
@@ -271,7 +271,7 @@ function update(dt){
     targetX = clamp((input.lx) - player.w/2, 20*DPR, W - 20*DPR - player.w);
   }
   player.x = lerp(player.x, targetX, player.moveEaseX);
-  player.y = baseY; // 高さ完全固定
+  player.y = baseY; // 高さ完全固定（上寄り）
 
   // 失敗時の赤点滅
   if(player.stunned>0){ player.stunned -= dt; player.blinkT += dt*8; }
@@ -279,9 +279,9 @@ function update(dt){
   // 火の玉
   if(fireball.active){
     if(!fireball.seeking){
-      // 高速落下（初速↑／加速度↑／最大速度↑）
-      fireball.vy += 0.0080 * DPR;              // 以前: 0.0026
-      fireball.vy = Math.min(fireball.vy, 2.40*DPR); // 以前: 1.2
+      // 高速落下
+      fireball.vy += 0.0080 * DPR;
+      fireball.vy = Math.min(fireball.vy, 2.40*DPR);
       fireball.x += fireball.vx * dt * 1000;
       fireball.y += fireball.vy * dt * 1000;
 
@@ -345,7 +345,7 @@ function update(dt){
     }
 
     if(c.state==='fetch'){
-      // 右へ“遅め”ダッシュで補給（1.4倍のまま）
+      // 右へ“遅め”ダッシュで補給（1.4倍）
       const speed = Math.abs(c.baseSpeed)*1.4*DPR;
       c.x += speed * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
@@ -383,7 +383,7 @@ function tryDrop(){
   fireball.active = true; fireball.seeking=false; fireball.target=null;
   fireball.x = player.x + player.w*0.5;
   fireball.y = (player.y + player._bob) + player.h*0.6;
-  fireball.vx = 0; fireball.vy = 0.060 * DPR;  // ← 初速アップ（以前:0.02）
+  fireball.vx = 0; fireball.vy = 0.060 * DPR;  // 初速アップ
 }
 
 /* ====== 描画 ====== */
