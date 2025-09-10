@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v5.0（リスタート確実化＋上面オート検出/重なり防止）</title>
+<title>MOB KART CHALLENGE — v5.1（Restart確定/上面オート検出/重なり防止）</title>
 <style>
   :root{ --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
          --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px); }
@@ -50,7 +50,7 @@
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.0（Restart確実化）</small></div>
+    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.1（Restart確定）</small></div>
     <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
   </div>
 
@@ -131,8 +131,8 @@
 
   /* ===== 上面オート検出 ===== */
   const rideSrcKind={'contena.png':'contena','tora.png':'tora','dokan.png':'dokan'};
-  const DEFAULT_RIDE_PX={contena:14,tora:10,dokan:12}; // 失敗時の安全値
-  const rideFrac={}; // kind -> 0..1
+  const DEFAULT_RIDE_PX={contena:14,tora:10,dokan:12};
+  const rideFrac={};
   function analyzeTop(src,img){
     const kind=rideSrcKind[src]; if(!kind) return;
     try{
@@ -159,7 +159,9 @@
   let state='boot', scrollX=0, meters=0;
   let baseSpeed=333, boostGauge=0, boostMax=100, boosting=0, enFree=0, invincible=0, wingTime=0;
   let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0, nextVillAtM=1200+Math.random()*800;
+
   const player={sprite:'orange.png', w:SIZE.player.w, h:SIZE.player.h, x:RUNX()|0, y:(GY()-SIZE.player.h)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0};
+
   const items=[], obstacles=[], fires=[], villains=[]; const slots=[null,null];
 
   /* ===== Fullscreen ===== */
@@ -168,11 +170,11 @@
     else{ (document.exitFullscreen||document.webkitExitFullscreen).call(document); btnFS.textContent='全画面'; }});
 
   /* ===== OP → 選択 ===== */
-  const showCut=(fn,ms=2000)=>{ cutImg.src=encodeURI(fn); cut.classList.add('show'); const id=setTimeout(()=>cut.classList.remove('show'),ms); rememberTimer(id); };
+  const showCut=(fn,ms=2000)=>{ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); };
   const openSelect=()=>{ state='select'; charSel.style.display='flex'; };
   const closeSelect=()=>{ charSel.style.display='none'; };
 
-  state='op'; showCut('op.png',2000); rememberTimer(setTimeout(openSelect,2000));
+  state='op'; showCut('op.png',2000); setTimeout(openSelect,2000);
 
   startBtn.addEventListener('click', ()=>startFlow());
   btnChange.addEventListener('click', ()=>openSelect());
@@ -200,41 +202,36 @@
   addPress(cv, ()=>{ const h=innerHeight||document.documentElement.clientHeight; const y=(window.event&&window.event.clientY)||0; if(!y||y<h*0.75) wantJump=true; });
   addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') wantJump=true; if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
 
-  /* ===== Run/Timer 管理（Restart 安定化のキモ） ===== */
-  let runSeq=0;             // 実行中ランのID
-  const timers=[];          // setTimeout/Interval のIDを保持
-  function rememberTimer(id){ timers.push(id); }
-  function clearTimers(){ while(timers.length){ const id=timers.pop(); clearTimeout(id); clearInterval(id); } }
-
-  /* ===== Flow ===== */
-  let preWait=0, lastRightX=0, nextSpawnX=null, lastKanbanX=-1e9;
+  /* ===== Restartに関わる変数 ===== */
+  let lastRightX=0, nextSpawnX=null, lastKanbanX=-1e9;
   const MIN_GAP_PX=40;
 
-  function startFlow(){
-    runSeq++;               // 以後のコールバックはこのIDを確認
-    clearTimers();
-    countdown.classList.remove('show');
-    closeSelect();
-    resetWorld();
-    state='prestart'; preWait=0.5;
-    rememberTimer(setTimeout(()=>loadList(deferred),300)); // 遅延ロード
-    // 可視的にスタート地点を即描画
-    draw();
-    // カウントダウン開始（Interval駆動＝RAFに依存しない）
-    rememberTimer(setTimeout(()=>startCountdown(runSeq), 500));
+  // カウントダウン（RAF統合）
+  let cdActive=false, cdStart=0, cdShown=-1;
+  function beginCountdown(){
+    cdActive=true; cdStart=performance.now(); cdShown=-1;
+    countdown.classList.add('show');
+  }
+  function driveCountdown(now){
+    if(!cdActive) return false;
+    const t=(now-cdStart)/1000;               // 経過秒
+    const step = t<0.7?0 : t<1.4?1 : t<2.1?2 : t<2.8?3 : 4; // 0..4
+    if(step!==cdShown){
+      countdown.textContent = ['3','2','1','GO',''][step] || '';
+      cdShown=step;
+    }
+    if(step>=4){ countdown.classList.remove('show'); cdActive=false; state='play'; }
+    return true;
   }
 
-  function startCountdown(seq){
-    if(runSeq!==seq) return;
-    const steps=['3','2','1','GO']; let i=0;
-    countdown.textContent=steps[0]; countdown.classList.add('show'); state='countdown';
-    const id=setInterval(()=>{
-      if(runSeq!==seq){ clearInterval(id); return; }
-      i++;
-      if(i<steps.length){ countdown.textContent=steps[i]; }
-      if(i===steps.length){ countdown.classList.remove('show'); clearInterval(id); state='play'; }
-    },700);
-    rememberTimer(id);
+  function startFlow(){
+    closeSelect();
+    resetWorld();
+    // すぐにカウントダウン開始（タイマー不使用）
+    state='countdown';
+    beginCountdown();
+    // 遅延アセットは裏で
+    setTimeout(()=>loadList(deferred),300);
   }
 
   function resetWorld(){
@@ -245,7 +242,7 @@
     boostBar.classList.remove('ready');
     lastRightX=SAFE_M*PX_PER_M; nextSpawnX=null; lastKanbanX=-1e9;
     placeEarlyContena(); scheduleNextSpawn();
-    wantJump=wantBoost=false; wantUse=[false,false]; last=0;
+    wantJump=wantBoost=false; wantUse=[false,false];
   }
 
   function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
@@ -253,7 +250,7 @@
     btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
   function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex'; }
   function hideGo(){ goModal.style.display='none'; }
-  function die(){ state='gameover'; showGo(); }
+  function die(){ state='gameover'; goModal.style.display='flex'; }
 
   /* ===== Spawner（重なり防止） ===== */
   function scheduleNextSpawn(){ const gapM=6+Math.random()*8; nextSpawnX = lastRightX + gapM*PX_PER_M; }
@@ -315,11 +312,9 @@
   function maybeVillain(){
     if(meters>=nextVillAtM && villains.length===0){
       showCut('viran op.png',2000);
-      const seq=runSeq;
-      const id=setTimeout(()=>{ if(runSeq!==seq || state!=='play') return;
+      setTimeout(()=>{ if(state!=='play') return;
         villains.push({x:scrollX+RUNX()+260, y:-80, vy:20, state:'descend', hoverY:GY()-220, left:5+Math.floor(Math.random()*4), t:1});
       },450);
-      rememberTimer(id);
       nextVillAtM += 1000 + Math.random()*1000;
     }
   }
@@ -338,6 +333,8 @@
   let last=0, dispSp=0, dispT=0, jumpLock=0;
   requestAnimationFrame(function tick(ts){
     if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
+
+    if(state==='countdown'){ driveCountdown(ts); }  // ← ここで確実にplayへ
 
     if(state==='play'){
       const mult=(boosting>0)?1.7:1, spd=baseSpeed*mult;
