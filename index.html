@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v5.4（再スタート確実化／ジャンプ微調整／土管密着強化／ジャンプ台判定修正）</title>
+<title>MOB KART CHALLENGE — v5.5（起動安全化／再スタート確実化）</title>
 <style>
   :root{ --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
          --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px); }
   html,body{margin:0;height:100%;background:#000;color:var(--ui-fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;}
-  *{box-sizing:border-box} button{touch-action:manipulation;-webkit-user-select:none;user-select:none}
+  *{box-sizing:border-box}
   #app{position:fixed;inset:0;overflow:hidden}
 
   .topbar{position:fixed;inset:0 0 auto 0;z-index:50;display:flex;gap:12px;align-items:center;
@@ -26,7 +26,8 @@
   .boostbar .fill{height:100%;width:0;background:linear-gradient(90deg,#1fb6ff,#60a5fa)}
   .boostbar.ready{box-shadow:0 0 0 2px rgba(31,182,255,.18), inset 0 0 14px rgba(96,165,250,.45)}
 
-  #stageWrap{position:fixed;inset:0;z-index:10} #cv{width:100%;height:100%;display:block;background:#000;touch-action:none}
+  #stageWrap{position:fixed;inset:0;z-index:10}
+  #cv{width:100%;height:100%;display:block;background:#000;touch-action:none}
 
   .controls{position:fixed;left:0;right:0;bottom:0;z-index:100;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;
     padding:10px 12px calc(10px + var(--safe-bottom));pointer-events:auto}
@@ -46,12 +47,16 @@
   .opt{border:1px solid var(--line);background:#0d121a;border-radius:12px;padding:8px 10px}
   .opt img{height:64px}
   .stack{display:flex;gap:10px;justify-content:center;margin-top:10px}
+
+  /* 致命エラー可視化（デバッグ用） */
+  #fatal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
+  #fatal .msg{background:#180d0d;border:1px solid #4a2323;color:#ffdede;border-radius:12px;padding:12px;max-width:90vw;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
 </style>
 </head>
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.4</small></div>
+    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.5</small></div>
     <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
   </div>
 
@@ -97,6 +102,8 @@
       </div>
     </div>
   </div>
+
+  <div id="fatal"><div class="msg" id="fatalMsg"></div></div>
 </div>
 
 <script>
@@ -104,11 +111,19 @@
   /* ===== Canvas ===== */
   const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=false;
   let vw=cv.width|0, vh=cv.height|0;
-  function fit(){ vw=cv.width=Math.max(540,Math.min(720,Math.round(innerWidth||document.documentElement.clientWidth)));
-                  vh=cv.height=Math.max(900,Math.min(1200,Math.round(innerHeight||document.documentElement.clientHeight))); }
-  addEventListener('resize',fit,{passive:true}); addEventListener('pageshow',fit,{passive:true}); fit();
 
-  /* ===== UI ===== */
+  function safeViewport(){
+    let w=(innerWidth||document.documentElement.clientWidth||540);
+    let h=(innerHeight||document.documentElement.clientHeight||960);
+    if(!h || h<200){ h=(screen&&screen.height)||960; }
+    w=Math.max(540,Math.min(720,Math.round(w)));
+    h=Math.max(900,Math.min(1200,Math.round(h)));
+    return [w,h];
+  }
+  function fit(){ const [w,h]=safeViewport(); vw=cv.width=w; vh=cv.height=h; }
+  addEventListener('resize',fit,{passive:true}); addEventListener('orientationchange',fit,{passive:true}); addEventListener('pageshow',fit,{passive:true}); fit();
+
+  /* ===== UI refs ===== */
   const elDist=document.getElementById('hudDist'), elSpeed=document.getElementById('hudSpeed'),
         elJump=document.getElementById('hudJump'), elCoin=document.getElementById('hudCoin').querySelector('.v'),
         btnFS=document.getElementById('btnFS'), btnChange=document.getElementById('btnChange'),
@@ -118,10 +133,13 @@
         goModal=document.getElementById('gameOver'), goMsg=document.getElementById('goMsg'),
         goRestart=document.getElementById('goRestart'), goChange=document.getElementById('goChange'), goQuit=document.getElementById('goQuit'),
         cut=document.getElementById('cut'), cutImg=document.getElementById('cutImg'), countdown=document.getElementById('countdown'),
-        boostBar=document.getElementById('boostBar'), boostFill=boostBar.querySelector('.fill');
+        boostBar=document.getElementById('boostBar'), boostFill=boostBar.querySelector('.fill'),
+        fatal=document.getElementById('fatal'), fatalMsg=document.getElementById('fatalMsg');
 
+  /* ===== Helpers ===== */
   const shrink=(r,p)=>({x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p});
   const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
+  function showFatal(e){ fatalMsg.textContent=String(e&&e.stack||e); fatal.style.display='flex'; }
 
   /* ===== Assets ===== */
   const essential=['sora.PNG','hatake2.png','do-ro.png','mob.png','orange.png','VR.png','op.png','jumpdai.png','contena.png','tora.png','dokan.png'];
@@ -129,10 +147,10 @@
   const IMG={}; function loadList(list){ for(const fn of list){ const im=new Image(); im.src=encodeURI(fn); im.onload=()=>{IMG[fn]=im; analyzeTop(fn,im)}; im.onerror=()=>{IMG[fn]=im}; } }
   loadList(essential);
 
-  /* ===== Ride surface auto-detect ===== */
+  /* ===== Ride top auto detect ===== */
   const rideSrcKind={'contena.png':'contena','tora.png':'tora','dokan.png':'dokan'};
   const DEFAULT_RIDE_PX={contena:14,tora:10,dokan:12};
-  const RIDE_TWEAK_PX={contena:1,tora:1,dokan:3}; // 追加押し込み
+  const RIDE_TWEAK_PX={contena:1,tora:1,dokan:3};
   const rideFrac={};
   function analyzeTop(src,img){
     const kind=rideSrcKind[src]; if(!kind) return;
@@ -144,7 +162,7 @@
       let top=h;
       for(let x=xmin;x<=xmax;x+=step){ for(let y=0;y<h;y++){ if(data[(y*w+x)*4+3]>16){ if(y<top) top=y; break; } } }
       if(top!==h) rideFrac[kind]=top/h;
-    }catch(e){}
+    }catch(e){/* ignore taint */}
   }
   const rideInsetPx=(kind,scaledH)=> {
     const base = rideFrac.hasOwnProperty(kind)?Math.round(scaledH*rideFrac[kind]):(DEFAULT_RIDE_PX[kind]||2);
@@ -165,7 +183,7 @@
   let baseSpeed=333, boostGauge=0, boostMax=100, boosting=0, enFree=0, invincible=0, wingTime=0;
   let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0, nextVillAtM=1200+Math.random()*800;
 
-  const player={sprite:'orange.png', w:SIZE.player.w, h:SIZE.player.h, x:RUNX()|0, y:(GY()-player.h)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0, prevFeet:0};
+  const player={sprite:'orange.png', w:SIZE.player.w, h:SIZE.player.h, x:RUNX()|0, y:(GY()-SIZE.player.h)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0, prevFeet:0};
 
   const items=[], obstacles=[], fires=[], villains=[]; const slots=[null,null];
 
@@ -174,22 +192,17 @@
     if(!document.fullscreenElement && !document.webkitFullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); btnFS.textContent='全画面解除'; }
     else{ (document.exitFullscreen||document.webkitExitFullscreen).call(document); btnFS.textContent='全画面'; }});
 
-  /* ===== OP → 選択 ===== */
+  /* ===== OP → 選択（フェイルセーフ付き） ===== */
   const showCut=(fn,ms=2000)=>{ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); };
   const openSelect=()=>{ state='select'; charSel.style.display='flex'; };
   const closeSelect=()=>{ charSel.style.display='none'; };
 
-  state='op'; showCut('op.png',2000); setTimeout(openSelect,2000);
-
-  startBtn.addEventListener('click', ()=>startFlow());
-  btnChange.addEventListener('click', ()=>openSelect());
-  goRestart.addEventListener('click', ()=>{ hideGo(); startFlow(); });
-  goChange.addEventListener('click', ()=>{ hideGo(); openSelect(); });
-  goQuit.addEventListener('click', ()=>location.reload());
-  document.querySelectorAll('#charSel .opt').forEach(b=>{
-    b.addEventListener('click', ()=>{ player.sprite=(b.getAttribute('data-ch')==='VR')?'VR.png':'orange.png';
-      document.querySelectorAll('#charSel .opt').forEach(x=>x.style.outline=''); b.style.outline='2px solid #2bd3ff'; });
-  });
+  function bootFlow(){
+    state='op'; showCut('op.png',2000);
+    setTimeout(openSelect,2200);
+    // 3.5sでまだ play/countdown/select 以外なら強制で選択を出す
+    setTimeout(()=>{ if(state!=='play'&&state!=='countdown'&&state!=='select'){ openSelect(); } },3500);
+  }
 
   /* ===== 入力 ===== */
   let wantJump=false,wantBoost=false,wantUse=[false,false];
@@ -224,13 +237,9 @@
   const MIN_GAP_PX=40;
 
   function startFlow(){
-    // 1) 画面状態の完全クリア
     goModal.style.display='none'; closeSelect(); hardResetCountdown();
-    // 2) 完全リセット → スタート地点に配置
     resetWorld(); draw();
-    // 3) 次フレームからカウントダウン開始（iOSでのRAF取りこぼし回避）
     requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); });
-    // 4) 遅延アセット
     setTimeout(()=>loadList(deferred),300);
   }
 
@@ -252,7 +261,7 @@
   function hideGo(){ goModal.style.display='none'; }
   function die(){ state='gameover'; showGo(); }
 
-  /* ===== Spawner（重なり防止） ===== */
+  /* ===== Spawner ===== */
   function scheduleNextSpawn(){ const gapM=6+Math.random()*8; nextSpawnX = lastRightX + gapM*PX_PER_M; }
   const ensureGap=x=> (x<lastRightX+MIN_GAP_PX)?(lastRightX+MIN_GAP_PX):x;
 
@@ -331,174 +340,180 @@
 
   /* ===== Game loop ===== */
   let last=0, dispSp=0, dispT=0, jumpLock=0;
-  const GRAVITY=960; // ← ほんの少しだけ落下を早く
+  const GRAVITY=960; // ほんの少しだけ落下を早く
+  function gameStep(ts){
+    try{
+      if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
 
-  requestAnimationFrame(function tick(ts){
-    if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
+      if(state==='countdown') driveCountdown(ts);
 
-    if(state==='countdown') driveCountdown(ts);
+      if(state==='play'){
+        const mult=(boosting>0)?1.7:1, spd=baseSpeed*mult;
+        scrollX += spd*dt; meters=scrollX/PX_PER_M;
 
-    if(state==='play'){
-      const mult=(boosting>0)?1.7:1, spd=baseSpeed*mult;
-      scrollX += spd*dt; meters=scrollX/PX_PER_M;
+        if(nextSpawnX && (scrollX+vw+120)>=nextSpawnX){ spawnAt(pickKind(),nextSpawnX|0); scheduleNextSpawn(); }
 
-      if(nextSpawnX && (scrollX+vw+120)>=nextSpawnX){ spawnAt(pickKind(),nextSpawnX|0); scheduleNextSpawn(); }
+        if(wantBoost){ if(enFree>0){boosting=2.5;} else if(boostGauge>=boostMax){boosting=2.5; boostGauge=0; boostBar.classList.remove('ready');} wantBoost=false; }
+        if(wantUse[0]){ useSlot(0); wantUse[0]=false; }
+        if(wantUse[1]){ useSlot(1); wantUse[1]=false; }
+        if(wantJump){ doJump(); wantJump=false; }
 
-      if(wantBoost){ if(enFree>0){boosting=2.5;} else if(boostGauge>=boostMax){boosting=2.5; boostGauge=0; boostBar.classList.remove('ready');} wantBoost=false; }
-      if(wantUse[0]){ useSlot(0); wantUse[0]=false; }
-      if(wantUse[1]){ useSlot(1); wantUse[1]=false; }
-      if(wantJump){ doJump(); wantJump=false; }
+        if(enFree<=0){ boostGauge=Math.min(boostMax,boostGauge+dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
+        if(boosting>0) boosting-=dt; if(enFree>0) enFree-=dt; if(invincible>0) invincible-=dt;
+        if(wingTime>0){ wingTime-=dt; if(wingTime<=0 && !player.onGround) player.jumpsLeft=0; }
 
-      if(enFree<=0){ boostGauge=Math.min(boostMax,boostGauge+dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
-      if(boosting>0) boosting-=dt; if(enFree>0) enFree-=dt; if(invincible>0) invincible-=dt;
-      if(wingTime>0){ wingTime-=dt; if(wingTime<=0 && !player.onGround) player.jumpsLeft=0; }
+        spawnCollectibles(); maybeVillain();
 
-      spawnCollectibles(); maybeVillain();
+        const gy=GY()|0;
 
-      const gy=GY()|0;
+        // animate obstacles
+        for(let i=0;i<obstacles.length;i++){
+          const o=obstacles[i];
+          if(o.kind==='dokan'){
+            o.phase=(o.phase+dt)%4; const t=o.phase;
+            const h=(t<1)?Math.round(28+t*(SIZE.dokan.hMax-28)):(t<3)?SIZE.dokan.hMax:Math.round(SIZE.dokan.hMax-(t-3)*(SIZE.dokan.hMax-28));
+            o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
+          }else{ o.y=(gy-o.h)|0; }
+          if(o.cool) o.cool=Math.max(0,o.cool-dt);
+          if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
+        }
+        while(obstacles.length && obstacles[0].x<scrollX-520) obstacles.shift();
 
-      // --- animate obstacles
-      for(let i=0;i<obstacles.length;i++){
-        const o=obstacles[i];
-        if(o.kind==='dokan'){
-          o.phase=(o.phase+dt)%4; const t=o.phase;
-          const h=(t<1)?Math.round(28+t*(SIZE.dokan.hMax-28)):(t<3)?SIZE.dokan.hMax:Math.round(SIZE.dokan.hMax-(t-3)*(SIZE.dokan.hMax-28));
-          o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
-        }else{ o.y=(gy-o.h)|0; }
-        if(o.cool) o.cool=Math.max(0,o.cool-dt);
-        if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
-      }
-      while(obstacles.length && obstacles[0].x<scrollX-520) obstacles.shift();
+        for(let i=0;i<fires.length;i++){ const f=fires[i]; if(!f.landed){ f.vy+=520*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; if(f.y+f.h>=gy-1){ f.y=gy-f.h; f.vx=0; f.vy=0; f.landed=true; } } }
+        while(fires.length && fires[0].x<scrollX-520) fires.shift();
+        updateVill(dt);
 
-      for(let i=0;i<fires.length;i++){ const f=fires[i]; if(!f.landed){ f.vy+=520*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; if(f.y+f.h>=gy-1){ f.y=gy-f.h; f.vx=0; f.vy=0; f.landed=true; } } }
-      while(fires.length && fires[0].x<scrollX-520) fires.shift();
-      updateVill(dt);
+        // physics
+        player.vy += GRAVITY*dt; player.y=(player.y+player.vy*dt)|0; if(jumpLock>0) jumpLock-=dt;
 
-      // --- physics
-      player.vy += GRAVITY*dt; player.y=(player.y+player.vy*dt)|0; if(jumpLock>0) jumpLock-=dt;
+        const px=RUNX(), pw=player.w;
+        const footW=Math.max(12,Math.round(pw*0.34)), footX=Math.round(px+(pw-footW)/2);
+        const foot={x:footX,y:player.y+player.h-1,w:footW,h:2};
+        let supportTop=gy, onSlope=false, supportFrom='ground', supportObj=null;
 
-      const px=RUNX(), pw=player.w;
-      const footW=Math.max(12,Math.round(pw*0.34)), footX=Math.round(px+(pw-footW)/2);
-      const foot={x:footX,y:player.y+player.h-1,w:footW,h:2};
-      let supportTop=gy, onSlope=false, supportFrom='ground', supportObj=null;
+        const feet=player.y+player.h;
+        const descending=(player.vy>=0)&&(jumpLock<=0);
 
-      const feet=player.y+player.h;
-      const descending=(player.vy>=0)&&(jumpLock<=0);
-
-      // 斜面（接触時のみ）
-      for(const o of obstacles){
-        if(o.kind!=='jumpdai') continue;
-        const sx=o.x-scrollX;
-        if(px+pw*0.5>=sx && px+pw*0.5<=sx+o.w){
-          const p=(px+pw*0.5 - sx)/o.w;
-          const topY=(gy - p*o.h)|0;
-          const touching = (feet>=topY-8 && feet<=topY+22); // 接触帯拡大、上空通過は除外
-          if(touching){
-            if(topY<supportTop){ supportTop=topY; supportFrom='jumpdai'; supportObj=o; }
-            onSlope=true;
-            player.tilt=Math.max(-0.15,Math.min(0.24,(p-0.3)*0.6));
-            if(!o.kicked && p>0.56 && descending){ // 発火条件見直し
-              o.kicked=true; player.vy=-820; boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
+        // slope
+        for(const o of obstacles){
+          if(o.kind!=='jumpdai') continue;
+          const sx=o.x-scrollX;
+          if(px+pw*0.5>=sx && px+pw*0.5<=sx+o.w){
+            const p=(px+pw*0.5 - sx)/o.w;
+            const topY=(gy - p*o.h)|0;
+            const touching = (feet>=topY-8 && feet<=topY+22);
+            if(touching){
+              if(topY<supportTop){ supportTop=topY; supportFrom='jumpdai'; supportObj=o; }
+              onSlope=true;
+              player.tilt=Math.max(-0.15,Math.min(0.24,(p-0.3)*0.6));
+              if(!o.kicked && p>0.56 && descending){
+                o.kicked=true; player.vy=-820; boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
+              }
             }
           }
         }
-      }
 
-      // 乗れる系（密着）
-      for(const o of obstacles){
-        if(o.kind!=='contena'&&o.kind!=='tora'&&o.kind!=='dokan') continue;
-        const sx=o.x-scrollX, rect={x:sx,y:o.y,w:o.w,h:o.h};
-        if(rects(foot,rect)){
-          const inset=rideInsetPx(o.kind,o.h), topY=o.y+inset;
-          if(topY<supportTop){ supportTop=Math.round(topY); supportFrom=o.kind; supportObj=o; }
-        }
-      }
-
-      // スナップ／トランポリン自動ジャンプ
-      if(descending && feet>=supportTop-22 && feet<=supportTop+22){
-        player.y=(supportTop-player.h+1)|0;
-        if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
-          player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25; // bounce
-        }else{
-          player.vy=0;
-          if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
-        }
-      }else{
-        player.onGround=false; if(!onSlope) player.tilt*=0.9;
-      }
-
-      // 当たり（致死）
-      if(invincible<=0){
-        const A=shrink({x:px,y:player.y,w:pw,h:player.h},4);
-        for(const ff of fires){ const rx=ff.x-scrollX; if(rects(A,shrink({x:rx,y:ff.y,w:ff.w,h:ff.h},4))){ die(); return; } }
+        // rideables
         for(const o of obstacles){
-          const rx2=o.x-scrollX, B0={x:rx2,y:o.y,w:o.w,h:o.h};
-          if(o.kind==='corn'||o.kind==='gomi'){ if(rects(A,shrink(B0,6))){ die(); return; } }
-          else if(o.kind==='contena'||o.kind==='tora'||o.kind==='dokan'){
-            const top=o.y+rideInsetPx(o.kind,o.h), B=shrink(B0,4);
-            const onTop=(A.y+A.h)<=top+12 && A.x+A.w>B.x && A.x<B.x+B.w;
-            if(!onTop && rects(A,B)){ die(); return; } // 横/下からはアウト
+          if(o.kind!=='contena'&&o.kind!=='tora'&&o.kind!=='dokan') continue;
+          const sx=o.x-scrollX, rect={x:sx,y:o.y,w:o.w,h:o.h};
+          if(rects(foot,rect)){
+            const inset=rideInsetPx(o.kind,o.h), topY=o.y+inset;
+            if(topY<supportTop){ supportTop=Math.round(topY); supportFrom=o.kind; supportObj=o; }
           }
         }
+
+        // snap / bounce
+        if(descending && feet>=supportTop-22 && feet<=supportTop+22){
+          player.y=(supportTop-player.h+1)|0;
+          if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
+            player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25;
+          }else{
+            player.vy=0;
+            if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
+          }
+        }else{
+          player.onGround=false; if(!onSlope) player.tilt*=0.9;
+        }
+
+        // deadly
+        if(invincible<=0){
+          const A=shrink({x:px,y:player.y,w:pw,h:player.h},4);
+          for(const ff of fires){ const rx=ff.x-scrollX; if(rects(A,shrink({x:rx,y:ff.y,w:ff.w,h:ff.h},4))){ die(); return; } }
+          for(const o of obstacles){
+            const rx2=o.x-scrollX, B0={x:rx2,y:o.y,w:o.w,h:o.h};
+            if(o.kind==='corn'||o.kind==='gomi'){ if(rects(A,shrink(B0,6))){ die(); return; } }
+            else if(o.kind==='contena'||o.kind==='tora'||o.kind==='dokan'){
+              const top=o.y+rideInsetPx(o.kind,o.h), B=shrink(B0,4);
+              const onTop=(A.y+A.h)<=top+12 && A.x+A.w>B.x && A.x<B.x+B.w;
+              if(!onTop && rects(A,B)){ die(); return; }
+            }
+          }
+        }
+
+        // pickups
+        for(let i=items.length-1;i>=0;i--){
+          const it=items[i]; if(it.type!=='coin'){ it.t=(it.t||0)+dt*1.6; it.y=(it.y+Math.sin(it.t)*0.4)|0; }
+          const irx=it.x-scrollX;
+          if(rects(shrink({x:px,y:player.y,w:pw,h:player.h},4),{x:irx,y:it.y,w:it.w,h:it.h})){
+            if(it.type==='coin'){ if(++coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000);} }
+            else{ if(!(slots[0]&&slots[1])){ if(!slots[0]) slots[0]={type:it.type}; else slots[1]={type:it.type}; refreshSlots(); } }
+            items.splice(i,1);
+          } else if(irx<-200) items.splice(i,1);
+        }
+
+        // HUD
+        elDist.textContent=Math.floor(meters)+' m';
+        dispT+=dt; if(dispT>=.2){ dispSp=Math.round(spd*KMH_PER_PX); dispT=0; }
+        elSpeed.textContent=dispSp+' km/h';
+        elJump.textContent='×'+(player.onGround?(wingTime>0?4:2):player.jumpsLeft);
+        boostFill.style.width=(boostGauge/boostMax*100)+'%';
+        if(invincible>0){ sparkleT+=dt*8; if(sparkleT>1){ sparkleT=0; sparkleFrame^=1; } }
+
+        player.prevFeet = feet;
       }
 
-      // ピックアップ
-      for(let i=items.length-1;i>=0;i--){
-        const it=items[i]; if(it.type!=='coin'){ it.t=(it.t||0)+dt*1.6; it.y=(it.y+Math.sin(it.t)*0.4)|0; }
-        const irx=it.x-scrollX;
-        if(rects(shrink({x:px,y:player.y,w:pw,h:player.h},4),{x:irx,y:it.y,w:it.w,h:it.h})){
-          if(it.type==='coin'){ if(++coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000);} }
-          else{ if(!(slots[0]&&slots[1])){ if(!slots[0]) slots[0]={type:it.type}; else slots[1]={type:it.type}; refreshSlots(); } }
-          items.splice(i,1);
-        } else if(irx<-200) items.splice(i,1);
-      }
-
-      // HUD
-      elDist.textContent=Math.floor(meters)+' m';
-      dispT+=dt; if(dispT>=.2){ dispSp=Math.round(spd*KMH_PER_PX); dispT=0; }
-      elSpeed.textContent=dispSp+' km/h';
-      elJump.textContent='×'+(player.onGround?(wingTime>0?4:2):player.jumpsLeft);
-      boostFill.style.width=(boostGauge/boostMax*100)+'%';
-      if(invincible>0){ sparkleT+=dt*8; if(sparkleT>1){ sparkleT=0; sparkleFrame^=1; } }
-
-      player.prevFeet = feet;
+      draw();
+    }catch(e){
+      console.error(e); showFatal(e);
     }
-
-    draw(); requestAnimationFrame(tick);
-  });
+    requestAnimationFrame(gameStep);
+  }
+  requestAnimationFrame(gameStep);
 
   /* ===== Actions ===== */
   function doJump(){
     if(state!=='play') return;
     const maxJ=(wingTime>0)?4:2;
     if(player.onGround){
-      player.vy=-540;               // ← もう少しだけ高く＆早く上昇
+      player.vy=-540;               // 少しだけ高く＆速い上昇
       player.onGround=false;
       player.jumpsLeft=maxJ-1;
       jumpLock=0.08;
     }else if(player.jumpsLeft>0){
-      player.vy=-490;               // ← 二段目も微増
+      player.vy=-490;               // 二段目も微増
       player.jumpsLeft--;
       jumpLock=0.08;
     }
     elJump.textContent='×'+(player.onGround?maxJ:player.jumpsLeft);
   }
 
-  /* ===== Draw ===== */
+  /* ===== Draw（画像未読込でも真っ黒回避） ===== */
   function tileX(img,y,h,f=1,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=img.width/img.height; const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
   function tileXRef(img,y,h,f,ref,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=(ref&&ref.width)?(ref.width/ref.height):(img.width/img.height); const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
 
   function draw(){
-    // 背景
-    const g=ctx.createLinearGradient(0,0,0,vh); g.addColorStop(0,'#7ec9ff'); g.addColorStop(1,'#a0defa'); ctx.fillStyle=g; ctx.fillRect(0,0,vh*0+vw,vh);
+    // 空（画像なしでも青）
+    const sky=ctx.createLinearGradient(0,0,0,vh); sky.addColorStop(0,'#7ec9ff'); sky.addColorStop(1,'#a0defa'); ctx.fillStyle=sky; ctx.fillRect(0,0,vw,vh);
     const gy=GY()|0;
+    // 背景タイル（あれば描く）
     tileX(IMG['sora.PNG'],0,vh,0.25);
     const grassH=Math.round(vh*0.20), grassTopY=Math.max(0, gy-grassH-Math.round(vh*0.24));
-    tileX(IMG['hatake2.png'],grassTopY,grassH,0.6,1);
+    if(IMG['hatake2.png']) tileX(IMG['hatake2.png'],grassTopY,grassH,0.6,1);
+    // 畑と地面の帯
     const seamH=10, bandTop=(grassTopY+grassH)|0, bandH=Math.max(0,(gy-seamH)-bandTop);
-    tileX(IMG['do-ro.png'],bandTop,bandH,1,1);
-    tileXRef(IMG['mob.png'],(gy-seamH)|0,seamH,1,IMG['do-ro.png'],1);
-    tileXRef(IMG['mob.png'],gy|0,(vh-gy+1)|0,1,IMG['do-ro.png'],1);
+    if(IMG['do-ro.png']) tileX(IMG['do-ro.png'],bandTop,bandH,1,1);
+    if(IMG['mob.png']){ tileXRef(IMG['mob.png'],(gy-seamH)|0,seamH,1,IMG['do-ro.png'],1); tileXRef(IMG['mob.png'],gy|0,(vh-gy+1)|0,1,IMG['do-ro.png'],1); }
 
     // 障害物
     for(const o of obstacles){
@@ -517,19 +532,30 @@
       const im=IMG[name]; if(im&&im.width) ctx.drawImage(im,sx|0,it.y|0,it.w|0,it.h|0);
     }
 
-    // ヴィラン・火の玉
+    // ヴィラン
     for(const f of fires){ const sx=f.x-scrollX; if(sx<-260||sx>vw+260) continue; const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0); }
     for(const v of villains){ const sx=v.x-scrollX; const im=IMG['viran.png']; if(im&&im.width) ctx.drawImage(im,(sx-60)|0,(v.y-50)|0,120,100); }
 
     // プレイヤー
     ctx.save(); ctx.translate((RUNX()+player.w/2)|0,(player.y+player.h/2)|0); ctx.rotate(player.tilt); ctx.translate((-player.w/2)|0,(-player.h/2)|0);
     const body=(invincible>0)?'gold.png':player.sprite, pb=IMG[body];
-    if(pb&&pb.width){ ctx.drawImage(pb,0,0,player.w|0,player.h|0);
-      if(invincible>0){ const sp=IMG[sparkleFrame?'hoshi1.png':'hoshi2.png']; if(sp&&sp.width) ctx.drawImage(sp,-6,-6,(player.w+12)|0,(player.h+12)|0); }
-    }else{ ctx.fillStyle='#0bf'; ctx.fillRect(0,0,player.w|0,player.h|0); }
+    if(pb&&pb.width){ ctx.drawImage(pb,0,0,player.w|0,player.h|0); if(invincible>0){ const sp=IMG[sparkleFrame?'hoshi1.png':'hoshi2.png']; if(sp&&sp.width) ctx.drawImage(sp,-6,-6,(player.w+12)|0,(player.h+12)|0); } }
+    else{ ctx.fillStyle='#0bf'; ctx.fillRect(0,0,player.w|0,player.h|0); }
     ctx.restore();
   }
 
+  /* ===== Events to start ===== */
+  startBtn.addEventListener('click', ()=>startFlow());
+  btnChange.addEventListener('click', ()=>openSelect());
+  goRestart.addEventListener('click', ()=>{ hideGo(); startFlow(); });
+  goChange.addEventListener('click', ()=>{ hideGo(); openSelect(); });
+  goQuit.addEventListener('click', ()=>location.reload());
+
+  // 起動
+  bootFlow();
+
+  // グローバルエラー可視化
+  window.addEventListener('error', (e)=>{ showFatal(e.error||e.message||'Unknown error'); });
 })();
 </script>
 </body>
