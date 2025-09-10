@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner (mobile exact + corn)</title>
+<title>Runner (mobile exact + corn, strict preload)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -14,7 +14,7 @@
   .row{display:flex;gap:8px;align-items:center}
   .pill{background:#1b2233;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.05)}
   main.play{position:absolute;left:0;right:0;top:64px;bottom:96px;background:#060a12}
-  canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+  #game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
   footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:96px;z-index:10;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:12px;background:linear-gradient(180deg,rgba(16,21,31,.84),rgba(10,14,22,.96));border-top:1px solid rgba(255,255,255,.06)}
   .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;display:flex;align-items:center;justify-content:center;background:#1a2132;border:1px solid rgba(255,255,255,.08);color:#fff;padding:12px 10px;border-radius:14px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25)}
   .btn:active{transform:translateY(1px)} .btn.primary{background:#1c2b44;border-color:#2e4f7a} .btn.accent{background:#1a2b3e;border-color:#256787}
@@ -26,6 +26,8 @@
   .choice{background:#121a2a;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;display:grid;gap:8px;justify-items:center;cursor:pointer;user-select:none}
   .choice:active{transform:translateY(1px)}
   .choice img{width:72px;height:72px;object-fit:contain;background:#0c111a;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+  #loading{position:absolute;inset:64px 0 96px;display:grid;place-items:center;z-index:30;background:rgba(7,11,18,.8)}
+  #loading .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
   #hit { position:absolute; inset:auto 12px 108px auto; padding:6px 10px; background:#ff3e7f; border-radius:999px; font-size:12px; display:none; }
 </style>
 </head>
@@ -45,7 +47,8 @@
       <main class="play">
         <canvas id="game" width="390" height="540"></canvas>
 
-        <div id="overlay">
+        <!-- キャラ選択 -->
+        <div id="overlay" hidden>
           <div class="card">
             <p class="title">どちらか選択してスタート</p>
             <p class="sub">直下に <code>VR.png</code> / <code>orange.png</code> / <code>sora.png</code> / <code>mob.png</code> / <code>corn.png</code> を置いてください。</p>
@@ -55,6 +58,9 @@
             </div>
           </div>
         </div>
+
+        <!-- プリロード中 -->
+        <div id="loading"><div class="bubble">読み込み中…（画像を取得しています）</div></div>
       </main>
 
       <footer class="ctrl">
@@ -69,7 +75,7 @@
 
 <script>
 (() => {
-  /* ==== PCでもスマホと同じ見た目（固定390×700をスケール） ==== */
+  /* ==== PCでもスマホと同じ見た目（固定390×700スケール） ==== */
   const phone = document.getElementById('phone');
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
@@ -82,202 +88,198 @@
   function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
   setup(); addEventListener('resize', setup, {passive:true});
 
-  /* ==== 画像 ==== */
-  const imgBG = new Image(); imgBG.src = 'sora.png';    // 背景（空）
-  const imgGR = new Image(); imgGR.src = 'mob.png';     // 地面
-  const imgVR = new Image(); imgVR.src = 'VR.png';      // キャラ
-  const imgOR = new Image(); imgOR.src = 'orange.png';  // キャラ
-  const imgCO = new Image(); imgCO.src = 'corn.png';    // 障害物
+  /* ==== 画像プリロード（完了を待ってから開始） ==== */
+  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+  const loading = document.getElementById('loading');
+  const overlay  = document.getElementById('overlay');
 
-  /* ==== 地面：上端トリム（透明余白を削除） ==== */
-  const GROUND_EXTRA_TRIM = 0;
-  let groundTrimTop = 0, groundDrawH = 96;
-  imgGR.onload = () => {
-    const {trimTop, contentH} = scanTopTrim(imgGR);
-    groundTrimTop = Math.max(0, trimTop + GROUND_EXTRA_TRIM);
-    groundDrawH   = Math.max(48, Math.min(160, contentH - GROUND_EXTRA_TRIM));
-  };
-  const floorY = () => Math.floor(H - groundDrawH);
+  Promise.all([
+    load('sora.png'),   // 背景（必須）
+    load('mob.png'),    // 地面（必須）
+    load('corn.png'),   // コーン（必須）
+    // キャラ画像は任意だが先に読んでおく
+    load('VR.png').catch(()=>null),
+    load('orange.png').catch(()=>null),
+  ]).then(imgs=>{
+    const [imgBG,imgGR,imgCO,imgVR,imgOR] = imgs;
 
-  /* ==== キャラ：下端透明トリム分を下げて接地 ==== */
-  const PLAYER_EXTRA_PUSH = 0;
-  function feetFracOf(img){
-    const {bottomTrim, h} = scanBottomTrim(img);
-    return bottomTrim / h;
-  }
+    /* ==== 地面：上端トリム（透明余白を削除） ==== */
+    const {trimTop:groundTrimTop, contentH:groundContentH} = scanTopTrim(imgGR);
+    const groundDrawH = Math.max(48, Math.min(160, groundContentH));
+    const floorY = () => Math.floor(H - groundDrawH);
 
-  /* ==== corn.png：外周の透明余白を全方向でトリムして表示＆衝突矩形に使用 ==== */
-  let cornTrim = {sx:0, sy:0, sw:0, sh:0};  // ソース内の有効矩形
-  imgCO.onload = () => { cornTrim = scanTightRect(imgCO); };
+    /* ==== コーン：外周透明を全方向トリム ==== */
+    const cornTrim = scanTightRect(imgCO);
 
-  /* ==== 画像スキャン（透明トリム） ==== */
-  function scanTopTrim(img){
-    const w=img.naturalWidth, h=img.naturalHeight;
-    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-    const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data, TH=12;
-    let top=0, found=false;
-    outer: for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ top=y; found=true; break outer; } } }
-    return { trimTop: found?top:0, contentH: h - (found?top:0) };
-  }
-  function scanBottomTrim(img){
-    const w=img.naturalWidth, h=img.naturalHeight;
-    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-    const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data, TH=12;
-    let bottom=0;
-    outer: for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ bottom = (h-1-y); break outer; } } }
-    return { bottomTrim: bottom, h };
-  }
-  function scanTightRect(img){
-    const w=img.naturalWidth, h=img.naturalHeight;
-    const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-    const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data, TH=12;
-    let minX=w, minY=h, maxX=-1, maxY=-1;
-    for(let y=0;y<h;y++){
-      for(let x=0;x<w;x++){
-        if(d[(y*w+x)*4+3]>TH){
-          if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y;
-        }
+    /* ==== キャラ：足元の透明割合を取得 ==== */
+    function feetFracOf(img){
+      if(!img) return 0;
+      const {bottomTrim,h} = scanBottomTrim(img);
+      return bottomTrim/h;
+    }
+
+    // 画面構成
+    const GRAV=1500, JUMP=540, BASE=220, BOOST=480, KM=0.072;
+    let boosting=false, boost=60, speed=BASE, dist=0, bgOff=0, grOff=0;
+    const player = { x:80, y:floorY(), vy:0, w:48, h:48, jumps:2, img:null, color:'#6cf', feetFrac:0 };
+
+    // HUD
+    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump'), elCoin=document.getElementById('coin'), elBoost=document.getElementById('boostPct');
+    function updateHUD(){ elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`; elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`; elJump.textContent=`ジャンプ ${player.jumps}`; elCoin.textContent=`コイン 0`; elBoost.textContent=`${Math.round(boost)}%`; btnBoost.disabled=boost<=0; }
+
+    // 操作
+    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
+    function doJump(){ if(player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } }
+    btnJump.onpointerdown=e=>{e.preventDefault();doJump();};
+    btnBoost.onpointerdown=e=>{e.preventDefault();boosting=true;};
+    btnBoost.onpointerup=e=>{e.preventDefault();boosting=false;};
+    btnBoost.onpointercancel=e=>{e.preventDefault();boosting=false;};
+    addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp')doJump(); if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=true;});
+    addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=false;});
+
+    // タイル描画（横ループ）
+    function drawTiledX(img, yTop, height, offsetX, srcY=0, srcH=null){
+      const sH = srcH ?? (img.naturalHeight - srcY);
+      const scaleY = height / sH;
+      const tileW  = img.naturalWidth * scaleY;
+      let ox = offsetX % tileW; if (ox>0) ox -= tileW;
+      const y = Math.floor(yTop);
+      for(let x=ox; x<W; x+=tileW){
+        ctx.drawImage(img, 0, srcY, img.naturalWidth, sH, Math.floor(x), y, Math.ceil(tileW), Math.ceil(height));
       }
     }
-    if(maxX<0) return {sx:0, sy:0, sw:w, sh:h}; // 全透明だった場合の保険
-    return {sx:minX, sy:minY, sw:maxX-minX+1, sh:maxY-minY+1};
-  }
 
-  /* ==== タイル描画（横ループ） ==== */
-  function drawTiledX(img, yTop, height, offsetX, srcY=0, srcH=null){
-    // 背景は「常に」描く：未読込なら色で埋める → 読めたら自動で切替
-    if (!img || !(img.naturalWidth>0)){
-      ctx.fillStyle = '#78aee6'; // soraの代替色（空色）
-      ctx.fillRect(0, yTop, W, height);
-      return;
+    // 画像スキャンのユーティリティ
+    function scanTopTrim(img){
+      const w=img.naturalWidth, h=img.naturalHeight;
+      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data, TH=12;
+      let top=0, found=false;
+      outer: for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ top=y; found=true; break outer; } } }
+      return { trimTop: found?top:0, contentH: h - (found?top:0) };
     }
-    const sH = srcH ?? (img.naturalHeight - srcY);
-    const scaleY = height / sH;
-    const tileW  = img.naturalWidth * scaleY;
-    let ox = offsetX % tileW; if (ox>0) ox -= tileW;
-    const y = Math.floor(yTop);
-    for(let x=ox; x<W; x+=tileW){
-      ctx.drawImage(img, 0, srcY, img.naturalWidth, sH, Math.floor(x), y, Math.ceil(tileW), Math.ceil(height));
+    function scanBottomTrim(img){
+      const w=img.naturalWidth, h=img.naturalHeight;
+      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data, TH=12;
+      let bottom=0;
+      outer: for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ bottom = (h-1-y); break outer; } } }
+      return { bottomTrim: bottom, h };
     }
-  }
-
-  /* ==== 状態 ==== */
-  const GRAV=1500, JUMP=540, BASE=220, BOOST=480, KM=0.072;
-  let boosting=false, boost=60, speed=BASE, dist=0, bgOff=0, grOff=0;
-  const player = { x:80, y:floorY(), vy:0, w:48, h:48, jumps:2, img:null, color:'#6cf', feetFrac:0 };
-  let running=false, prev=0;
-
-  // corn 障害物（同種を流す）
-  const obstacles = []; // {x,y,w,h, scale, trim}
-  function spawnCorn(){
-    if(!(imgCO.naturalWidth>0)) return;
-    const fy = floorY();
-    const targetH = Math.min(120, Math.max(40, groundDrawH*0.9)); // 見た目高さ
-    const scale = targetH / cornTrim.sh;
-    const w = Math.round(cornTrim.sw * scale);
-    const h = Math.round(cornTrim.sh * scale);
-    const y = Math.round(fy - h); // 地面に接地
-    const x = W + 40;
-    obstacles.push({x,y,w,h,scale,trim:cornTrim});
-  }
-
-  /* ==== 入力 ==== */
-  const j=document.getElementById('btnJump'), b=document.getElementById('btnBoost');
-  function doJump(){ if(player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } }
-  j.onpointerdown=e=>{e.preventDefault();doJump();};
-  b.onpointerdown=e=>{e.preventDefault();boosting=true;};
-  b.onpointerup=e=>{e.preventDefault();boosting=false;};
-  b.onpointercancel=e=>{e.preventDefault();boosting=false;};
-  addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp')doJump(); if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=true;});
-  addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=false;});
-
-  /* ==== HUD ==== */
-  const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump'), elCoin=document.getElementById('coin'), elBoost=document.getElementById('boostPct');
-  function updateHUD(){ elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`; elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`; elJump.textContent=`ジャンプ ${player.jumps}`; elCoin.textContent=`コイン 0`; elBoost.textContent=`${Math.round(boost)}%`; b.disabled=boost<=0; }
-
-  /* ==== キャラ選択 ==== */
-  const overlay = document.getElementById('overlay');
-  overlay.addEventListener('click', e=>{
-    const c=e.target.closest('.choice'); if(!c) return;
-    player.img = (c.dataset.char==='VR') ? imgVR : imgOR;
-    player.feetFrac = feetFracOf(player.img);
-    player.y=floorY(); player.vy=0; player.jumps=2;
-    overlay.style.display='none';
-    // corn を最初に1つ出す
-    setTimeout(spawnCorn, 400);
-    start();
-  });
-
-  /* ==== ループ ==== */
-  function start(){ if(running)return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
-  const hitLabel = document.getElementById('hit');
-  function loop(t){
-    const dt=Math.min(0.033,(t-prev)/1000); prev=t;
-
-    // スピード/ブースト
-    if(boosting && boost>0){ speed=BOOST; boost=Math.max(0,boost-24*dt); } else { speed=BASE; boost=Math.min(100,boost+10*dt); }
-
-    // 物理（接地は整数）
-    player.vy += GRAV*dt;
-    player.y  += player.vy*dt;
-    const fy=floorY();
-    if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
-
-    // スクロール
-    dist  += speed*dt;
-    bgOff -= speed*0.20*dt;
-    grOff -= speed*1.00*dt;
-
-    // 障害物流し・スポーン
-    for(let i=obstacles.length-1;i>=0;i--){
-      obstacles[i].x -= speed*dt;
-      if(obstacles[i].x + obstacles[i].w < -40) obstacles.splice(i,1);
+    function scanTightRect(img){
+      const w=img.naturalWidth, h=img.naturalHeight;
+      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data, TH=12;
+      let minX=w, minY=h, maxX=-1, maxY=-1;
+      for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
+      if(maxX<0) return {sx:0,sy:0,sw:w,sh:h};
+      return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
     }
-    // 簡易：前方が空いたら次をスポーン
-    if(obstacles.length===0 || obstacles[obstacles.length-1].x < W-180){ spawnCorn(); }
 
-    // ===== 描画 =====
-    ctx.clearRect(0,0,W,H);
-    drawTiledX(imgBG, 0, H, bgOff);                         // 背景（常に描く）
-    drawTiledX(imgGR, H-groundDrawH, groundDrawH, grOff, groundTrimTop); // 地面
+    // 背景と地面はロード済みなので、ここで初回描画しておく（代替色は使わない）
+    function drawBG(){ drawTiledX(imgBG, 0, H, bgOff); }
+    function drawGR(){ drawTiledX(imgGR, H-groundDrawH, groundDrawH, grOff, groundTrimTop); }
 
-    // 障害物描画
-    obstacles.forEach(o=>{
-      if (imgCO.naturalWidth>0){
-        ctx.drawImage(imgCO, o.trim.sx, o.trim.sy, o.trim.sw, o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
-      } else {
-        ctx.fillStyle='#f90'; ctx.fillRect(Math.floor(o.x), Math.floor(o.y), o.w, o.h);
-      }
+    // corn 障害物
+    const obstacles=[];
+    function spawnCorn(){
+      // 画像＆トリム準備済みで必ず出す
+      const fy = floorY();
+      const targetH = Math.min(120, Math.max(40, groundDrawH*0.9));
+      const scale = targetH / cornTrim.sh;
+      const w = Math.round(cornTrim.sw * scale);
+      const h = Math.round(cornTrim.sh * scale);
+      const y = Math.round(fy - h);
+      const x = W + 40;
+      obstacles.push({x,y,w,h,scale,trim:cornTrim});
+    }
+
+    // キャラ選択
+    overlay.hidden = false;
+    overlay.addEventListener('click', e=>{
+      const c=e.target.closest('.choice'); if(!c) return;
+      player.img = (c.dataset.char==='VR' && imgVR) ? imgVR : (imgOR || imgVR);
+      player.feetFrac = player.img ? feetFracOf(player.img) : 0;
+      player.y=floorY(); player.vy=0; player.jumps=2;
+      overlay.hidden = true;
+      loading.style.display='none'; // 念のため
+      // 最初のコーンを確実に出す
+      spawnCorn();
+      start();
     });
 
-    // プレイヤー（足元押し下げ）
-    const px = Math.floor(player.x);
-    const feetPush = Math.floor(player.h * player.feetFrac) + PLAYER_EXTRA_PUSH;
-    const py = Math.floor(player.y - player.h + feetPush);
-    if (player.img && player.img.naturalWidth>0){ ctx.drawImage(player.img, px, py, player.w, player.h); }
-    else { ctx.fillStyle = player.color; ctx.fillRect(px, py, player.w, player.h); }
+    // ローディング解除（背景・地面・コーンが揃った時点で選択画面を出す）
+    loading.style.display='none';
+    overlay.hidden = false;
 
-    // 衝突判定（AABB）
-    for(const o of obstacles){
-      if (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y){
-        // HIT：停止＆点滅
-        speed = 0; boosting=false;
-        hitLabel.style.display='block';
-        phone.animate([{filter:'brightness(1)'},{filter:'brightness(2)'},{filter:'brightness(1)'}],{duration:280});
-        if (navigator.vibrate) navigator.vibrate(60);
+    // ループ
+    const hitLabel = document.getElementById('hit');
+    let running=false, prev=0;
+    function start(){ if(running)return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
+    function loop(t){
+      const dt=Math.min(0.033,(t-prev)/1000); prev=t;
+
+      // スピード/ブースト
+      if(boosting && boost>0){ speed=BOOST; boost=Math.max(0,boost-24*dt); } else { speed=BASE; boost=Math.min(100,boost+10*dt); }
+
+      // 物理
+      player.vy += 1500*dt;
+      player.y  += player.vy*dt;
+      const fy=floorY();
+      if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
+
+      // スクロール
+      dist  += speed*dt;
+      bgOff -= speed*0.20*dt;
+      grOff -= speed*1.00*dt;
+
+      // 障害物更新・追加
+      for(let i=obstacles.length-1;i>=0;i--){
+        obstacles[i].x -= speed*dt;
+        if(obstacles[i].x + obstacles[i].w < -40) obstacles.splice(i,1);
       }
+      if(obstacles.length===0 || obstacles[obstacles.length-1].x < W-180){ spawnCorn(); }
+
+      // === 描画（背景→地面→障害物→プレイヤー） ===
+      ctx.clearRect(0,0,W,H);
+      drawBG();  // ←sora.png を必ず使用（ロード待ち済み）
+      drawGR();
+
+      obstacles.forEach(o=>{
+        ctx.drawImage(imgCO, o.trim.sx, o.trim.sy, o.trim.sw, o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
+      });
+
+      const px = Math.floor(player.x);
+      const feetPush = Math.floor(player.h * player.feetFrac);
+      const py = Math.floor(player.y - player.h + feetPush);
+      if (player.img && player.img.naturalWidth>0){ ctx.drawImage(player.img, px, py, player.w, player.h); }
+      else { ctx.fillStyle = player.color; ctx.fillRect(px, py, player.w, player.h); }
+
+      // 衝突
+      for(const o of obstacles){
+        if (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y){
+          speed = 0; boosting=false;
+          hitLabel.style.display='block';
+          phone.animate([{filter:'brightness(1)'},{filter:'brightness(2)'},{filter:'brightness(1)'}],{duration:280});
+          if (navigator.vibrate) navigator.vibrate(60);
+        }
+      }
+
+      updateHUD();
+      requestAnimationFrame(loop);
     }
 
-    updateHUD();
-    requestAnimationFrame(loop);
-  }
-
-  /* ==== スクロール抑止（UI以外） ==== */
-  ['touchstart','touchmove','gesturestart'].forEach(ev=>{
-    document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
+    // スクロール抑止（UI以外）
+    ['touchstart','touchmove','gesturestart'].forEach(ev=>{
+      document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
+    });
+  }).catch(err=>{
+    const loading = document.getElementById('loading');
+    loading.querySelector('.bubble').textContent = '画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
+    console.error(err);
   });
 })();
 </script>
