@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v4.6.2（iOS黒画面修正）</title>
+<title>MOB KART CHALLENGE — v4.6.3（即起動＋ジャンプ確実化）</title>
 <style>
   :root{
     --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
@@ -60,7 +60,7 @@
 <body>
   <div id="app">
     <div class="topbar">
-      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.6.2（iOS黒画面修正）</small></div>
+      <div class="title"><b>MOB KART CHALLENGE</b><small>v4.6.3（即起動＋ジャンプ確実化）</small></div>
       <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
     </div>
 
@@ -148,7 +148,7 @@
   function shrink(r,p){ return {x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p}; }
   function rects(a,b){ return !(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y); }
 
-  /* ===== Assets ===== */
+  /* ===== Assets（遅延ロード） ===== */
   var files = [
     'sora.PNG','hatake2.png','do-ro.png','mob.png',
     'corn.PNG','dokan.png','jumpdai.png',
@@ -157,14 +157,18 @@
     'coin.png','gold.png','hoshi1.png','hoshi2.png','mutekiop.png','viran op.png','viran.png','tama.png',
     'tsubasa.png','jump.png','en.png','gomi.png','contena.png','tora.png'
   ];
-  var IMG={}, left=files.length;
-  files.forEach(function(fn){
-    var im=new Image();
-    // iOS/Safari 互換のため encodeURI を使用（スペースを %20 に）
-    im.src = encodeURI(fn);
-    im.onload = function(){ IMG[fn]=im; if(--left===0) boot(); };
-    im.onerror = function(){ IMG[fn]=im; if(--left===0) boot(); };
-  });
+  var IMG={}; // 読めたものから順次反映
+  function loadAll(){
+    for(var i=0;i<files.length;i++){
+      (function(fn){
+        var im=new Image();
+        im.src=encodeURI(fn);
+        im.onload=function(){ IMG[fn]=im; };
+        im.onerror=function(){ IMG[fn]=im; };
+      })(files[i]);
+    }
+  }
+  loadAll(); // すぐ開始（ゲームは待たない）
 
   /* ===== World ===== */
   function GY(){ return Math.floor(vh*0.80); }
@@ -210,10 +214,13 @@
     }
   });
 
+  /* ===== OP → キャラ選択（画像待たずに進む） ===== */
   function showCut(fn,ms){ if(ms===void 0) ms=2000; cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(function(){cut.classList.remove('show');},ms); }
   function openSelect(){ state='select'; charSel.style.display='flex'; }
   function closeSelect(){ charSel.style.display='none'; }
-  function boot(){ state='op'; showCut('op.png',2000); setTimeout(openSelect,2000); }
+
+  // 即起動：OPを表示しつつ2秒後に選択へ（画像未ロードでも進行）
+  state='op'; showCut('op.png',2000); setTimeout(openSelect,2000);
 
   startBtn.addEventListener('click',function(){ startFlow(); });
   btnChange.addEventListener('click',function(){ openSelect(); });
@@ -228,7 +235,7 @@
     });
   });
 
-  /* ===== Inputs（全フォールバック＋入力キュー） ===== */
+  /* ===== 入力（ボタン＋キャンバス全体、キュー化） ===== */
   var wantJump=false, wantBoost=false, wantUse=[false,false];
   function bindPress(el,fn){
     function h(e){ e.preventDefault(); e.stopPropagation(); fn(); }
@@ -238,9 +245,20 @@
   bindPress(btnBoost, function(){ wantBoost=true; });
   bindPress(btnItem1, function(){ wantUse[0]=true; });
   bindPress(btnItem2, function(){ wantUse[1]=true; });
+
+  // キャンバスをタップでもジャンプ（ボタン不発対策）
+  cv.addEventListener('pointerdown',canvasTap,{passive:false});
+  cv.addEventListener('touchstart',canvasTap,{passive:false});
+  cv.addEventListener('mousedown',canvasTap,{passive:false});
+  function canvasTap(e){
+    // 下部コントロール領域(最下部25%)は無効化
+    var y = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+    var h = window.innerHeight || document.documentElement.clientHeight;
+    if(y < h*0.75) { e.preventDefault(); wantJump=true; }
+  }
   window.addEventListener('keydown',function(e){ if(e.code==='Space'||e.code==='ArrowUp') wantJump=true; if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
 
-  /* ===== Game flow（確実遷移） ===== */
+  /* ===== Flow（確実遷移） ===== */
   var preWait=0, cdIndex=0, cdTimer=0;
   function startFlow(){ closeSelect(); resetWorld(); state='prestart'; preWait=0.5; }
   function resetWorld(){
@@ -257,15 +275,10 @@
     nextSpawnX = lastX + 8*PX_PER_M; scheduleNextSpawn(nextSpawnX);
     last=0; draw(); wantJump=wantBoost=false; wantUse=[false,false];
   }
+  function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1]; btnItem1.textContent=slots[0]?String(slots[0].type).toUpperCase():'アイテム1'; btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
   function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex'; }
   function hideGo(){ goModal.style.display='none'; }
   function die(){ state='gameover'; showGo(); }
-
-  function refreshSlots(){
-    btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
-    btnItem1.textContent = slots[0]? String(slots[0].type).toUpperCase() : 'アイテム1';
-    btnItem2.textContent = slots[1]? String(slots[1].type).toUpperCase() : 'アイテム2';
-  }
 
   /* ===== Spawner ===== */
   var nextSpawnX=null, lastKanbanX=-1e9;
@@ -280,24 +293,10 @@
     else if(kind==='jumpdai'){ obstacles.push({kind:kind,x:x|0,y:ground(SIZE.jump.h),w:SIZE.jump.w,h:SIZE.jump.h, kicked:false}); }
     else if(kind==='kanban'){ if(x-lastKanbanX<1200) return; lastKanbanX=x; var k=1+Math.floor(Math.random()*6); obstacles.push({kind:kind,img:'kanban'+k+'.png',x:x|0,y:ground(SIZE.kanban.h),w:SIZE.kanban.w,h:SIZE.kanban.h}); }
   }
-  function pickKind(){
-    var pool=[['corn',3],['gomi',3],['contena',3],['tora',2],['dokan',2],['jumpdai',2],['kanban',0.1]];
-    var sum=pool.reduce(function(a,b){return a+b[1];},0), r=Math.random()*sum, i;
-    for(i=0;i<pool.length;i++){ var k=pool[i][0], w=pool[i][1]; r-=w; if(r<=0) return k; }
-    return 'corn';
-  }
-  function placeEarlyContena(){
-    var base=SAFE_M*PX_PER_M + 12*PX_PER_M;
-    var x = base + ((Math.random()*6|0)*PX_PER_M);
-    var sets = 3 + (Math.random()*3|0);
-    for(var s=0;s<sets;s++){
-      var n=(Math.random()<.5?2:3);
-      for(var i=0;i<n;i++) spawnAt('contena', x + i*(SIZE.cont.w+8));
-      x += (10 + Math.random()*10)*PX_PER_M;
-    }
-  }
+  function pickKind(){ var pool=[['corn',3],['gomi',3],['contena',3],['tora',2],['dokan',2],['jumpdai',2],['kanban',0.1]]; var sum=pool.reduce(function(a,b){return a+b[1];},0), r=Math.random()*sum; for(var i=0;i<pool.length;i++){ var k=pool[i][0], w=pool[i][1]; r-=w; if(r<=0) return k; } return 'corn'; }
+  function placeEarlyContena(){ var base=SAFE_M*PX_PER_M + 12*PX_PER_M; var x = base + ((Math.random()*6|0)*PX_PER_M); var sets = 3 + (Math.random()*3|0); for(var s=0;s<sets;s++){ var n=(Math.random()<.5?2:3); for(var i=0;i<n;i++) spawnAt('contena', x + i*(SIZE.cont.w+8)); x += (10 + Math.random()*10)*PX_PER_M; } }
 
-  /* ===== Items / Skills ===== */
+  /* ===== Items / skills ===== */
   function useSlot(i){
     var it=slots[i]; if(!it) return;
     if(it.type==='tsubasa') wingTime=5.0;
@@ -308,10 +307,7 @@
         var o=obstacles[j], deadly=(o.deadly||o.deadlySide), d=o.x - scrollX - RUNX();
         if(deadly && d>0 && d<dmin){ dmin=d; near=o; }
       }
-      if(near){
-        near.kind='jumpdai'; near.w=SIZE.jump.w; near.h=SIZE.jump.h;
-        near.y=(GY()-SIZE.jump.h)|0; near.deadly=false; near.deadlySide=false; near.kicked=false; near.backTimer=4.0;
-      }
+      if(near){ near.kind='jumpdai'; near.w=SIZE.jump.w; near.h=SIZE.jump.h; near.y=(GY()-SIZE.jump.h)|0; near.deadly=false; near.deadlySide=false; near.kicked=false; near.backTimer=4.0; }
     }
     slots[i]=null; refreshSlots();
   }
@@ -490,58 +486,29 @@
   function tileXRef(img,y,h,factor,ref,over){ if(over===void 0) over=0; if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; var asp=(ref&&ref.width)?(ref.width/ref.height):(img.width/img.height); var pw=Math.max(16,Math.round(h*asp)); var tx=-((scrollX*factor)%pw); for(var x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
 
   function draw(){
-    // まず空色で塗って真っ暗回避（画像未読でも表示）
-    var g=ctx.createLinearGradient(0,0,0,vh);
-    g.addColorStop(0,'#7ec9ff'); g.addColorStop(1,'#a0defa');
-    ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
-
+    // 先に空色で塗る（初回から真っ暗回避）
+    var g=ctx.createLinearGradient(0,0,0,vh); g.addColorStop(0,'#7ec9ff'); g.addColorStop(1,'#a0defa'); ctx.fillStyle=g; ctx.fillRect(0,0,vw,vh);
     var gy=GY()|0;
-
-    // 背景：空
     tileX(IMG['sora.PNG'], 0, vh, 0.25);
-
-    // 上帯：草（hatake2）
-    var grassH=Math.round(vh*0.20);
-    var grassTopY=Math.max(0, gy - grassH - Math.round(vh*0.24));
+    var grassH=Math.round(vh*0.20), grassTopY=Math.max(0, gy - grassH - Math.round(vh*0.24));
     tileX(IMG['hatake2.png'], grassTopY, grassH, 0.6, 1);
-
-    // 畑↔地面（上側）= do-ro.png
-    var seamH=10, bandTop=(grassTopY+grassH)|0, bandH=Math.max(0,(gy - seamH) - bandTop);
+    var seamH=10, bandTop=(grassTopY+grassH)|0, bandH=Math.max(0,(gy-seamH)-bandTop);
     tileX(IMG['do-ro.png'], bandTop, bandH, 1.0, 1);
+    tileXRef(IMG['mob.png'], (gy-seamH)|0, seamH, 1.0, IMG['do-ro.png'], 1);
+    tileXRef(IMG['mob.png'], gy|0, (vh-gy+1)|0, 1.0, IMG['do-ro.png'], 1);
 
-    // 地面＝mob.png（下側＋厚み）
-    tileXRef(IMG['mob.png'], (gy - seamH)|0, seamH, 1.0, IMG['do-ro.png'], 1);
-    tileXRef(IMG['mob.png'], gy|0, (vh - gy + 1)|0, 1.0, IMG['do-ro.png'], 1);
-
-    // 障害物
     for(var i=0;i<obstacles.length;i++){
       var o=obstacles[i], sx=o.x - scrollX; if(sx<-400||sx>vw+400) continue;
       var im;
-      if(o.kind==='corn') im=IMG['corn.PNG'];
-      else if(o.kind==='gomi') im=IMG['gomi.png'];
-      else if(o.kind==='contena') im=IMG['contena.png'];
-      else if(o.kind==='tora') im=IMG['tora.png'];
-      else if(o.kind==='dokan') im=IMG['dokan.png'];
-      else if(o.kind==='jumpdai') im=IMG['jumpdai.png'];
+      if(o.kind==='corn') im=IMG['corn.PNG']; else if(o.kind==='gomi') im=IMG['gomi.png']; else if(o.kind==='contena') im=IMG['contena.png'];
+      else if(o.kind==='tora') im=IMG['tora.png']; else if(o.kind==='dokan') im=IMG['dokan.png']; else if(o.kind==='jumpdai') im=IMG['jumpdai.png'];
       else if(o.kind==='kanban') im=IMG[o.img];
-      if(im && im.width) ctx.drawImage(im, sx|0, o.y|0, o.w|0, o.h|0);
-      else { ctx.fillStyle='#666'; ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0); }
+      if(im && im.width) ctx.drawImage(im, sx|0, o.y|0, o.w|0, o.h|0); else { ctx.fillStyle='#666'; ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0); }
     }
-
-    // アイテム
-    for(var j=0;j<items.length;j++){
-      var it=items[j], sx2=it.x - scrollX; if(sx2<-200||sx2>vw+200) continue;
-      var name = it.type==='coin' ? 'coin.png' : (it.type==='tsubasa'?'tsubasa.png':(it.type==='en'?'en.png':'jump.png'));
-      var iim=IMG[name]; if(iim&&iim.width) ctx.drawImage(iim, sx2|0, it.y|0, it.w|0, it.h|0);
-    }
-
-    // 火の玉
+    for(var j=0;j<items.length;j++){ var it=items[j], sx2=it.x - scrollX; if(sx2<-200||sx2>vw+200) continue; var name=it.type==='coin'?'coin.png':(it.type==='tsubasa'?'tsubasa.png':(it.type==='en'?'en.png':'jump.png')); var iim=IMG[name]; if(iim&&iim.width) ctx.drawImage(iim,sx2|0,it.y|0,it.w|0,it.h|0); }
     for(var k=0;k<fires.length;k++){ var f=fires[k], sxf=f.x-scrollX; if(sxf<-200||sxf>vw+200) continue; var tm=IMG['tama.png']; if(tm&&tm.width) ctx.drawImage(tm,sxf|0,f.y|0,f.w|0,f.h|0); }
-
-    // ヴィラン
     for(var m=0;m<villains.length;m++){ var v=villains[m], sv=v.x-scrollX; var vim=IMG['viran.png']; if(vim&&vim.width) ctx.drawImage(vim,(sv-60)|0,(v.y-50)|0,120,100); }
 
-    // プレイヤー
     ctx.save();
     ctx.translate((RUNX()+player.w/2)|0, (player.y+player.h/2)|0);
     ctx.rotate(player.tilt); ctx.translate((-player.w/2)|0,(-player.h/2)|0);
@@ -552,12 +519,10 @@
     ctx.restore();
   }
 
-  /* ===== Key actions used above ===== */
-  function doBoost(){ if(enFree>0){ boosting=2.5; return; } if(boostGauge>=boostMax){ boosting=2.5; boostGauge=0; boostBar.classList.remove('ready'); } }
+  /* ===== Start RAF（即起動） ===== */
+  var last=0, dispSp=0, dispT=0;
+  requestAnimationFrame(tick);
 
-  /* ===== Start loop ===== */
-  // 先に rAF を開始。画像未読でも空色で描くため真っ暗にはならない
-  // boot は画像読み終わりで走る
 })();
 </script>
 </body>
