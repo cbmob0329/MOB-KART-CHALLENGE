@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v5.5（起動安全化／再スタート確実化）</title>
+<title>MOB KART CHALLENGE — v5.6（リスタート撤去／ジャンプ台確実化／着地スムーズ化）</title>
 <style>
   :root{ --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
          --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px); }
@@ -48,7 +48,6 @@
   .opt img{height:64px}
   .stack{display:flex;gap:10px;justify-content:center;margin-top:10px}
 
-  /* 致命エラー可視化（デバッグ用） */
   #fatal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
   #fatal .msg{background:#180d0d;border:1px solid #4a2323;color:#ffdede;border-radius:12px;padding:12px;max-width:90vw;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
 </style>
@@ -56,7 +55,7 @@
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.5</small></div>
+    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.6</small></div>
     <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
   </div>
 
@@ -92,14 +91,15 @@
     </div>
   </div>
 
+  <!-- リスタートは撤去。記録を出してから自動でキャラ選択へ戻す -->
   <div class="centerModal" id="gameOver" style="display:none">
     <div class="card">
-      <div id="goMsg" style="font-size:22px;font-weight:700;margin-bottom:6px">記録 0m！</div>
-      <div class="stack" style="margin-top:8px">
-        <button id="goRestart" class="cbtn">スタート</button>
-        <button id="goChange"  class="cbtn">キャラ選択</button>
+      <div id="goMsg" style="font-size:22px;font-weight:700;margin-bottom:10px">記録 0m！</div>
+      <div class="stack">
+        <button id="goChange"  class="cbtn">キャラ選択へ</button>
         <button id="goQuit"    class="cbtn">やめる</button>
       </div>
+      <div style="margin-top:8px;color:#9fb0ce;font-size:12px;text-align:center">（数秒後に自動でキャラ選択に戻ります）</div>
     </div>
   </div>
 
@@ -131,7 +131,7 @@
         btnItem1=document.getElementById('btnItem1'), btnItem2=document.getElementById('btnItem2'),
         charSel=document.getElementById('charSel'), startBtn=document.getElementById('btnStart'),
         goModal=document.getElementById('gameOver'), goMsg=document.getElementById('goMsg'),
-        goRestart=document.getElementById('goRestart'), goChange=document.getElementById('goChange'), goQuit=document.getElementById('goQuit'),
+        goChange=document.getElementById('goChange'), goQuit=document.getElementById('goQuit'),
         cut=document.getElementById('cut'), cutImg=document.getElementById('cutImg'), countdown=document.getElementById('countdown'),
         boostBar=document.getElementById('boostBar'), boostFill=boostBar.querySelector('.fill'),
         fatal=document.getElementById('fatal'), fatalMsg=document.getElementById('fatalMsg');
@@ -162,7 +162,7 @@
       let top=h;
       for(let x=xmin;x<=xmax;x+=step){ for(let y=0;y<h;y++){ if(data[(y*w+x)*4+3]>16){ if(y<top) top=y; break; } } }
       if(top!==h) rideFrac[kind]=top/h;
-    }catch(e){/* ignore taint */}
+    }catch(e){}
   }
   const rideInsetPx=(kind,scaledH)=> {
     const base = rideFrac.hasOwnProperty(kind)?Math.round(scaledH*rideFrac[kind]):(DEFAULT_RIDE_PX[kind]||2);
@@ -200,7 +200,6 @@
   function bootFlow(){
     state='op'; showCut('op.png',2000);
     setTimeout(openSelect,2200);
-    // 3.5sでまだ play/countdown/select 以外なら強制で選択を出す
     setTimeout(()=>{ if(state!=='play'&&state!=='countdown'&&state!=='select'){ openSelect(); } },3500);
   }
 
@@ -237,7 +236,7 @@
   const MIN_GAP_PX=40;
 
   function startFlow(){
-    goModal.style.display='none'; closeSelect(); hardResetCountdown();
+    closeSelect(); hardResetCountdown();
     resetWorld(); draw();
     requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); });
     setTimeout(()=>loadList(deferred),300);
@@ -257,7 +256,11 @@
   function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
     btnItem1.textContent=slots[0]?String(slots[0].type).toUpperCase():'アイテム1';
     btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
-  function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex'; }
+
+  function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex';
+    // 自動でキャラ選択へ戻す（リスタートは撤去）
+    setTimeout(()=>{ goModal.style.display='none'; openSelect(); }, 1600);
+  }
   function hideGo(){ goModal.style.display='none'; }
   function die(){ state='gameover'; showGo(); }
 
@@ -273,7 +276,7 @@
     else if(kind==='gomi'){ x=ensureGap(x); obstacles.push({kind:'gomi',x:x|0,y:ground(SIZE.gomi.h),w:SIZE.gomi.w,h:SIZE.gomi.h,deadly:true,t:Math.random()*6}); placedRight=x+SIZE.gomi.w; }
     else if(kind==='tora'){ x=ensureGap(x); obstacles.push({kind:'tora',x:x|0,y:ground(SIZE.tora.h),w:SIZE.tora.w,h:SIZE.tora.h,deadlySide:true,cool:0}); placedRight=x+SIZE.tora.w; }
     else if(kind==='dokan'){ x=ensureGap(x); obstacles.push({kind:'dokan',x:x|0,baseY:gy,phase:0,y:ground(28),w:SIZE.dokan.w,h:28,deadlySide:true}); placedRight=x+SIZE.dokan.w; }
-    else if(kind==='jumpdai'){ x=ensureGap(x); obstacles.push({kind:'jumpdai',x:x|0,y:ground(SIZE.jump.h),w:SIZE.jump.w,h:SIZE.jump.h,kicked:false}); placedRight=x+SIZE.jump.w; }
+    else if(kind==='jumpdai'){ x=ensureGap(x); obstacles.push({kind:'jumpdai',x:x|0,y:ground(SIZE.jump.h),w:SIZE.jump.w,h:SIZE.jump.h,kicked:false,pLast:0}); placedRight=x+SIZE.jump.w; }
     else if(kind==='kanban'){ if(x-lastKanbanX<1400) return; x=ensureGap(x); const k=1+Math.floor(Math.random()*6);
       obstacles.push({kind:'kanban',img:'kanban'+k+'.png',x:x|0,y:ground(SIZE.kanban.h),w:SIZE.kanban.w,h:SIZE.kanban.h}); lastKanbanX=x; placedRight=x+SIZE.kanban.w; }
     if(placedRight>lastRightX) lastRightX=placedRight;
@@ -295,10 +298,13 @@
     if(it.type==='jump'){
       let near=null, dmin=1e9;
       for(const o of obstacles){ const deadly=(o.deadly||o.deadlySide), d=o.x - scrollX - RUNX(); if(deadly && d>0 && d<dmin){ dmin=d; near=o; } }
-      if(near){ Object.assign(near,{kind:'jumpdai',w:SIZE.jump.w,h:SIZE.jump.h,y:(GY()-SIZE.jump.h)|0,deadly:false,deadlySide:false,kicked:false,backTimer:4.0}); }
+      if(near){ Object.assign(near,{kind:'jumpdai',w:SIZE.jump.w,h:SIZE.jump.h,y:(GY()-SIZE.jump.h)|0,deadly:false,deadlySide:false,kicked:false,pLast:0,backTimer:4.0}); }
     }
     slots[i]=null; refreshSlots();
   }
+  function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
+    btnItem1.textContent=slots[0]?String(slots[0].type).toUpperCase():'アイテム1';
+    btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
 
   /* ===== Collectibles（レア） ===== */
   let lastCoinAtM=-9999, lastRareAtM=-9999;
@@ -340,7 +346,9 @@
 
   /* ===== Game loop ===== */
   let last=0, dispSp=0, dispT=0, jumpLock=0;
-  const GRAVITY=960; // ほんの少しだけ落下を早く
+  const GRAVITY=960; // 少しだけ早く落下
+  const MAX_LAND_SPEED=520; // 接地直前の最大降下速度（見た目の瞬間移動を抑える）
+
   function gameStep(ts){
     try{
       if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
@@ -384,7 +392,9 @@
         updateVill(dt);
 
         // physics
-        player.vy += GRAVITY*dt; player.y=(player.y+player.vy*dt)|0; if(jumpLock>0) jumpLock-=dt;
+        player.vy += GRAVITY*dt;
+        player.y += player.vy*dt; // まず重力で落とす
+        if(jumpLock>0) jumpLock-=dt;
 
         const px=RUNX(), pw=player.w;
         const footW=Math.max(12,Math.round(pw*0.34)), footX=Math.round(px+(pw-footW)/2);
@@ -392,28 +402,32 @@
         let supportTop=gy, onSlope=false, supportFrom='ground', supportObj=null;
 
         const feet=player.y+player.h;
-        const descending=(player.vy>=0)&&(jumpLock<=0);
 
-        // slope
+        // 斜面（前足基準で進捗を測り、60%跨ぎで一度だけ発火）
         for(const o of obstacles){
           if(o.kind!=='jumpdai') continue;
           const sx=o.x-scrollX;
-          if(px+pw*0.5>=sx && px+pw*0.5<=sx+o.w){
-            const p=(px+pw*0.5 - sx)/o.w;
+          const pxFront = px + pw*0.60;
+          if(pxFront>=sx && pxFront<=sx+o.w){
+            const p=(pxFront - sx)/o.w;
             const topY=(gy - p*o.h)|0;
             const touching = (feet>=topY-8 && feet<=topY+22);
             if(touching){
               if(topY<supportTop){ supportTop=topY; supportFrom='jumpdai'; supportObj=o; }
               onSlope=true;
               player.tilt=Math.max(-0.15,Math.min(0.24,(p-0.3)*0.6));
-              if(!o.kicked && p>0.56 && descending){
-                o.kicked=true; player.vy=-820; boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
+              if(!o.kicked && (o.pLast||0)<=0.56 && p>0.56){ // 進捗が閾値を跨いだ瞬間
+                o.kicked=true; player.vy=-840; // 強制発火
+                boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
               }
             }
+            o.pLast=p;
+          } else {
+            o.pLast = 0;
           }
         }
 
-        // rideables
+        // 乗れる系（密着）
         for(const o of obstacles){
           if(o.kind!=='contena'&&o.kind!=='tora'&&o.kind!=='dokan') continue;
           const sx=o.x-scrollX, rect={x:sx,y:o.y,w:o.w,h:o.h};
@@ -423,20 +437,34 @@
           }
         }
 
-        // snap / bounce
-        if(descending && feet>=supportTop-22 && feet<=supportTop+22){
-          player.y=(supportTop-player.h+1)|0;
-          if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
-            player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25;
+        // スムーズ接地（最大降下速度を制限して“ストン”）
+        const targetY = (supportTop - player.h + 1);
+        const withinCatch = (feet >= supportTop-22 && feet <= supportTop+22);
+        if(withinCatch){
+          const dy = targetY - player.y;
+          if(dy >= -2){ // 地面より上にいる or ほぼ一致
+            const step = Math.min(Math.max(dy,0), MAX_LAND_SPEED*dt);
+            player.y += step;
+            if(Math.abs(targetY - player.y) <= 1.5){
+              player.y = targetY|0;
+              if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
+                player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25; // トランポリン
+              }else{
+                player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
+              }
+            }else{
+              // 接地準備中：見た目なめらかに落とす
+              player.vy = Math.min(player.vy, MAX_LAND_SPEED);
+            }
           }else{
-            player.vy=0;
-            if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
+            // めり込み気味なら即座に合わせる
+            player.y = targetY|0; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
           }
         }else{
           player.onGround=false; if(!onSlope) player.tilt*=0.9;
         }
 
-        // deadly
+        // 致死判定
         if(invincible<=0){
           const A=shrink({x:px,y:player.y,w:pw,h:player.h},4);
           for(const ff of fires){ const rx=ff.x-scrollX; if(rects(A,shrink({x:rx,y:ff.y,w:ff.w,h:ff.h},4))){ die(); return; } }
@@ -451,7 +479,7 @@
           }
         }
 
-        // pickups
+        // ピックアップ
         for(let i=items.length-1;i>=0;i--){
           const it=items[i]; if(it.type!=='coin'){ it.t=(it.t||0)+dt*1.6; it.y=(it.y+Math.sin(it.t)*0.4)|0; }
           const irx=it.x-scrollX;
@@ -469,8 +497,6 @@
         elJump.textContent='×'+(player.onGround?(wingTime>0?4:2):player.jumpsLeft);
         boostFill.style.width=(boostGauge/boostMax*100)+'%';
         if(invincible>0){ sparkleT+=dt*8; if(sparkleT>1){ sparkleT=0; sparkleFrame^=1; } }
-
-        player.prevFeet = feet;
       }
 
       draw();
@@ -506,7 +532,7 @@
     // 空（画像なしでも青）
     const sky=ctx.createLinearGradient(0,0,0,vh); sky.addColorStop(0,'#7ec9ff'); sky.addColorStop(1,'#a0defa'); ctx.fillStyle=sky; ctx.fillRect(0,0,vw,vh);
     const gy=GY()|0;
-    // 背景タイル（あれば描く）
+    // 背景タイル
     tileX(IMG['sora.PNG'],0,vh,0.25);
     const grassH=Math.round(vh*0.20), grassTopY=Math.max(0, gy-grassH-Math.round(vh*0.24));
     if(IMG['hatake2.png']) tileX(IMG['hatake2.png'],grassTopY,grassH,0.6,1);
@@ -532,7 +558,7 @@
       const im=IMG[name]; if(im&&im.width) ctx.drawImage(im,sx|0,it.y|0,it.w|0,it.h|0);
     }
 
-    // ヴィラン
+    // ヴィラン・火の玉
     for(const f of fires){ const sx=f.x-scrollX; if(sx<-260||sx>vw+260) continue; const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0); }
     for(const v of villains){ const sx=v.x-scrollX; const im=IMG['viran.png']; if(im&&im.width) ctx.drawImage(im,(sx-60)|0,(v.y-50)|0,120,100); }
 
@@ -544,10 +570,9 @@
     ctx.restore();
   }
 
-  /* ===== Events to start ===== */
+  /* ===== Events ===== */
   startBtn.addEventListener('click', ()=>startFlow());
   btnChange.addEventListener('click', ()=>openSelect());
-  goRestart.addEventListener('click', ()=>{ hideGo(); startFlow(); });
   goChange.addEventListener('click', ()=>{ hideGo(); openSelect(); });
   goQuit.addEventListener('click', ()=>location.reload());
 
@@ -555,7 +580,7 @@
   bootFlow();
 
   // グローバルエラー可視化
-  window.addEventListener('error', (e)=>{ showFatal(e.error||e.message||'Unknown error'); });
+  window.addEventListener('error', (e)=>{ fatalMsg.textContent=String(e&&e.message||e); fatal.style.display='flex'; });
 })();
 </script>
 </body>
