@@ -12,9 +12,7 @@
   }
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
   body{display:flex;flex-direction:column}
-  /* 安全域対応（iOS） */
   #app{position:fixed; inset:0; display:flex; flex-direction:column;}
-  /* HUD */
   .topbar{
     flex:0 0 auto; display:flex; align-items:center; gap:12px;
     padding:10px calc(env(safe-area-inset-right,0) + 12px) 10px calc(env(safe-area-inset-left,0) + 12px);
@@ -25,10 +23,8 @@
   .pill{padding:6px 10px; border-radius:999px; background:var(--glass); font-size:14px}
   .pill strong{color:#fff}
   .spacer{flex:1}
-  /* Canvas ラッパー（縦長想定） */
   #wrap{position:relative; flex:1 1 auto;}
   #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; background:#000}
-  /* コントローラ */
   .controls{
     position:fixed; left:0; right:0; bottom:0;
     padding:10px calc(env(safe-area-inset-right,0) + 12px) calc(env(safe-area-inset-bottom,0) + 12px) calc(env(safe-area-inset-left,0) + 12px);
@@ -47,7 +43,6 @@
   .legend{position:absolute; top:-18px; left:0; font-size:12px; color:var(--dim)}
   .rightcol{pointer-events:none; display:flex; gap:10px; align-items:flex-end}
   .rightcol .btn{pointer-events:auto}
-  /* 結果モーダル */
   .modal{
     position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:10;
     background:rgba(0,0,0,.55); backdrop-filter:blur(4px);
@@ -62,7 +57,12 @@
   .grow{flex:1}
   .cta{display:flex; gap:10px; margin-top:14px}
   .cta .btn{flex:1; height:48px; border-radius:14px; font-weight:700}
-  /* 画面タッチでスクロール誤作動防止 */
+  .loader{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
+    background:rgba(0,0,0,.55); z-index:9; gap:8px; text-align:center;
+  }
+  .bar{width:60%; height:8px; background:#263246; border-radius:999px; overflow:hidden}
+  .bar>i{display:block; height:100%; width:0%; background:var(--accent)}
   *{ -webkit-tap-highlight-color: rgba(0,0,0,0); }
 </style>
 </head>
@@ -74,8 +74,15 @@
     <div class="spacer"></div>
     <div class="pill" id="hint">Osoji-Viran</div>
   </div>
+
   <div id="wrap">
     <canvas id="cv" width="0" height="0"></canvas>
+
+    <div class="loader" id="loader">
+      <div>読み込み中… <span id="ldTxt">0%</span></div>
+      <div class="bar"><i id="ldBar"></i></div>
+      <div class="muted" style="max-width:90vw">画像が欠けていてもプレースホルダーで開始します</div>
+    </div>
 
     <div class="modal" id="result">
       <div class="card">
@@ -108,7 +115,7 @@
 
 <script>
 (()=>{
-// ====== 基本設定 ======
+// ====== 画面サイズ ======
 const DPR = Math.max(1, window.devicePixelRatio || 1);
 const canvas = document.getElementById('cv');
 const ctx = canvas.getContext('2d');
@@ -120,10 +127,12 @@ const retryBtn = document.getElementById('retry');
 const shareBtn = document.getElementById('share');
 const dropBtn = document.getElementById('drop');
 const fastBtn = document.getElementById('fast');
+const loader = document.getElementById('loader');
+const ldTxt = document.getElementById('ldTxt');
+const ldBar = document.getElementById('ldBar');
 
 let W=0,H=0, groundY=0;
 function resize(){
-  // スマホ縦長想定。デスクトップでも縦長枠で動作。
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   W = vw * DPR;
@@ -132,30 +141,49 @@ function resize(){
   canvas.height = H;
   canvas.style.width = vw+"px";
   canvas.style.height = vh+"px";
-  groundY = H*0.86; // 足場ライン
+  groundY = H*0.86;
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
 
-// ====== 画像ロード ======
-function loadImg(src){
-  return new Promise((res)=>{
+// ====== 頑健な画像ローダ ======
+function loadImgSafe(src, timeoutMs=4000){
+  return new Promise((resolve)=>{
     const im = new Image();
-    im.onload=()=>res(im);
-    im.src=src;
+    let done = false;
+    const finish = (ok)=>{
+      if(done) return; done=true;
+      resolve({ok, img: ok?im:null, src});
+    };
+    const timer = setTimeout(()=>finish(false), timeoutMs);
+    im.onload = ()=>{ clearTimeout(timer); finish(true); };
+    im.onerror = ()=>{ clearTimeout(timer); finish(false); };
+    im.src = src + '?_=' + Date.now(); // キャッシュでonload飛ぶ系対策
   });
 }
+const files = ['work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png'];
 const assets = {};
-Promise.all([
-  'work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png'
-].map(async f=>{ try{ assets[f]=await loadImg(f);}catch(e){ assets[f]=null; } }))
-.then(startGame);
+(async ()=>{
+  let done=0;
+  for(const f of files){
+    loadImgSafe(f).then(r=>{
+      done++;
+      assets[f] = r.ok ? r.img : null;
+      const p = Math.round(done/files.length*100);
+      ldTxt.textContent = p + '%';
+      ldBar.style.width = p + '%';
+      if(done===files.length) startGame(); // 欠けても必ず開始
+    });
+  }
+  // 予防: 3秒で開始（極端なネット環境でも遊べるように）
+  setTimeout(()=>{ if(!started){ startGame(); } }, 3000);
+})();
+
+let started=false;
 
 // ====== 入力 ======
 const keys = new Set();
-function setKey(k,down){
-  if(down) keys.add(k); else keys.delete(k);
-}
+function setKey(k,down){ if(down) keys.add(k); else keys.delete(k); }
 window.addEventListener('keydown',e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
   setKey(e.key,true);
@@ -177,74 +205,60 @@ document.querySelectorAll('.dpad .btn').forEach(btn=>{
   const key = btn.getAttribute('data-key');
   if(key && key!=='Center') bindButton(btn,key);
 });
-bindButton(dropBtn, 'Space'); // DROP
-bindButton(fastBtn, 'Fast');  // 高速落下
+bindButton(dropBtn, 'Space');
+bindButton(fastBtn, 'Fast');
 
-// ====== ゲームオブジェクト ======
+// ====== 共通ユーティリティ ======
 function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function lerp(a,b,t){ return a+(b-a)*t; }
 function rand(a,b){ return a + Math.random()*(b-a); }
+function aabb(x,y,w,h, x2,y2,w2,h2){
+  return !(x+w < x2 || x2+w2 < x || y+h < y2 || y2+h2 < y);
+}
 
-const world = {
-  timeLeft: 60.0,
-  score: 0,
-  running: true,
-  bgScroll: 0
-};
-
-// プレイヤー（Viran）
+// ====== ゲームデータ ======
+const world = { timeLeft:60.0, score:0, running:false, bgScroll:0 };
 const player = {
-  x: W*0.2, y: H*0.4, vx: 0, vy: 0,
-  speed: 0.28 * DPR, // 水平
-  upAccel: -0.0016 * DPR,
-  downAccel: 0.0012 * DPR,
-  maxDownSpeed: 0.45 * DPR, // 降下最大
-  maxUpSpeed: -0.5 * DPR,
+  x: W*0.2, y: H*0.4, vx:0, vy:0,
+  speed: 0.28*DPR,
+  upAccel: -0.0016*DPR,
+  downAccel: 0.0012*DPR,
+  maxDownSpeed: 0.45*DPR,
+  maxUpSpeed: -0.5*DPR,
   w: 80*DPR, h: 80*DPR,
-  stunned: 0, // フリーズ残り秒
-  blinkT: 0
+  stunned: 0, blinkT:0
 };
+const fireball = { active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null };
 
-// 火の玉（同時1発）
-const fireball = {
-  active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null
-};
-
-// 運搬キャラ + ゴミ箱
 function makeCarrier(kindIndex){
   const speed = rand(0.10,0.16)*DPR;
-  const dir = Math.random() < 0.5 ? -1 : 1; // 左向き/右向き開始
-  const startX = dir>0 ? -80*DPR : W + 80*DPR; // 右→左なら右外から、左→右なら左外から
+  const dir = Math.random() < 0.5 ? -1 : 1;
+  const startX = dir>0 ? -80*DPR : W + 80*DPR;
   return {
-    kind: kindIndex, // 1,2,3
+    kind: kindIndex,
     x: startX, y: groundY-20*DPR,
     w: 70*DPR, h: 70*DPR,
     vx: speed*dir, baseSpeed:speed,
     hopT: Math.random()*Math.PI*2,
     hasBin: true,
     bin: {w: 50*DPR, h: 50*DPR, hp:1, burst:0, burning:false},
-    state: 'patrol' // 'patrol' | 'dashOut'
+    state: 'patrol'
   };
 }
 const carriers = [ makeCarrier(1), makeCarrier(2), makeCarrier(3) ];
 
-// ====== 当たり判定 ======
-function aabb(x,y,w,h, x2,y2,w2,h2){
-  return !(x+w < x2 || x2+w2 < x || y+h < y2 || y2+h2 < y);
-}
-
-// ====== ゲームロジック ======
 let last=performance.now();
-function startGame(){
-  // 初期位置調整（画像ロード後）
-  player.x = W*0.22; player.y = H*0.45;
 
+function startGame(){
+  if(started) return; started=true;
+  loader.style.display = 'none';
+  world.running = true;
+  player.x = W*0.22; player.y = H*0.45;
   last = performance.now();
   requestAnimationFrame(loop);
 }
 
 function loop(t){
-  const dt = Math.min(0.05, (t-last)/1000); // 安定
+  const dt = Math.min(0.05, (t-last)/1000);
   last = t;
   if(world.running) update(dt);
   draw();
@@ -252,161 +266,114 @@ function loop(t){
 }
 
 function update(dt){
-  // タイマー
   world.timeLeft -= dt;
-  if(world.timeLeft<=0){
-    world.timeLeft=0;
-    endGame();
-  }
+  if(world.timeLeft<=0){ world.timeLeft=0; endGame(); }
   timeEl.textContent = world.timeLeft.toFixed(1);
   scoreEl.textContent = world.score;
 
-  // 背景スクロール
   world.bgScroll = (world.bgScroll + 40*DPR*dt) % (W||1);
 
-  // プレイヤー移動（フリーズ時は不可）
   if(player.stunned>0){
     player.stunned -= dt;
     player.blinkT += dt*8;
   }else{
-    const left = keys.has('ArrowLeft');
-    const right= keys.has('ArrowRight');
-    const up   = keys.has('ArrowUp');
-    const down = keys.has('ArrowDown');
-
+    const left = keys.has('ArrowLeft'), right = keys.has('ArrowRight');
+    const up = keys.has('ArrowUp'), down = keys.has('ArrowDown');
     player.vx = (right?1:0) - (left?1:0);
     player.vx *= player.speed * (1.0 + (keys.has('Fast')?0.2:0));
-
-    // 浮遊：上昇・下降の加速度を別管理
     if(up)   player.vy += player.upAccel * (keys.has('Fast')?1.3:1.0);
     if(down) player.vy += player.downAccel * (keys.has('Fast')?1.6:1.0);
-
-    // 重力っぽい微小下降（ふわふわ感）
-    player.vy += 0.0006 * DPR;
-
-    // 降下最大・上昇最大
+    player.vy += 0.0006*DPR;
     player.vy = clamp(player.vy, player.maxUpSpeed, player.maxDownSpeed);
     player.x += player.vx * dt * 1000;
     player.y += player.vy * dt * 1000;
   }
 
-  // 画面内制限
   const margin = 20*DPR;
   player.x = clamp(player.x, margin, W - margin - player.w);
   player.y = clamp(player.y, margin, groundY - player.h - margin);
 
-  // 発射（DROP）
   if(keys.has('Space') && !fireball.active && player.stunned<=0){
-    fireball.active = true;
-    fireball.seeking = false;
-    fireball.target = null;
+    fireball.active = true; fireball.seeking=false; fireball.target=null;
     fireball.x = player.x + player.w*0.5;
     fireball.y = player.y + player.h*0.6;
-    fireball.vx = 0;
-    fireball.vy = 0.02 * DPR; // 初速わずかに下
+    fireball.vx = 0; fireball.vy = 0.02 * DPR;
   }
 
-  // 火の玉挙動
   if(fireball.active){
     if(!fireball.seeking){
-      // 通常落下
       const fast = keys.has('Fast');
       fireball.vy += (fast?0.0052:0.0026) * DPR;
       fireball.vy = Math.min(fireball.vy, 1.2*DPR);
       fireball.x += fireball.vx * dt * 1000;
       fireball.y += fireball.vy * dt * 1000;
 
-      // ゴミ箱命中チェック
       for(const c of carriers){
         if(c.hasBin && !c.bin.burning){
-          const bx = c.x + (c.vx>0?-c.bin.w*0.0:0) + (c.w - c.bin.w)/2;
-          const by = c.y - c.bin.h - 6*DPR - 8*Math.abs(Math.sin(c.hopT)); // 頭上
+          const bx = c.x + (c.w - c.bin.w)/2;
+          const by = c.y - c.bin.h - 6*DPR - 8*Math.abs(Math.sin(c.hopT));
           if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2,
                   bx, by, c.bin.w, c.bin.h)){
-            // 命中→燃焼・破裂
-            c.bin.burning = true;
-            c.bin.burst = 0; // 0→1で赤フェード
-            fireball.active = false;
-            world.score += 1;
+            c.bin.burning = true; c.bin.burst = 0;
+            fireball.active = false; world.score += 1;
           }
         }
       }
 
-      // 地面ヒット→自動追尾へ
       if(fireball.active && fireball.y + fireball.r >= groundY){
-        fireball.seeking = true;
-        fireball.vx = 0; fireball.vy = 0;
-        // 最寄り運搬役をターゲット
+        fireball.seeking = true; fireball.vx = 0; fireball.vy = 0;
         fireball.target = carriers.reduce((best,c)=>{
-          const cx = c.x + c.w/2;
-          const cy = c.y - c.h/2;
+          const cx = c.x + c.w/2, cy = c.y - c.h/2;
           const d = Math.hypot(cx - fireball.x, cy - fireball.y);
           return (!best || d<best.d) ? {c, d} : best;
         }, null);
       }
     }else{
-      // 自動追尾
       if(!fireball.target){ fireball.active=false; }
       else{
         const c = fireball.target.c;
-        const tx = c.x + c.w/2;
-        const ty = c.y - c.h*0.4;
+        const tx = c.x + c.w/2, ty = c.y - c.h*0.4;
         const ang = Math.atan2(ty - fireball.y, tx - fireball.x);
         const spd = 0.45 * DPR;
         fireball.x += Math.cos(ang)*spd*dt*1000;
         fireball.y += Math.sin(ang)*spd*dt*1000;
-
-        // 運搬役に当たったらプレイヤーフリーズ
         if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2,
                 c.x, c.y-c.h, c.w, c.h)){
-          player.stunned = 3.0;
-          player.blinkT = 0;
-          fireball.active = false;
+          player.stunned = 3.0; player.blinkT = 0; fireball.active = false;
         }
       }
     }
   }
 
-  // 運搬役の挙動
   for(const c of carriers){
     c.hopT += dt*8;
     const hop = Math.abs(Math.sin(c.hopT)) * 8*DPR;
-    let speed = c.baseSpeed;
+    const speed = c.baseSpeed;
 
-    // 焼却済みなら猛ダッシュで右端へ→再補給
     if(c.bin.burning){
-      c.bin.burst = Math.min(1, c.bin.burst + dt*1.6); // 赤→透明
-      c.vx = Math.abs(speed)*2.2*DPR; // 右へ猛ダッシュ
+      c.bin.burst = Math.min(1, c.bin.burst + dt*1.6);
+      c.vx = Math.abs(speed)*2.2*DPR;
       c.x += c.vx * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
-        // 右外でリセット
-        c.x = W + 120*DPR;
-        c.vx = -Math.abs(speed); // 左へ再開
+        c.x = W + 120*DPR; c.vx = -Math.abs(speed);
         c.bin = {w: 50*DPR, h: 50*DPR, hp:1, burst:0, burning:false};
-        c.hasBin = true;
-        c.state = 'patrol';
+        c.hasBin = true; c.state = 'patrol';
       }
       continue;
     }
 
-    // パトロール（左右往復）
     c.x += c.vx * dt * 1000;
-    // 画面端で反転
     if(c.x < -60*DPR){ c.x = -60*DPR; c.vx = Math.abs(c.vx); }
     if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.vx = -Math.abs(c.vx); }
-
     c.y = groundY - 20*DPR - hop;
   }
 }
 
 function draw(){
-  ctx.save();
-  ctx.clearRect(0,0,W,H);
+  ctx.save(); ctx.clearRect(0,0,W,H);
 
-  // 背景（work.png タイル風）
   if(assets['work.png']){
     const img = assets['work.png'];
-    // 画像比を保ちつつ縦を画面に合わせて横へタイリング
     const scale = (H / img.height);
     const tileW = img.width * scale;
     const offset = - (world.bgScroll % tileW);
@@ -414,21 +381,14 @@ function draw(){
       ctx.drawImage(img, x, 0, tileW, H);
     }
   }else{
-    // 代替
     ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H);
   }
 
-  // 地面ライン（デバッグ）
-  // ctx.strokeStyle="#0f0"; ctx.beginPath(); ctx.moveTo(0,groundY); ctx.lineTo(W,groundY); ctx.stroke();
-
-  // 運搬役 & ゴミ箱
   for(const c of carriers){
-    // ゴミ箱
     if(c.hasBin && c.bin){
-      const bx = c.x + (c.vx>0 ? (c.w - c.bin.w)/2 : (c.w - c.bin.w)/2);
+      const bx = c.x + (c.w - c.bin.w)/2;
       const by = c.y - c.bin.h - 6*DPR - 8*Math.abs(Math.sin(c.hopT));
       if(assets['gomi.png']){
-        // 赤フェード
         if(c.bin.burning){
           ctx.globalAlpha = 1 - c.bin.burst;
           ctx.filter = `opacity(${(1-c.bin.burst)*100}%) saturate(120%)`;
@@ -442,19 +402,13 @@ function draw(){
         ctx.fillRect(bx, by, c.bin.w, c.bin.h);
       }
     }
-
-    // 運搬役
     const kindFile = c.kind + '.png';
     const im = assets[kindFile];
     const sx = c.x, sy = c.y - c.h;
-    if(im){
-      ctx.drawImage(im, sx, sy, c.w, c.h);
-    }else{
-      ctx.fillStyle="#ccc"; ctx.fillRect(sx, sy, c.w, c.h);
-    }
+    if(im){ ctx.drawImage(im, sx, sy, c.w, c.h); }
+    else { ctx.fillStyle="#ccc"; ctx.fillRect(sx, sy, c.w, c.h); }
   }
 
-  // 火の玉
   if(fireball.active){
     if(assets['tama.png']){
       const s = fireball.r*2;
@@ -465,7 +419,6 @@ function draw(){
     }
   }
 
-  // プレイヤー（Viran）
   const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
   if(blinking){ ctx.globalAlpha = 0.4; }
   if(assets['viran.png']){
@@ -475,31 +428,22 @@ function draw(){
   }
   if(blinking){
     ctx.globalAlpha = 1;
-    // 赤輪郭
-    ctx.strokeStyle="rgba(255,60,80,.9)"; ctx.lineWidth=4*DPR;
-    ctx.strokeRect(player.x, player.y, player.w, player.h);
+    ctx.strokeStyle="rgba(255,60,80,.9)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x, player.y, player.w, player.h);
   }
 
   ctx.restore();
 }
 
-// ====== ゲーム終了/再開 ======
 function endGame(){
   world.running = false;
   finalScoreEl.textContent = world.score;
   modal.style.display = 'flex';
 }
-
 function resetGame(){
-  world.timeLeft = 60.0;
-  world.score = 0;
-  world.running = true;
+  world.timeLeft = 60.0; world.score = 0; world.running = true;
   player.x = W*0.22; player.y = H*0.45; player.vx=0; player.vy=0; player.stunned=0;
   fireball.active=false; fireball.seeking=false; fireball.target=null;
-  for(let i=0;i<carriers.length;i++){
-    const k = carriers[i].kind;
-    carriers[i] = makeCarrier(k);
-  }
+  for(let i=0;i<carriers.length;i++){ const k = carriers[i].kind; carriers[i] = makeCarrier(k); }
   modal.style.display='none';
 }
 
