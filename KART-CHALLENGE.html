@@ -3,147 +3,104 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner with Corn & Jumpdai</title>
-<meta name="theme-color" content="#0b0c10" />
+<title>Runner Fix Floating</title>
 <style>
-  :root{ --stage-w:390px; --stage-h:700px; }
-  html,body{height:100%;margin:0;background:#000;color:#e9eef7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic",sans-serif;overscroll-behavior:none}
-  #viewport{position:fixed;inset:0;display:grid;place-items:center}
-  #phone{width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);transform-origin:center center}
-  header.hud{position:absolute;left:0;right:0;top:0;height:64px;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:linear-gradient(180deg,rgba(20,26,38,.92),rgba(16,21,31,.84));border-bottom:1px solid rgba(255,255,255,.06)}
-  .row{display:flex;gap:8px;align-items:center}
-  .pill{background:#1b2233;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.05)}
-  main.play{position:absolute;left:0;right:0;top:64px;bottom:96px;background:#060a12}
-  #game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-  footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:96px;z-index:10;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:12px;background:linear-gradient(180deg,rgba(16,21,31,.84),rgba(10,14,22,.96));border-top:1px solid rgba(255,255,255,.06)}
-  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;display:flex;align-items:center;justify-content:center;background:#1a2132;border:1px solid rgba(255,255,255,.08);color:#fff;padding:12px 10px;border-radius:14px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25)}
-  .btn:active{transform:translateY(1px)} .btn.primary{background:#1c2b44;border-color:#2e4f7a} .btn.accent{background:#1a2b3e;border-color:#256787}
-  #overlay{position:absolute;inset:64px 0 96px;display:grid;place-items:center;z-index:20}
-  .card{width:min(92%,360px);background:linear-gradient(180deg,#0e1320,#0b0f1a);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
-  .title{font-weight:800;font-size:18px;margin:0 0 10px}
-  .sub{color:#9aa3b2;font-size:13px;margin-bottom:12px}
-  .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .choice{background:#121a2a;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;display:grid;gap:8px;justify-items:center;cursor:pointer;user-select:none}
-  .choice:active{transform:translateY(1px)}
-  .choice img{width:72px;height:72px;object-fit:contain;background:#0c111a;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  #game{width:100%;height:100%;display:block;image-rendering:pixelated}
 </style>
 </head>
 <body>
-  <div id="viewport">
-    <div id="phone">
-      <header class="hud">
-        <div class="row">
-          <span class="pill" id="dist">距離 0 m</span>
-          <span class="pill" id="speed">速度 0 km/h</span>
-          <span class="pill" id="jump">ジャンプ 2</span>
-          <span class="pill" id="coin">コイン 0</span>
-        </div>
-        <div class="row"><span class="pill">BOOST <span id="boostPct">60%</span></span></div>
-      </header>
-
-      <main class="play">
-        <canvas id="game" width="390" height="540"></canvas>
-
-        <!-- キャラ選択 -->
-        <div id="overlay" style="display:none;">
-          <div class="card">
-            <p class="title">どちらか選択してスタート</p>
-            <p class="sub">直下に <code>VR.png</code> / <code>orange.png</code> / <code>sora.png</code> / <code>mob.png</code> / <code>corn.png</code> / <code>jumpdai.png</code> を置いてください。</p>
-            <div class="choices">
-              <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
-              <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-      <footer class="ctrl">
-        <button class="btn primary" id="btnJump">ジャンプ</button>
-        <div></div>
-        <button class="btn accent" id="btnBoost">ブースト</button>
-      </footer>
-    </div>
-  </div>
-
+<canvas id="game" width="390" height="540"></canvas>
 <script>
-(() => {
-  const cvs=document.getElementById("game"),ctx=cvs.getContext("2d");
-  ctx.imageSmoothingEnabled=false;
-  const W=390,H=540;
-  function setup(){const dpr=devicePixelRatio||1;cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}
-  setup();
+const cvs=document.getElementById("game"),ctx=cvs.getContext("2d");ctx.imageSmoothingEnabled=false;
+const W=390,H=540;
+function setup(){const dpr=devicePixelRatio||1;cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}setup();
 
-  function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png"),load("VR.png")]).then(([imgBG,imgGR,imgCO,imgJP,imgPL])=>{
 
-  Promise.all([
-    load("sora.png"), load("mob.png"), load("corn.png"), load("jumpdai.png"),
-    load("VR.png").catch(()=>null), load("orange.png").catch(()=>null)
-  ]).then(imgs=>{
-    const [imgBG,imgGR,imgCO,imgJP,imgVR,imgOR]=imgs;
+  // --- 透明トリム関数 ---
+  function scanTopTrim(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");
+    oc.width=w;oc.height=h;const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;let top=h;
+    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){top=y;return{trimTop:top,contentH:h-top};}}}
+    return{trimTop:0,contentH:h};
+  }
+  function scanBottomTrim(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");
+    oc.width=w;oc.height=h;const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;
+    for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){return{bottomTrim:h-1-y,h};}}}
+    return{bottomTrim:0,h};
+  }
+  function scanTightRect(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");
+    oc.width=w;oc.height=h;const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;
+    let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}}}
+    if(maxX<0)return{sx:0,sy:0,sw:w,sh:h};
+    return{sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
+  }
 
-    function floorY(){return H-64;} // 地面の高さ（簡易）
+  // --- 地面の床ライン決定 ---
+  const {trimTop,contentH}=scanTopTrim(imgGR);
+  const groundDrawH=contentH; 
+  function floorY(){return H-groundDrawH;}
 
-    const player={x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img:null};
-    const GRAV=1500,JUMP=540,BASE=220,BOOST=480; let speed=BASE,boosting=false,boost=60,dist=0,bgOff=0,grOff=0;
+  // --- プレイヤー設定 ---
+  const {bottomTrim,h:ph}=scanBottomTrim(imgPL);
+  const playerFeetFrac=bottomTrim/ph;
+  const player={x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img:imgPL,feetFrac:playerFeetFrac};
 
-    const obstacles=[]; // {x,y,w,h,type:"corn"|"jump"}
-    let nextSpawnDist=300+Math.random()*300;
+  // --- コーン/ジャンプ台準備 ---
+  const cornTrim=scanTightRect(imgCO),jumpTrim=scanTightRect(imgJP);
 
-    function spawnObstacle(){
-      const fy=floorY();
-      if(Math.random()<0.5){ // corn
-        const h=50,w=35; // 小さめ
-        obstacles.push({x:W+40,y:fy-h,w,h,type:"corn"});
-      }else{ // jumpdai
-        const h=20,w=60;
-        obstacles.push({x:W+40,y:fy-h,w,h,type:"jump"});
+  // --- ゲーム状態 ---
+  let speed=220,dist=0,bgOff=0,grOff=0;
+  const GRAV=1500,JUMP=540;
+  const obstacles=[];let nextSpawn=200+Math.random()*300;
+
+  function spawn(type){
+    const fy=floorY();
+    if(type==="corn"){
+      const targetH=40,scale=targetH/cornTrim.sh,w=Math.round(cornTrim.sw*scale),h=Math.round(cornTrim.sh*scale);
+      obstacles.push({x:W+40,y:fy-h,w,h,img:imgCO,trim:cornTrim,type:"corn"});
+    }else{
+      const targetH=20,scale=targetH/jumpTrim.sh,w=Math.round(jumpTrim.sw*scale),h=Math.round(jumpTrim.sh*scale);
+      obstacles.push({x:W+40,y:fy-h,w,h,img:imgJP,trim:jumpTrim,type:"jump"});
+    }
+  }
+
+  function drawTiled(img,y,hgt,off){
+    const scale=hgt/img.naturalHeight,tileW=img.naturalWidth*scale;
+    let ox=off%tileW;if(ox>0)ox-=tileW;
+    for(let x=ox;x<W;x+=tileW){ctx.drawImage(img,0,trimTop,img.naturalWidth,img.naturalHeight-trimTop,Math.floor(x),y,tileW,hgt);}
+  }
+
+  let prev=0;
+  function loop(t){
+    const dt=(t-prev)/1000;prev=t;
+    player.vy+=GRAV*dt;player.y+=player.vy*dt;
+    const fy=floorY();if(player.y>fy){player.y=fy;player.vy=0;player.jumps=2;}
+    dist+=speed*dt;bgOff-=speed*0.2*dt;grOff-=speed*1.0*dt;
+    if(dist>nextSpawn){spawn(Math.random()<0.5?"corn":"jump");nextSpawn+=200+Math.random()*400;}
+    for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=speed*dt;if(obstacles[i].x+obstacles[i].w<-40)obstacles.splice(i,1);}
+    ctx.clearRect(0,0,W,H);
+    drawTiled(imgBG,0,H,bgOff);drawTiled(imgGR,floorY(),groundDrawH,grOff);
+    obstacles.forEach(o=>ctx.drawImage(o.img,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,Math.floor(o.x),Math.floor(o.y),o.w,o.h));
+    const px=player.x,py=player.y-player.h+player.h*player.feetFrac;
+    ctx.drawImage(player.img,px,py,player.w,player.h);
+    obstacles.forEach(o=>{
+      if(px<o.x+o.w&&px+player.w>o.x&&py<o.y+o.h&&py+player.h>o.y){
+        if(o.type==="jump"){player.vy=-JUMP*1.2;}
       }
-    }
-
-    const btnJump=document.getElementById("btnJump"),btnBoost=document.getElementById("btnBoost");
-    function doJump(){if(player.jumps>0){player.vy=-JUMP;player.jumps--;}}
-    btnJump.onpointerdown=()=>doJump();
-    btnBoost.onpointerdown=()=>boosting=true;btnBoost.onpointerup=()=>boosting=false;
-
-    document.getElementById("overlay").style.display="grid";
-    document.getElementById("overlay").addEventListener("click",e=>{
-      const c=e.target.closest(".choice"); if(!c)return;
-      player.img=(c.dataset.char==="VR"&&imgVR)?imgVR:(imgOR||imgVR);
-      document.getElementById("overlay").style.display="none";
-      start();
     });
-
-    function drawTiled(img,y,hgt,off){
-      const w=img.naturalWidth,h=img.naturalHeight;
-      const scaleY=hgt/h,tileW=w*scaleY;let ox=off%tileW;if(ox>0)ox-=tileW;
-      for(let x=ox;x<W;x+=tileW){ctx.drawImage(img,0,0,w,h,Math.floor(x),y,tileW,hgt);}
-    }
-
-    function start(){requestAnimationFrame(loop);}
-    let prev=0;
-    function loop(t){
-      const dt=(t-prev)/1000;prev=t;
-      if(boosting&&boost>0){speed=BOOST;boost=Math.max(0,boost-24*dt);}else{speed=BASE;boost=Math.min(100,boost+10*dt);}
-      player.vy+=GRAV*dt;player.y+=player.vy*dt;const fy=floorY();
-      if(player.y>fy){player.y=fy;player.vy=0;player.jumps=2;}
-      dist+=speed*dt;bgOff-=speed*0.2*dt;grOff-=speed*1.0*dt;
-      if(dist>nextSpawnDist){spawnObstacle();nextSpawnDist+=200+Math.random()*400;}
-      for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=speed*dt;if(obstacles[i].x+obstacles[i].w<-40)obstacles.splice(i,1);}
-      ctx.clearRect(0,0,W,H);drawTiled(imgBG,0,H,bgOff);drawTiled(imgGR,H-64,64,grOff);
-      obstacles.forEach(o=>{
-        if(o.type==="corn"){ctx.drawImage(imgCO,o.x,o.y,o.w,o.h);}
-        else{ctx.drawImage(imgJP,o.x,o.y,o.w,o.h);}
-      });
-      ctx.drawImage(player.img,player.x,player.y-player.h,player.w,player.h);
-      obstacles.forEach(o=>{
-        if(player.x<o.x+o.w&&player.x+player.w>o.x&&player.y-player.h<o.y+o.h&&player.y>o.y){
-          if(o.type==="jump"){player.vy=-JUMP*1.2;o.hit=true;}
-        }
-      });
-      requestAnimationFrame(loop);
-    }
-  });
-})();
+    requestAnimationFrame(loop);
+  }
+  loop();
+});
 </script>
 </body>
 </html>
