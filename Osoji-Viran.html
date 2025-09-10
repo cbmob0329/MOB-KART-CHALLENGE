@@ -113,7 +113,7 @@ function resize(){
   canvas.style.height = vh+"px";
   groundY = H*0.86;
 
-  // 高さ：もっと上に固定（以前: H*0.42）
+  // プレイヤー高さ：上寄りに固定
   baseY = H*0.25;
 }
 window.addEventListener('resize', resize, {passive:true});
@@ -146,7 +146,7 @@ let started=false;
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
-// ====== 入力（ドラッグでXのみ追従／タップで投下） ======
+// ====== 入力（Xのみ追従／タップで投下） ======
 const input = { touching:false, id:null, sx:0, sy:0, lx:0, ly:0, moved:false, t0:0 };
 const TAP_TIME = 220;
 const TAP_MOVE = 12 * DPR;
@@ -202,29 +202,30 @@ const world = { timeLeft:60.0, score:0, running:false };
 // プレイヤー（高さ固定・左右ゆっくり）
 const player = {
   x: W*0.22, y: baseY, w:84*DPR, h:84*DPR,
-  stunned: 0, blinkT:0,       // 失敗時の赤チカチカ
-  lockDrop: 0,                // 投下不可 残り秒
-  moveEaseX: 0.12,            // 小さいほどゆっくり追従
+  stunned: 0, blinkT:0,
+  lockDrop: 0,
+  moveEaseX: 0.12,
   _bob: 0
 };
 
 // 火の玉（高速落下）
 const fireball = { active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null };
 
-// 運搬キャラ
+// 運搬キャラ（地面に合わせて高さ固定）
 function makeCarrier(kindIndex){
-  const speed = rand(0.10,0.16)*DPR; // パトロール速度
+  const speed = rand(0.10,0.16)*DPR;
   const dir = Math.random() < 0.5 ? -1 : 1;
   const startX = dir>0 ? -80*DPR : W + 80*DPR;
   return {
     kind: kindIndex,
-    x: startX, y: groundY-20*DPR,
+    x: startX,
+    y: groundY,                 // ← 下端を地面に合わせる
     w: 72*DPR, h: 72*DPR,
     vx: speed*dir, baseSpeed:speed,
-    hopT: Math.random()*Math.PI*2,
+    // hopT 等は廃止（上下に浮かない）
     hasBin: true,
     bin: {w: 56*DPR, h: 56*DPR, explode:0, exploding:false},
-    state: 'patrol' // 'patrol' | 'fetch'
+    state: 'patrol'
   };
 }
 const carriers = [ makeCarrier(1), makeCarrier(2), makeCarrier(3) ];
@@ -271,7 +272,7 @@ function update(dt){
     targetX = clamp((input.lx) - player.w/2, 20*DPR, W - 20*DPR - player.w);
   }
   player.x = lerp(player.x, targetX, player.moveEaseX);
-  player.y = baseY; // 高さ完全固定（上寄り）
+  player.y = baseY; // 高さ完全固定
 
   // 失敗時の赤点滅
   if(player.stunned>0){ player.stunned -= dt; player.blinkT += dt*8; }
@@ -288,12 +289,11 @@ function update(dt){
       // ゴミ箱命中
       for(const c of carriers){
         if(c.hasBin && !c.bin.exploding){
-          const headTopY = (c.y - c.h);
+          const headTopY = (c.y - c.h); // c.y は下端=地面
           const bx = c.x + (c.w - c.bin.w)/2;
           const by = headTopY - c.bin.h - 6*DPR; // 頭の“上”
           if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2,
                   bx, by, c.bin.w, c.bin.h)){
-            // 赤い破裂演出 → 回収へ（bin無し）
             c.bin.exploding = true; c.bin.explode = 0;
             c.hasBin = true;
             fireball.active = false; world.score += 1;
@@ -328,25 +328,11 @@ function update(dt){
     }
   }
 
-  // 運搬キャラ挙動
+  // 運搬キャラ挙動（上下は固定・地面合わせ）
   for(const c of carriers){
-    c.hopT += dt*8;
-    const hop = Math.abs(Math.sin(c.hopT)) * 8*DPR;
-
-    // 破裂演出（赤）
-    if(c.bin.exploding){
-      c.bin.explode += dt*1.8; // 0→1
-      if(c.bin.explode >= 1){
-        // 破裂完了：右端へ取りに行く（遅め）
-        c.bin.exploding = false;
-        c.hasBin = false;
-        c.state = 'fetch';
-      }
-    }
-
+    // パトロール or 補給
     if(c.state==='fetch'){
-      // 右へ“遅め”ダッシュで補給（1.4倍）
-      const speed = Math.abs(c.baseSpeed)*1.4*DPR;
+      const speed = Math.abs(c.baseSpeed)*1.4*DPR; // 遅めダッシュ
       c.x += speed * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
         // 右外で補給→左向きに復帰
@@ -357,12 +343,13 @@ function update(dt){
         c.state = 'patrol';
       }
     }else{
-      // パトロール（左右往復）
       c.x += c.vx * dt * 1000;
       if(c.x < -60*DPR){ c.x = -60*DPR; c.vx = Math.abs(c.vx); }
       if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.vx = -Math.abs(c.vx); }
     }
-    c.y = groundY - 20*DPR - hop;
+
+    // 常に“足元＝地面”で固定
+    c.y = groundY;
   }
 }
 
@@ -382,7 +369,7 @@ function tryDrop(){
   if(fireball.active) return;
   fireball.active = true; fireball.seeking=false; fireball.target=null;
   fireball.x = player.x + player.w*0.5;
-  fireball.y = (player.y + player._bob) + player.h*0.6;
+  fireball.y = player.y + player.h*0.6; // 高さ固定
   fireball.vx = 0; fireball.vy = 0.060 * DPR;  // 初速アップ
 }
 
@@ -401,32 +388,30 @@ function draw(){
     ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H);
   }
 
-  // 運搬役と“頭上の”ゴミ箱
+  // 運搬役と“頭上の”ゴミ箱（地面合わせ）
   for(const c of carriers){
-    const sx = c.x, sy = c.y - c.h;
+    const sx = c.x, sy = c.y - c.h; // c.y は地面
 
-    // キャラ
+    // キャラ本体
     const kindFile = c.kind + '.png';
     const im = assets[kindFile];
     if(im){ ctx.drawImage(im, sx, sy, c.w, c.h); }
     else { ctx.fillStyle="#ccc"; ctx.fillRect(sx, sy, c.w, c.h); }
 
-    // ゴミ箱：持っているときのみ表示
+    // ゴミ箱表示
     if(c.hasBin){
-      const headTopY = sy + 6*DPR; // 画像上端＋余白補正
+      const headTopY = sy + 6*DPR; // 上端＋余白補正
       const bx = c.x + (c.w - c.bin.w)/2;
       const by = headTopY - c.bin.h - 6*DPR;
 
       if(c.bin.exploding){
-        // 赤い破裂エフェクト（星型放射＋フェード）
+        // 赤い破裂（星型放射＋フェード）
         const t = Math.min(1, c.bin.explode);
-        // 元箱を薄く
         if(assets['gomi.png']){
           ctx.save(); ctx.globalAlpha = 1 - t; ctx.drawImage(assets['gomi.png'], bx, by, c.bin.w, c.bin.h); ctx.restore();
         }else{
           ctx.fillStyle = `rgba(200,200,200,${1-t})`; ctx.fillRect(bx, by, c.bin.w, c.bin.h);
         }
-        // 赤フラッシュ
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = `rgba(255,60,80,${0.6*(1-t)})`;
