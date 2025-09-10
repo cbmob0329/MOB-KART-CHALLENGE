@@ -2,698 +2,192 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-<title>MOB balloon</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Runner (MOB版)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
-  :root{
-    --bg:#0b0c10; --panel:#121621; --panel2:#171c2a; --fg:#e9eef7; --dim:#9aa3b2;
-    --accent:#13c4ff; --accent2:#ff3e7f; --ok:#25d366; --warn:#ffb020;
-  }
-  html,body{
-    height:100%; margin:0; background:var(--bg); color:var(--fg);
-    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
-    -webkit-touch-callout:none; -webkit-user-select:none; user-select:none;
-    touch-action:manipulation;
-  }
-  #app-wrap{ position:fixed; inset:0; display:grid; place-items:center; padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
-
-  /* スマホ固定ビュー（PCでも同じ見た目） */
-  #phone{
-    width: 390px; height: 780px;
-    background:linear-gradient(160deg,#0b0c10,#0e1220 60%,#0b0c10);
-    border-radius: 24px;
-    box-shadow: 0 10px 40px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
-    overflow:hidden;
-    display:flex; flex-direction:column; position:relative;
-  }
-
-  /* 上：バー／中：ステージ／下：十字キー */
-  #topbar{
-    flex:0 0 48px; display:flex; align-items:center; justify-content:space-between;
-    padding:0 12px; background:var(--panel); border-bottom:1px solid rgba(255,255,255,.06);
-    font-weight:600; letter-spacing:.3px;
-  }
-  #hud{ display:flex; gap:10px; align-items:center; font-size:12px; color:var(--dim); }
-  #hud b{ color:var(--fg); font-weight:700; }
-
-  #stage-wrap{
-    flex:1; display:flex; justify-content:center; align-items:center; background:var(--panel2);
-    padding: 6px 8px 4px 8px; /* できるだけ上寄せ */
-  }
-  #stage{
-    width: min(94%, calc(100% - 16px));
-    aspect-ratio: 1 / 1;
-    max-height: 100%;
-    background:#000;
-    border-radius: 12px;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
-    position:relative;
-  }
-  canvas{ width:100%; height:100%; display:block; border-radius:12px; image-rendering: pixelated; }
-
-  /* オーバーレイ（スタート/カウント/結果） */
-  .overlay{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
-  .center-panel{
-    background:rgba(10,12,20,.85);
-    border:1px solid rgba(255,255,255,.12);
-    border-radius:14px; padding:18px; width:85%; max-width:320px; text-align:center;
-    box-shadow:0 12px 40px rgba(0,0,0,.5);
-    pointer-events:auto;
-  }
-  .title{ font-size:22px; font-weight:800; letter-spacing:.5px; margin-bottom:6px; }
-  .sub{ font-size:12px; color:var(--dim); margin-bottom:14px; }
-  .btn{
-    appearance:none; border:none; background:linear-gradient(180deg,var(--accent),#0eaee6);
-    color:#001018; font-weight:800; padding:12px 16px; border-radius:12px; cursor:pointer; width:100%;
-    box-shadow: 0 8px 18px rgba(19,196,255,.35);
-  }
-  .counter{ font-size:56px; font-weight:900; letter-spacing:1px; text-shadow:0 4px 18px rgba(0,0,0,.6); }
-  .pill{ padding:2px 8px; border-radius:999px; background:#1f2a44; border:1px solid rgba(255,255,255,.12); font-size:11px; }
-  .muted{ color:var(--dim); }
-
-  /* ===== 十字キー（最下部／被らないよう大きく持ち上げ） ===== */
-  #controls{
-    flex:0 0 210px; /* 十字キー領域の高さを増やす */
-    display:flex; justify-content:center; align-items:center; gap:16px;
-    padding: 10px 12px calc(70px + env(safe-area-inset-bottom)) 12px; /* ←下からしっかり持ち上げる */
-    background:var(--panel); border-top:1px solid rgba(255,255,255,.06);
-  }
-  /* 3×3グリッドで完全対称・各セル全体がボタン */
-  .dpad{
-    width: 240px; height: 240px; display:grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
-    gap: 10px;
-    background: rgba(10,12,20,.25);
-    border:1px solid rgba(255,255,255,.15);
-    border-radius: 16px;
-    backdrop-filter: blur(6px);
-    touch-action:none;
-  }
-  .dpad button{
-    width:100%; height:100%;
-    border-radius:14px;
-    background:#1c2334; border:1px solid rgba(255,255,255,.18);
-    color:#cfe7ff; font-weight:900; font-size:18px;
-    touch-action:none;
-  }
-  .dpad button:active{ background:#24304a; transform: translateY(1px); }
-  .up   { grid-area: 1 / 2; }
-  .left { grid-area: 2 / 1; }
-  .right{ grid-area: 2 / 3; }
-  .down { grid-area: 3 / 2; }
-  .legend{
-    background: rgba(10,12,20,.35);
-    border:1px solid rgba(255,255,255,.15);
-    border-radius: 12px;
-    padding:6px 10px;
-    font-size:12px; color:#cfe7ff;
-  }
-
-  /* テーブル */
-  table{ width:100%; border-collapse:collapse; color:#eaf2ff; }
-  th,td{ padding:6px 8px; border-bottom:1px dashed rgba(255,255,255,.12); font-size:13px; text-align:left; }
-  th{ color:#9bb3d6; font-weight:700; }
-  .rank1{ color:#ffd54a; font-weight:800; }
-  .rank2{ color:#c6d7ff; font-weight:800; }
-  .rank3{ color:#ffb48a; font-weight:800; }
+  :root{ --stage-w:390px; --stage-h:700px; }
+  html,body{height:100%;margin:0;background:#000;color:#e9eef7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic",sans-serif;overscroll-behavior:none}
+  #viewport{position:fixed;inset:0;display:grid;place-items:center}
+  #phone{width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);transform-origin:center center}
+  header.hud{position:absolute;left:0;right:0;top:0;height:64px;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:linear-gradient(180deg,rgba(20,26,38,.92),rgba(16,21,31,.84));border-bottom:1px solid rgba(255,255,255,.06)}
+  .row{display:flex;gap:8px;align-items:center}
+  .pill{background:#1b2233;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.05)}
+  main.play{position:absolute;left:0;right:0;top:64px;bottom:96px;background:#060a12}
+  #game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+  footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:96px;z-index:10;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:12px;background:linear-gradient(180deg,rgba(16,21,31,.84),rgba(10,14,22,.96));border-top:1px solid rgba(255,255,255,.06)}
+  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;display:flex;align-items:center;justify-content:center;background:#1a2132;border:1px solid rgba(255,255,255,.08);color:#fff;padding:12px 10px;border-radius:14px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+  .btn:active{transform:translateY(1px)} .btn.primary{background:#1c2b44;border-color:#2e4f7a} .btn.accent{background:#1a2b3e;border-color:#256787}
+  #overlay{position:absolute;inset:64px 0 96px;display:grid;place-items:center;z-index:20}
+  .card{width:min(92%,360px);background:linear-gradient(180deg,#0e1320,#0b0f1a);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .title{font-weight:800;font-size:18px;margin:0 0 10px}
+  .sub{color:#9aa3b2;font-size:13px;margin-bottom:12px}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .choice{background:#121a2a;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;display:grid;gap:8px;justify-items:center;cursor:pointer;user-select:none}
+  .choice:active{transform:translateY(1px)}
+  .choice img{width:72px;height:72px;object-fit:contain;background:#0c111a;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+  #loading{position:absolute;inset:64px 0 96px;display:grid;place-items:center;z-index:30;background:rgba(7,11,18,.8)}
+  #loading .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
+  #hit { position:absolute; inset:auto 12px 108px auto; padding:6px 10px; background:#ff3e7f; border-radius:999px; font-size:12px; display:none; }
 </style>
 </head>
 <body>
-<div id="app-wrap">
-  <div id="phone" aria-label="MOB balloon - mobile fixed view">
-    <!-- 上：バー -->
-    <div id="topbar">
-      <div>MOB balloon</div>
-      <div id="hud">
-        <span>R:<b id="roundNum">1</b>/3</span>
-        <span>生存:<b id="alive">8</b></span>
-        <span>時間:<b id="time">0.0</b>s</span>
-        <span class="pill" id="speedTag">通常</span>
-      </div>
-    </div>
+  <div id="viewport">
+    <div id="phone">
+      <header class="hud">
+        <div class="row">
+          <span class="pill" id="dist">距離 0 m</span>
+          <span class="pill" id="speed">速度 0 km/h</span>
+          <span class="pill" id="jump">ジャンプ 2</span>
+          <span class="pill" id="coin">コイン 0</span>
+        </div>
+        <div class="row"><span class="pill">BOOST <span id="boostPct">60%</span></span></div>
+      </header>
 
-    <!-- 中央：ステージ（正方形） -->
-    <div id="stage-wrap">
-      <div id="stage">
-        <canvas id="cv" width="1000" height="1000"></canvas>
+      <main class="play">
+        <canvas id="game" width="390" height="540"></canvas>
 
-        <!-- スタート -->
-        <div class="overlay" id="startOverlay">
-          <div class="center-panel">
-            <div class="title">MOB balloon</div>
-            <div class="sub">風船でフワフワ移動し、<b>カラス</b>から逃げ続けよう！<br/>十字キーで操作。8人で生存競争。</div>
-            <button class="btn" id="btnStart">ゲームスタート</button>
+        <!-- キャラ選択 -->
+        <div id="overlay" style="display:none;">
+          <div class="card">
+            <p class="title">どちらか選択してスタート</p>
+            <p class="sub">直下に <code>VR.png</code> / <code>orange.png</code> / <code>sora.png</code> / <code>mob.png</code> / <code>corn.png</code> を置いてください。</p>
+            <div class="choices">
+              <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
+              <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
+            </div>
           </div>
         </div>
-        <!-- カウント -->
-        <div class="overlay" id="countOverlay" style="display:none;">
-          <div class="counter" id="countLabel">3</div>
-        </div>
-        <!-- ラウンド結果（2秒のみ表示して自動移行） -->
-        <div class="overlay" id="roundOverlay" style="display:none;">
-          <div class="center-panel" id="roundPanel">
-            <div class="title">ラウンド結果</div>
-            <div class="sub" id="roundSummary">…</div>
-            <table id="roundTable"></table>
-            <div class="muted" style="margin-top:8px;">次のラウンドへ移動中…</div>
-          </div>
-        </div>
-        <!-- 最終結果（2秒表示→タイトルへ） -->
-        <div class="overlay" id="finalOverlay" style="display:none;">
-          <div class="center-panel">
-            <div class="title">総合結果</div>
-            <div class="sub">全3ラウンドの合計ポイント</div>
-            <table id="finalTable"></table>
-            <div class="muted" style="margin-top:8px;">新しいゲームを開始します…</div>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- 下：十字キー（最下部／均等配置） -->
-    <div id="controls">
-      <div class="dpad" aria-label="directional pad">
-        <button class="up"    data-dir="up">▲</button>
-        <button class="left"  data-dir="left">◀</button>
-        <button class="right" data-dir="right">▶</button>
-        <button class="down"  data-dir="down">▼</button>
-      </div>
-      <div class="legend">十字キーで移動／PCは矢印キーも可</div>
+        <!-- プリロード中 -->
+        <div id="loading"><div class="bubble">読み込み中…</div></div>
+      </main>
+
+      <footer class="ctrl">
+        <button class="btn primary" id="btnJump">ジャンプ</button>
+        <div></div>
+        <button class="btn accent" id="btnBoost">ブースト</button>
+      </footer>
+
+      <div id="hit">HIT!</div>
     </div>
   </div>
-</div>
 
 <script>
-/* ===== 画像ファイル（同階層・大文字小文字厳守） ===== */
-const ASSETS = {
-  bg: "MOBhai.png",
-  crowR: "karasu1.png",
-  crowL: "karasu2.png",
-  balloons: {
-    Black: "Blackb.png",
-    BlueTypo: "Buleb.png",
-    Green: "Greenb.png",
-    Purple: "murab.png",
-    Orange: "Orangeb.png",
-    Pink: "Pinkb.png",
-    Red: "Redb.png",
-    Yellow: "yellowb.png"
-  }
-};
-const balloonOrder = ["Red","BlueTypo","Green","Purple","Orange","Pink","Yellow","Black"];
+(() => {
+  const phone=document.getElementById('phone');
+  function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
+  addEventListener('resize', fit, {passive:true}); fit();
 
-/* ===== DOM ===== */
-const cv = document.getElementById('cv');
-const ctx = cv.getContext('2d');
-const startOverlay = document.getElementById('startOverlay');
-const countOverlay = document.getElementById('countOverlay');
-const countLabel = document.getElementById('countLabel');
-const roundOverlay = document.getElementById('roundOverlay');
-const roundTable = document.getElementById('roundTable');
-const roundSummary = document.getElementById('roundSummary');
-const finalOverlay = document.getElementById('finalOverlay');
-const finalTable = document.getElementById('finalTable');
-const roundNumEl = document.getElementById('roundNum');
-const aliveEl = document.getElementById('alive');
-const timeEl = document.getElementById('time');
-const speedTag = document.getElementById('speedTag');
-const btnStart = document.getElementById('btnStart');
+  const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
+  ctx.imageSmoothingEnabled=false; const W=390,H=540;
+  function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0); }
+  setup(); addEventListener('resize',setup,{passive:true});
 
-const STAGE_SIZE = 1000;
-let images = {};
-let ready = false;
+  function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
 
-/* ===== 進行/スコア ===== */
-const MAX_PLAYERS = 8;
-const ROUNDS_MAX = 3;
-const POINTS_MAP = [15,10,7,5,3,1,0,0];
-let roundIndex = 0;
-let leaderboard = [];
-let colorsForRound = [];
+  Promise.all([
+    load('sora.png'),
+    load('mob.png'),
+    load('corn.png'),
+    load('VR.png').catch(()=>null),
+    load('orange.png').catch(()=>null),
+  ]).then(imgs=>{
+    const [imgBG,imgGR,imgCO,imgVR,imgOR]=imgs;
+    document.getElementById('loading').style.display='none';
+    document.getElementById('overlay').style.display='grid';
 
-class Balloon{
-  constructor(id, name, colorKey, isPlayer){
-    this.id=id; this.name=name; this.colorKey=colorKey; this.isPlayer=isPlayer;
-    this.r = 26;
-    this.x=0; this.y=0; this.vx=0; this.vy=0; this.ax=0; this.ay=0;
-    this.alive=true; this.popping=false; this.popTimer=0; this.timeAlive=0; this.rank=null;
-    this.control = {up:false,down:false,left:false,right:false};
-    this.aiTargetAngle = Math.random()*Math.PI*2;
-    this.aiChangeT = Math.random()*0.6+0.6;
-  }
-  reset(x,y){
-    this.x=x; this.y=y; this.vx=this.vy=0; this.ax=this.ay=0;
-    this.alive=true; this.popping=false; this.popTimer=0; this.timeAlive=0; this.rank=null;
-  }
-}
-class Crow{
-  constructor(){
-    this.x=Math.random()*600+200; this.y=Math.random()*600+200;
-    this.vx=0; this.vy=0; this.speed=95; this.size=52; this.dirR=true;
-  }
-}
-
-/* ===== 状態 ===== */
-let balloons = [];
-let crows = [];
-let gameTime = 0;
-let simSpeed = 1.0;
-let playing = false;
-let counting = false;
-let nextCrowTime = 0;
-let ended = false;
-let placements = [];
-let playerBalloon = null;
-
-/* ===== 入力（十字キー/キーボード） ===== */
-const input = {up:false,down:false,left:false,right:false};
-function bindDPad(){
-  const controls = document.querySelectorAll('.dpad button');
-  controls.forEach(btn=>{
-    const dir = btn.dataset.dir;
-    const set = v=>{ input[dir]=v; if(playerBalloon) playerBalloon.control[dir]=v; };
-    const on = e=>{ e.preventDefault(); set(true); };
-    const off = e=>{ e.preventDefault(); set(false); };
-    btn.addEventListener('touchstart', on, {passive:false});
-    btn.addEventListener('touchend', off);
-    btn.addEventListener('touchcancel', off);
-    btn.addEventListener('mousedown', on);
-    btn.addEventListener('mouseup', off);
-    btn.addEventListener('mouseleave', off);
-  });
-}
-window.addEventListener('keydown', e=>{
-  if(e.key==="ArrowUp") input.up=true;
-  if(e.key==="ArrowDown") input.down=true;
-  if(e.key==="ArrowLeft") input.left=true;
-  if(e.key==="ArrowRight") input.right=true;
-});
-window.addEventListener('keyup', e=>{
-  if(e.key==="ArrowUp") input.up=false;
-  if(e.key==="ArrowDown") input.down=false;
-  if(e.key==="ArrowLeft") input.left=false;
-  if(e.key==="ArrowRight") input.right=false;
-});
-
-/* ===== 画像ロード ===== */
-function loadImage(src){
-  return new Promise((res,rej)=>{
-    const img = new Image();
-    img.onload=()=>res(img);
-    img.onerror=()=>rej(new Error("fail:"+src));
-    img.src = src;
-  });
-}
-async function loadAssets(){
-  const list = [
-    ['bg', ASSETS.bg],
-    ['crowR', ASSETS.crowR],
-    ['crowL', ASSETS.crowL],
-    ['bBlack', ASSETS.balloons.Black],
-    ['bBlue', ASSETS.balloons.BlueTypo],
-    ['bGreen', ASSETS.balloons.Green],
-    ['bPurple', ASSETS.balloons.Purple],
-    ['bOrange', ASSETS.balloons.Orange],
-    ['bPink', ASSETS.balloons.Pink],
-    ['bRed', ASSETS.balloons.Red],
-    ['bYellow', ASSETS.balloons.Yellow],
-  ];
-  const imgs = await Promise.all(list.map(([k,src])=>loadImage(src).then(img=>[k,img])));
-  imgs.forEach(([k,img])=>images[k]=img);
-  ready = true;
-}
-
-/* ===== ユーティリティ ===== */
-function colorToImageKey(colorKey){
-  switch(colorKey){
-    case 'Black': return 'bBlack';
-    case 'BlueTypo': return 'bBlue';
-    case 'Green': return 'bGreen';
-    case 'Purple': return 'bPurple';
-    case 'Orange': return 'bOrange';
-    case 'Pink': return 'bPink';
-    case 'Red': return 'bRed';
-    case 'Yellow': return 'bYellow';
-  }
-  return 'bRed';
-}
-function nameFromColor(colorKey){
-  return {Black:'Black', BlueTypo:'Blue', Green:'Green', Purple:'Purple', Orange:'Orange', Pink:'Pink', Red:'Red', Yellow:'Yellow'}[colorKey] || colorKey;
-}
-
-/* ===== セットアップ ===== */
-function setupPlayers(){
-  balloons = [];
-  const others = balloonOrder.filter(k=>k!=="Red");
-  for (let i=others.length-1;i>0;i--){
-    const j = (Math.random()* (i+1))|0;
-    [others[i],others[j]]=[others[j],others[i]];
-  }
-  const allColors = ["Red", ...others.slice(0,7)];
-  for(let i=0;i<MAX_PLAYERS;i++){
-    const ck = allColors[i];
-    const isPlayer = (ck==="Red");
-    const b = new Balloon(i, isPlayer? "YOU (Red)":"CPU ("+nameFromColor(ck)+")", ck, isPlayer);
-    balloons.push(b);
-    if(isPlayer) playerBalloon = b;
-  }
-
-  // 横一列（ランダム順）
-  const order = [...Array(MAX_PLAYERS).keys()];
-  for (let i=order.length-1;i>0;i--){
-    const j = (Math.random()* (i+1))|0; [order[i],order[j]]=[order[j],order[i]];
-  }
-  const y = 150, margin = 80, span = STAGE_SIZE - margin*2;
-  order.forEach((idx,k)=>{
-    const b = balloons[idx];
-    const x = margin + span * (k/(MAX_PLAYERS-1));
-    b.reset(x,y);
-  });
-}
-function setupCrows(){
-  crows = [];
-  const c = new Crow();
-  c.x = STAGE_SIZE/2 + (Math.random()*240-120);
-  c.y = STAGE_SIZE*0.75 + (Math.random()*100-50);
-  crows.push(c);
-  nextCrowTime = 10;
-}
-function resetRound(){
-  gameTime = 0; simSpeed = 1.0; playing=false; counting=false; ended=false;
-  placements = [];
-  setupPlayers();
-  setupCrows();
-  aliveEl.textContent = MAX_PLAYERS;
-  timeEl.textContent = "0.0";
-  speedTag.textContent = "通常";
-}
-
-/* ===== カウントダウン ===== */
-function startCountdown(){
-  counting = true;
-  startOverlay.style.display="none";
-  countOverlay.style.display="grid";
-  let seq = [3,2,1,"GO"]; let i=0;
-  const tick=()=>{
-    countLabel.textContent = seq[i++];
-    if(i<seq.length){ setTimeout(tick, 700); }
-    else{ setTimeout(()=>{ countOverlay.style.display="none"; playing = true; counting = false; }, 400); }
-  };
-  tick();
-}
-
-/* ===== 物理＆AI（スピード強化／最後1人で即終了） ===== */
-function clamp(v,min,max){ return v<min?min:(v>max?max:v); }
-function step(dt){
-  if(!playing) return;
-
-  // プレイヤー死亡 → 高速3倍
-  if(playerBalloon && (!playerBalloon.alive || playerBalloon.popping)){
-    simSpeed = 3.0; speedTag.textContent = "高速×3";
-  }
-  dt *= simSpeed;
-  gameTime += dt;
-
-  // カラス追加（10秒ごと）
-  if(gameTime >= nextCrowTime){
-    const c = new Crow();
-    const edge = Math.random()<0.5 ? 'x' : 'y';
-    if(edge==='x'){ c.x = Math.random()<0.5 ? 40 : STAGE_SIZE-40; c.y = Math.random()* (STAGE_SIZE-240)+120; }
-    else{ c.x = Math.random()* (STAGE_SIZE-240)+120; c.y = Math.random()<0.5 ? 40 : STAGE_SIZE-40; }
-    c.speed = 95 + Math.min(120, gameTime*1.4);
-    crows.push(c);
-    nextCrowTime += 10;
-  }
-  // 後半スピードアップ
-  const speedBoost = 1 + Math.min(1.0, Math.max(0, (gameTime-25)/55));
-  crows.forEach(cr=> cr.speed *= (0.999 + 0.001*speedBoost));
-
-  // 入力（風船スピードUP）
-  if(playerBalloon && playerBalloon.alive && !playerBalloon.popping){
-    const acc= 360; // ←UP
-    playerBalloon.ax = (playerBalloon.control.right?1:0) - (playerBalloon.control.left?1:0);
-    playerBalloon.ay = (playerBalloon.control.down?1:0) - (playerBalloon.control.up?1:0);
-    const len = Math.hypot(playerBalloon.ax, playerBalloon.ay) || 1;
-    playerBalloon.ax = (playerBalloon.ax/len)*acc;
-    playerBalloon.ay = (playerBalloon.ay/len)*acc;
-  }
-
-  // CPU
-  balloons.forEach(b=>{
-    if(!b.isPlayer && b.alive && !b.popping){
-      b.aiChangeT -= dt;
-      if(b.aiChangeT<=0){
-        b.aiChangeT = Math.random()*0.5+0.5;
-        let avoidX=0, avoidY=0;
-        crows.forEach(c=>{
-          const dx = b.x - c.x, dy = b.y - c.y;
-          const d2 = dx*dx+dy*dy;
-          if(d2< 240*240){ avoidX += dx; avoidY += dy; }
-        });
-        const bias = Math.atan2(avoidY,avoidX);
-        b.aiTargetAngle = isFinite(bias)? bias + (Math.random()*1.4-0.7) : Math.random()*Math.PI*2;
-      }
-      const acc= 320; // ←UP
-      b.ax = Math.cos(b.aiTargetAngle)*acc;
-      b.ay = Math.sin(b.aiTargetAngle)*acc;
-      const margin=90, centerPull=140;
-      if(b.x<margin) b.ax += centerPull;
-      if(b.x>STAGE_SIZE-margin) b.ax -= centerPull;
-      if(b.y<margin) b.ay += centerPull;
-      if(b.y>STAGE_SIZE-margin) b.ay -= centerPull;
+    function scanTopTrim(img){
+      const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement('canvas');oc.width=w;oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true});ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data,TH=12;let top=0,found=false;
+      outer:for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){top=y;found=true;break outer;}}}
+      return {trimTop:found?top:0,contentH:h-(found?top:0)};
     }
-  });
-
-  // 速度更新（ドラッグ弱め、最高速UP）
-  const drag = 0.94, vmax = 460; // ←UP
-  balloons.forEach(b=>{
-    if(!b.alive) return;
-    if(b.popping){
-      b.popTimer += dt;
-      if(b.popTimer>=0.6){ b.alive=false; registerElimination(b); }
-      return;
+    function scanBottomTrim(img){
+      const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement('canvas');oc.width=w;oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true});ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data,TH=12;let bottom=0;
+      outer:for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){bottom=(h-1-y);break outer;}}}
+      return {bottomTrim:bottom,h};
     }
-    b.vx = (b.vx + b.ax*dt)*drag;
-    b.vy = (b.vy + b.ay*dt)*drag;
-    const sp = Math.hypot(b.vx,b.vy);
-    if(sp>vmax){ b.vx = b.vx/sp*vmax; b.vy = b.vy/sp*vmax; }
-    b.x += b.vx*dt; b.y += b.vy*dt;
-
-    const r = b.r;
-    if(b.x<r){ b.x=r; b.vx = Math.abs(b.vx)*0.7; }
-    if(b.x>STAGE_SIZE-r){ b.x=STAGE_SIZE-r; b.vx = -Math.abs(b.vx)*0.7; }
-    if(b.y<r){ b.y=r; b.vy = Math.abs(b.vy)*0.7; }
-    if(b.y>STAGE_SIZE-r){ b.y=STAGE_SIZE-r; b.vy = -Math.abs(b.vy)*0.7; }
-
-    b.timeAlive += dt;
-  });
-
-  // 風船同士弾き
-  for(let i=0;i<balloons.length;i++){
-    const a = balloons[i]; if(!a.alive || a.popping) continue;
-    for(let j=i+1;j<balloons.length;j++){
-      const b = balloons[j]; if(!b.alive || b.popping) continue;
-      const dx=b.x-a.x, dy=b.y-a.y;
-      const dist = Math.hypot(dx,dy);
-      const min = a.r + b.r;
-      if(dist>0 && dist<min){
-        const nx = dx/dist, ny=dy/dist;
-        const overlap = (min - dist)*0.6;
-        a.x -= nx*overlap*0.5; a.y -= ny*overlap*0.5;
-        b.x += nx*overlap*0.5; b.y += ny*overlap*0.5;
-        const bounce = 160;
-        a.vx -= nx*bounce; a.vy -= ny*bounce;
-        b.vx += nx*bounce; b.vy += ny*bounce;
-      }
+    function scanTightRect(img){
+      const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement('canvas');oc.width=w;oc.height=h;
+      const ox=oc.getContext('2d',{willReadFrequently:true});ox.drawImage(img,0,0);
+      const d=ox.getImageData(0,0,w,h).data,TH=12;
+      let minX=w,minY=h,maxX=-1,maxY=-1;
+      for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}}}
+      if(maxX<0)return{sx:0,sy:0,sw:w,sh:h};return{sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
     }
-  }
 
-  // カラス追尾＆ヒット
-  crows.forEach(cr=>{
-    let target=null, best=1e9;
-    balloons.forEach(b=>{
-      if(!b.alive || b.popping) return;
-      const dx=b.x-cr.x, dy=b.y-cr.y;
-      const d2 = dx*dx+dy*dy;
-      if(d2<best){ best=d2; target=b; }
+    const {trimTop:groundTrimTop,contentH:groundContentH}=scanTopTrim(imgGR);
+    const groundDrawH=Math.max(48,Math.min(160,groundContentH));
+    const floorY=()=>Math.floor(H-groundDrawH);
+    const cornTrim=scanTightRect(imgCO);
+
+    function feetFracOf(img){if(!img)return 0;const {bottomTrim,h}=scanBottomTrim(img);return bottomTrim/h;}
+
+    const GRAV=1500,JUMP=540,BASE=220,BOOST=480,KM=0.072;
+    let boosting=false,boost=60,speed=BASE,dist=0,bgOff=0,grOff=0;
+    const player={x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img:null,color:'#6cf',feetFrac:0};
+    const obstacles=[];
+    let nextSpawnDist=400+Math.random()*300;
+
+    function spawnCorn(){
+      const fy=floorY(),targetH=Math.min(120,Math.max(40,groundDrawH*0.9));
+      const scale=targetH/cornTrim.sh,w=Math.round(cornTrim.sw*scale),h=Math.round(cornTrim.sh*scale);
+      const y=Math.round(fy-h),x=W+40;
+      obstacles.push({x,y,w,h,trim:cornTrim});
+    }
+
+    const btnJump=document.getElementById('btnJump'),btnBoost=document.getElementById('btnBoost');
+    function doJump(){if(player.jumps>0){player.vy=-JUMP;player.jumps--;updateHUD();}}
+    btnJump.onpointerdown=e=>{e.preventDefault();doJump();};
+    btnBoost.onpointerdown=e=>{e.preventDefault();boosting=true;};
+    btnBoost.onpointerup=e=>{e.preventDefault();boosting=false;};
+    addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp')doJump();if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=true;});
+    addEventListener('keyup',e=>{if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=false;});
+
+    const elDist=document.getElementById('dist'),elSpeed=document.getElementById('speed'),elJump=document.getElementById('jump'),elCoin=document.getElementById('coin'),elBoost=document.getElementById('boostPct');
+    function updateHUD(){elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`;elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;elJump.textContent=`ジャンプ ${player.jumps}`;elCoin.textContent=`コイン 0`;elBoost.textContent=`${Math.round(boost)}%`;btnBoost.disabled=boost<=0;}
+
+    document.getElementById('overlay').addEventListener('click',e=>{
+      const c=e.target.closest('.choice');if(!c)return;
+      player.img=(c.dataset.char==='VR'&&imgVR)?imgVR:(imgOR||imgVR);
+      player.feetFrac=player.img?feetFracOf(player.img):0;
+      player.y=floorY();player.vy=0;player.jumps=2;
+      document.getElementById('overlay').style.display='none';
+      start();
     });
-    if(target){
-      const dx=target.x-cr.x, dy=target.y-cr.y;
-      const dist = Math.hypot(dx,dy)||1;
-      const ux=dx/dist, uy=dy/dist;
-      const sp = cr.speed;
-      cr.vx = ux*sp; cr.vy=uy*sp;
-      cr.x += cr.vx*dt; cr.y += cr.vy*dt;
-      cr.dirR = cr.vx>=0;
 
-      if(cr.x<30){ cr.x=30; cr.vx = Math.abs(cr.vx); }
-      if(cr.x>STAGE_SIZE-30){ cr.x=STAGE_SIZE-30; cr.vx = -Math.abs(cr.vx); }
-      if(cr.y<30){ cr.y=30; cr.vy = Math.abs(cr.vy); }
-      if(cr.y>STAGE_SIZE-30){ cr.y=STAGE_SIZE-30; cr.vy = -Math.abs(cr.vy); }
-
-      balloons.forEach(b=>{
-        if(!b.alive || b.popping) return;
-        const d = Math.hypot(b.x-cr.x, b.y-cr.y);
-        if(d < (b.r + cr.size*0.6)){
-          b.popping = true; b.popTimer=0;
-          const nx = (b.x-cr.x)/(d||1), ny=(b.y-cr.y)/(d||1);
-          b.vx += nx*280; b.vy += ny*280;
-        }
-      });
+    function drawTiledX(img,yTop,height,offsetX,srcY=0,srcH=null){
+      const sH=srcH??(img.naturalHeight-srcY),scaleY=height/sH,tileW=img.naturalWidth*scaleY;
+      let ox=offsetX%tileW;if(ox>0)ox-=tileW;const y=Math.floor(yTop);
+      for(let x=ox;x<W;x+=tileW){ctx.drawImage(img,0,srcY,img.naturalWidth,sH,Math.floor(x),y,Math.ceil(tileW),Math.ceil(height));}
     }
-  });
 
-  // 生存数
-  const aliveCount = balloons.filter(b=>b.alive || b.popping).length;
-  aliveEl.textContent = aliveCount;
-
-  // 最後の1人になった瞬間に終了→2秒表示→自動進行
-  if(!ended){
-    const live = balloons.filter(b=>b.alive || b.popping);
-    if(live.length<=1){
-      const winner = live[0] || null;
-      if(winner && winner.rank==null){ winner.rank = 1; placements.push(winner); }
-      endRoundAuto();
+    const hitLabel=document.getElementById('hit');let running=false,prev=0;
+    function start(){if(running)return;running=true;prev=performance.now();updateHUD();requestAnimationFrame(loop);}
+    function loop(t){
+      const dt=Math.min(0.033,(t-prev)/1000);prev=t;
+      if(boosting&&boost>0){speed=BOOST;boost=Math.max(0,boost-24*dt);}else{speed=BASE;boost=Math.min(100,boost+10*dt);}
+      player.vy+=GRAV*dt;player.y+=player.vy*dt;const fy=floorY();if(player.y>fy){player.y=fy;player.vy=0;player.jumps=2;}
+      dist+=speed*dt;bgOff-=speed*0.2*dt;grOff-=speed*1.0*dt;
+      if(dist>nextSpawnDist){spawnCorn();nextSpawnDist+=300+Math.random()*400;}
+      for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=speed*dt;if(obstacles[i].x+obstacles[i].w<-40)obstacles.splice(i,1);}
+      ctx.clearRect(0,0,W,H);drawTiledX(imgBG,0,H,bgOff);drawTiledX(imgGR,H-groundDrawH,groundDrawH,grOff,groundTrimTop);
+      obstacles.forEach(o=>{ctx.drawImage(imgCO,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,Math.floor(o.x),Math.floor(o.y),o.w,o.h);});
+      const px=Math.floor(player.x),feetPush=Math.floor(player.h*player.feetFrac),py=Math.floor(player.y-player.h+feetPush);
+      if(player.img&&player.img.naturalWidth>0){ctx.drawImage(player.img,px,py,player.w,player.h);}else{ctx.fillStyle=player.color;ctx.fillRect(px,py,player.w,player.h);}
+      for(const o of obstacles){if(px<o.x+o.w&&px+player.w>o.x&&py<o.y+o.h&&py+player.h>o.y){speed=0;boosting=false;hitLabel.style.display='block';}}
+      updateHUD();requestAnimationFrame(loop);
     }
-  }
 
-  timeEl.textContent = (playerBalloon? playerBalloon.timeAlive : 0).toFixed(1);
-}
-
-function registerElimination(b){
-  if(b.rank!=null) return;
-  placements.push(b);
-}
-
-/* ===== 描画 ===== */
-function draw(){
-  ctx.clearRect(0,0,cv.width,cv.height);
-  if(images.bg){ ctx.drawImage(images.bg, 0,0, STAGE_SIZE, STAGE_SIZE); }
-  else{ ctx.fillStyle="#0a0e18"; ctx.fillRect(0,0,STAGE_SIZE,STAGE_SIZE); }
-
-  ctx.strokeStyle = "rgba(255,255,255,.15)";
-  ctx.lineWidth = 4; ctx.strokeRect(2,2,STAGE_SIZE-4,STAGE_SIZE-4);
-
-  crows.forEach(cr=>{
-    const img = cr.dirR ? images.crowR : images.crowL;
-    const s = cr.size*2.0;
-    if(img) ctx.drawImage(img, cr.x - s*0.5, cr.y - s*0.5, s, s);
-    else{ ctx.fillStyle="#000"; ctx.beginPath(); ctx.arc(cr.x,cr.y, cr.size, 0, Math.PI*2); ctx.fill(); }
+    ['touchstart','touchmove','gesturestart'].forEach(ev=>{
+      document.addEventListener(ev,e=>{if(e.target.closest('button,.choice'))return;e.preventDefault();},{passive:false});
+    });
   });
-
-  balloons.forEach(b=>{
-    if(!b.alive && !b.popping) return;
-    const key = colorToImageKey(b.colorKey);
-    const img = images[key];
-    const scale = 2.0;
-    if(b.popping){
-      const t = Math.min(1, Math.max(0, b.popTimer/0.6));
-      const alpha = 1 - t; const blow = 1 + t*0.6;
-      ctx.save(); ctx.globalAlpha = alpha;
-      const s = b.r*2*scale*blow;
-      if(img) ctx.drawImage(img, b.x - s*0.5, b.y - s*0.5, s, s);
-      else{ ctx.fillStyle="rgba(255,255,255,"+alpha+")"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r*blow,0,Math.PI*2); ctx.fill(); }
-      ctx.restore();
-    }else{
-      const s = b.r*2*scale;
-      if(img) ctx.drawImage(img, b.x - s*0.5, b.y - s*0.5, s, s);
-      else{ ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
-    }
-  });
-
-  if(counting){
-    ctx.fillStyle="rgba(0,0,0,.2)";
-    ctx.fillRect(0,0,STAGE_SIZE,STAGE_SIZE);
-  }
-}
-
-/* ===== ラウンド終了 → 2秒表示 → 自動で次へ/最終結果 ===== */
-function endRoundAuto(){
-  ended = true; playing = false;
-
-  const order = placements.slice().reverse(); // 残った順
-  order.forEach((b,i)=> b.rank = b.rank ?? (i+1));
-
-  const points = new Map();
-  order.forEach(rr=>{
-    const p = POINTS_MAP[(rr.rank-1)] || 0;
-    points.set(rr.id, p);
-    let row = leaderboard.find(x=>x.id===rr.id);
-    if(!row){ row = {id:rr.id, name:rr.name, total:0, color:rr.colorKey}; leaderboard.push(row); }
-    row.total += p;
-  });
-
-  renderRoundTable(order, points);
-  roundOverlay.style.display="grid";
-
-  setTimeout(()=>{
-    roundOverlay.style.display="none";
-    roundIndex++;
-    roundNumEl.textContent = Math.min(roundIndex+1, ROUNDS_MAX);
-    if(roundIndex >= ROUNDS_MAX){ showFinalAuto(); }
-    else{ resetRound(); startCountdown(); }
-  }, 2000);
-}
-
-function renderRoundTable(roundRanks, points){
-  const you = roundRanks.find(r=>r.id===playerBalloon.id);
-  roundSummary.innerHTML = `あなたの順位：<b>${you.rank}</b> 位　／　生存時間：<b>${playerBalloon.timeAlive.toFixed(1)}</b> 秒`;
-  roundTable.innerHTML = `
-    <tr><th>順位</th><th>名前</th><th>ポイント</th></tr>
-    ${ roundRanks.map(r=>{
-        const pt = points.get(r.id)||0;
-        const cls = r.rank===1?'rank1':(r.rank===2?'rank2':(r.rank===3?'rank3':''));
-        return `<tr><td class="${cls}">${r.rank}</td><td>${r.name}</td><td>${pt}</td></tr>`;
-      }).join('') }
-  `;
-}
-
-function showFinalAuto(){
-  const sorted = leaderboard.slice().sort((a,b)=>b.total-a.total);
-  finalTable.innerHTML = `
-    <tr><th>総合</th><th>名前</th><th>合計</th></tr>
-    ${ sorted.map((r,i)=>{
-        const cls = i===0?'rank1':(i===1?'rank2':(i===2?'rank3':''));
-        return `<tr><td class="${cls}">${i+1}</td><td>${r.name}</td><td>${r.total}</td></tr>`;
-      }).join('') }
-  `;
-  finalOverlay.style.display="grid";
-  setTimeout(()=>{
-    finalOverlay.style.display="none";
-    leaderboard = []; roundIndex = 0; roundNumEl.textContent = 1;
-    startOverlay.style.display="grid";
-  }, 2000);
-}
-
-/* ===== ループ ===== */
-let last=0;
-function loop(t){
-  if(!ready){ requestAnimationFrame(loop); return; }
-  const now = t/1000;
-  const dt = Math.min(0.033, now-last || 0.016);
-  last = now;
-  step(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
-
-/* ===== 初期化 ===== */
-bindDPad();
-loadAssets().then(()=>{ requestAnimationFrame(loop); }).catch(err=>{
-  console.error(err);
-  alert("画像の読み込みに失敗しました。ファイル名の大文字/小文字と配置を確認してください。");
-});
-
-/* ===== スクロール/ジェスチャ抑止（iOS向け） ===== */
-document.addEventListener('gesturestart', e=>e.preventDefault(), {passive:false});
-document.addEventListener('touchmove', e=>{
-  if(e.target.closest('.dpad') || e.target.closest('#stage')) e.preventDefault();
-},{passive:false});
-
-/* ===== スタート ===== */
-btnStart.addEventListener('click', ()=>{ resetRound(); startCountdown(); });
+})();
 </script>
 </body>
 </html>
