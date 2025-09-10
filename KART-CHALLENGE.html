@@ -3,190 +3,248 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – with Container</title>
+<title>Runner – container stable</title>
 <style>
-  html,body{margin:0;height:100%;background:#000;overflow:hidden}
-  #game{width:100%;height:100%;display:block;image-rendering:pixelated}
-  header.hud{position:absolute;left:0;right:0;top:0;height:48px;z-index:10;display:flex;justify-content:space-around;align-items:center;background:rgba(0,0,0,.5);color:#fff;font:14px sans-serif}
-  footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:72px;z-index:10;display:flex;justify-content:space-around;align-items:center;background:rgba(0,0,0,.5)}
-  button{padding:10px 20px;font-size:16px;border:none;border-radius:8px;background:#333;color:#fff}
-  #overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.7);color:#fff;font-family:sans-serif;z-index:20}
-  .choices{display:flex;gap:20px}
-  .choice{cursor:pointer;padding:10px;background:#222;border-radius:10px}
-  .choice img{width:72px;height:72px;object-fit:contain}
-  #gameover{position:absolute;inset:0;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.6);color:#fff;font-size:24px;font-weight:800}
+  :root{ --stage-w:390px; --stage-h:700px; }
+  html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
+  #root{position:fixed;inset:0;display:grid;place-items:center}
+  #phone{width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;
+         background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
+         transform-origin:center center}
+  header.hud{position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
+    display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
+    background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8)); border-bottom:1px solid rgba(255,255,255,.06);
+    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;}
+  main.play{position:absolute;left:0;right:0;top:56px;bottom:88px}
+  canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+  footer.ctrl{position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:88px;z-index:20;
+    display:flex;gap:14px;align-items:center;justify-content:center;padding:10px;
+    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06)}
+  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
+    min-width:120px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.1);
+    background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
+  .btn:active{transform:translateY(1px)}
+  #overlay{position:absolute;inset:56px 0 88px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
+  .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
+  .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
+  .choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+  #loading{position:absolute;inset:56px 0 88px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
+  .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
+  #gameover{position:absolute;inset:56px 0 88px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6);font:800 24px/1.2 system-ui}
+  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center}
 </style>
 </head>
 <body>
-<header class="hud">
-  <div id="dist">距離 0m</div>
-  <div id="speed">速度 0km/h</div>
-  <div id="jump">ジャンプ 2</div>
-  <div id="coin">コイン 0</div>
-</header>
-<canvas id="game" width="390" height="540"></canvas>
-<footer class="ctrl">
-  <button id="btnJump">ジャンプ</button>
-  <button id="btnBoost">ブースト</button>
-</footer>
-<div id="overlay">
-  <div>
-    <p>キャラを選んでスタート</p>
-    <div class="choices">
-      <div class="choice" data-char="VR"><img src="VR.png"><p>VR</p></div>
-      <div class="choice" data-char="orange"><img src="orange.png"><p>Orange</p></div>
+<div id="root">
+  <div id="phone">
+    <header class="hud">
+      <div id="dist">距離 0 m</div><div id="speed">速度 0 km/h</div><div id="jump">ジャンプ 2</div><div id="coin">コイン 0</div>
+    </header>
+    <main class="play"><canvas id="game" width="390" height="540"></canvas></main>
+    <footer class="ctrl"><button class="btn" id="btnJump">ジャンプ</button><button class="btn" id="btnBoost">ブースト</button></footer>
+
+    <div id="overlay">
+      <div class="card">
+        <p style="margin:0 0 8px;font-weight:800;">どちらか選択してスタート</p>
+        <div class="choices">
+          <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
+          <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="loading"><div class="bubble">画像読み込み中…</div></div>
+
+    <div id="gameover">
+      <div class="panel">
+        <div>GAME OVER</div>
+        <button class="btn" id="retryBtn">リトライ</button>
+      </div>
     </div>
   </div>
 </div>
-<div id="gameover">GAME OVER</div>
 
 <script>
-const cvs=document.getElementById("game"),ctx=cvs.getContext("2d");ctx.imageSmoothingEnabled=false;
-const W=390,H=540;
-function setup(){const dpr=Math.max(1,devicePixelRatio||1);cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}setup();
+(() => {
+  // ==== PCでもスマホ画角プレビュー ====
+  const phone=document.getElementById('phone');
+  function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
+  addEventListener('resize', fit, {passive:true}); fit();
 
-function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
+  const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
+  ctx.imageSmoothingEnabled=false; const W=390,H=540;
+  function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
+  setup(); addEventListener('resize', setup, {passive:true});
 
-Promise.all([
-  load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png"),load("contena.png"),load("VR.png"),load("orange.png")
-]).then(([imgBG,imgGR,imgCO,imgJP,imgCT,imgVR,imgOR])=>{
+  const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
-  function scanTopTrim(img){
-    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
-    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data,TH=12;
-    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH)return{trimTop:y,contentH:h-y};}}
-    return{trimTop:0,contentH:h};
-  }
-  function scanBottomTrim(img){
-    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
-    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data,TH=12;
-    for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH)return{bottomTrim:h-1-y,h};}}
-    return{bottomTrim:0,h};
-  }
-  function scanTightRect(img){
-    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
-    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
-    const d=ox.getImageData(0,0,w,h).data,TH=12;
-    let minX=w,minY=h,maxX=-1,maxY=-1;
-    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}}}
-    if(maxX<0)return{sx:0,sy:0,sw:w,sh:h};
-    return{sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
-  }
+  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
-  const {trimTop,contentH}=scanTopTrim(imgGR);
-  const groundDrawH=contentH;
-  const floorY=()=>H-groundDrawH;
+  Promise.all([
+    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'), load('contena.png'),
+    load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
+  ]).then(([BG, GR, CO, JP, CT, VR, OR])=>{
+    // ===== pixel utils (ローカル専用・他モジュールに漏らさない) =====
+    const Px = {
+      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } }
+        return {trimTop:0,contentH:h}; },
+      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
+      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
+        if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1}; }
+    };
 
-  let player=null;
-  function createPlayer(img){
-    const {bottomTrim,h}=scanBottomTrim(img);
-    const feetFrac=bottomTrim/h;
-    return {x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac};
-  }
+    // ===== Background module (トリム一切禁止) =====
+    const BG_MOD = (()=>{ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale;
+      function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
+      return {draw};
+    })();
 
-  const cornTrim=scanTightRect(imgCO);
-  const jumpTrim=scanTightRect(imgJP);
-  const contTrim=scanTightRect(imgCT);
-  const obstacles=[];let nextSpawn=250+Math.random()*300;
+    // ===== Ground module (mob.png 上端トリム専用) =====
+    const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH));
+      const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale;
+      function floorY(){ return Math.floor(H - drawH); }
+      function draw(off){ const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW;
+        for(let x=ox;x<W;x+=tileW){ ctx.drawImage(GR,0,srcY,GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } }
+      return {floorY, draw, drawH};
+    })();
 
-  function spawn(){
-    const fy=floorY();
-    const r=Math.random();
-    if(r<0.4){ // corn
-      const targetH=groundDrawH*0.55;
-      const scale=targetH/cornTrim.sh;
-      const w=Math.round(cornTrim.sw*scale),h=Math.round(cornTrim.sh*scale);
-      obstacles.push({x:W+40,y:fy-h,w,h,img:imgCO,trim:cornTrim,type:"corn"});
-    }else if(r<0.7){ // jump
-      const targetH=groundDrawH*0.35;
-      const scale=targetH/jumpTrim.sh;
-      const w=Math.round(jumpTrim.sw*scale),h=Math.round(jumpTrim.sh*scale);
-      obstacles.push({x:W+40,y:fy-h,w,h,img:imgJP,trim:jumpTrim,type:"jump"});
-    }else{ // contena 1～3連
-      const targetH=groundDrawH*0.6;
-      const scale=targetH/contTrim.sh;
-      const w=Math.round(contTrim.sw*scale),h=Math.round(contTrim.sh*scale);
-      const num=2+Math.floor(Math.random()*2); // 2 or 3
-      for(let i=0;i<num;i++){
-        obstacles.push({x:W+40+i*w,y:fy-h,w,h,img:imgCT,trim:contTrim,type:"contena"});
+    // ===== Player =====
+    function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
+      return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac}; }
+
+    // ===== Obstacles =====
+    const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT);
+    function makeCorn(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.50);
+      const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
+      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'}; }
+    function makeJump(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
+      const s=targetH/trimJump.sh, w=Math.round(trimJump.sw*s), h=Math.round(trimJump.sh*s);
+      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'}; }
+    function makeContSet(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
+      const s=targetH/trimCont.sh, w=Math.round(trimCont.sw*s), h=Math.round(trimCont.sh*s);
+      const n=2 + Math.floor(Math.random()*2); const set=[];
+      for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
+      return set;
+    }
+
+    // ===== Game State =====
+    const GRAV=1500, JUMP=540, BASE=220, BOOST=480, KM=0.072;
+    let speed=BASE, boosting=false, boost=60, dist=0, bgOff=0, grOff=0;
+    let player=null, gameOver=false;
+    const obs=[];
+
+    function spawn(){ const r=Math.random();
+      if(r<0.4) obs.push(makeCorn());
+      else if(r<0.7) obs.push(makeJump());
+      else obs.push(...makeContSet());
+    }
+
+    // ===== HUD & Input =====
+    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump');
+    function updateHUD(){ elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`; elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`; elJump.textContent=`ジャンプ ${player?player.jumps:2}`; }
+    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
+    btnJump.onpointerdown=e=>{e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); }};
+    btnBoost.onpointerdown=e=>{e.preventDefault(); if(!gameOver){ boosting=true; }};
+    btnBoost.onpointerup=e=>{e.preventDefault(); boosting=false; };
+    addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp'){ if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } } if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=true; }});
+    addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=false; }});
+
+    document.getElementById('retryBtn').onclick=()=>{ // 簡易リセット
+      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obs.length=0; player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2;
+      gameover.style.display='none';
+    };
+
+    // ===== Loop =====
+    let prev=0, running=false;
+    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
+    function loop(t){
+      const dt=Math.min(0.033,(t-prev)/1000); prev=t;
+
+      // speed
+      if(!gameOver && boosting && boost>0){ speed=BOOST; boost=Math.max(0,boost-24*dt); } else { speed=BASE; boost=Math.min(100,boost+10*dt); }
+
+      // physics
+      if(player && !gameOver){
+        player.vy += GRAV*dt; player.y += player.vy*dt;
+        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
       }
-    }
-  }
 
-  function drawBG(off){
-    const scale=H/imgBG.naturalHeight,tileW=imgBG.naturalWidth*scale;
-    let ox=off%tileW;if(ox>0)ox-=tileW;
-    for(let x=ox;x<W;x+=tileW)ctx.drawImage(imgBG,0,0,imgBG.naturalWidth,imgBG.naturalHeight,Math.floor(x),0,tileW,H);
-  }
-  function drawGround(off){
-    const srcY=trimTop,srcH=imgGR.naturalHeight-trimTop;
-    const scaleY=groundDrawH/srcH,tileW=imgGR.naturalWidth*scaleY;
-    let ox=off%tileW;if(ox>0)ox-=tileW;const y=floorY();
-    for(let x=ox;x<W;x+=tileW)ctx.drawImage(imgGR,0,srcY,imgGR.naturalWidth,srcH,Math.floor(x),y,tileW,groundDrawH);
-  }
+      // progress
+      if(!gameOver){
+        dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
+        if(obs.length===0 || obs[obs.length-1].x < W-180) spawn();
+        for(let i=obs.length-1;i>=0;i--){ obs[i].x -= speed*dt; if(obs[i].x + obs[i].w < -40) obs.splice(i,1); }
+      }
 
-  const GRAV=1500,JUMP=540,BASE=220;let speed=BASE,dist=0,bgOff=0,grOff=0;
-  let gameOver=false;
+      // draw
+      ctx.clearRect(0,0,W,H);
+      BG_MOD.draw(bgOff);
+      GR_MOD.draw(grOff);
+      obs.forEach(o=>{ ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h); });
 
-  document.getElementById("btnJump").onclick=()=>{if(player&&player.jumps>0&&!gameOver){player.vy=-JUMP;player.jumps--;updateHUD();}};
-  document.getElementById("btnBoost").onpointerdown=()=>{if(!gameOver)speed=400};
-  document.getElementById("btnBoost").onpointerup=()=>{if(!gameOver)speed=BASE};
+      if(player){
+        const feetPush=Math.floor(player.h*player.feetFrac);
+        const px=Math.floor(player.x);
+        const py=Math.floor(player.y - player.h + feetPush); // 足を床に一致
+        ctx.drawImage(player.img, px, py, player.w, player.h);
 
-  function updateHUD(){
-    document.getElementById("dist").textContent=`距離 ${Math.floor(dist*0.02)}m`;
-    document.getElementById("speed").textContent=`速度 ${Math.round(speed*0.07)}km/h`;
-    document.getElementById("jump").textContent=`ジャンプ ${player?player.jumps:2}`;
-  }
-
-  let prev=0,running=false;
-  function start(){if(running)return;running=true;prev=performance.now();requestAnimationFrame(loop);}
-  function loop(t){
-    const dt=(t-prev)/1000;prev=t;
-    if(!gameOver&&player){
-      player.vy+=GRAV*dt;player.y+=player.vy*dt;
-      const fy=floorY();if(player.y>fy){player.y=fy;player.vy=0;player.jumps=2;}
-    }
-    if(!gameOver){
-      dist+=speed*dt;bgOff-=speed*0.2*dt;grOff-=speed*1.0*dt;
-      if(dist>nextSpawn){spawn();nextSpawn+=200+Math.random()*400;}
-      for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=speed*dt;if(obstacles[i].x+obstacles[i].w<-40)obstacles.splice(i,1);}
-    }
-    ctx.clearRect(0,0,W,H);
-    drawBG(bgOff);drawGround(grOff);
-    obstacles.forEach(o=>ctx.drawImage(o.img,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,o.x,o.y,o.w,o.h));
-    if(player){
-      const fy=floorY(),py=player.y-player.h+player.h*player.feetFrac;
-      ctx.drawImage(player.img,player.x,py,player.w,player.h);
-      // 衝突判定
-      for(const o of obstacles){
-        if(player.x<o.x+o.w&&player.x+player.w>o.x&&py<o.y+o.h&&py+player.h>o.y){
-          if(o.type==="jump"){player.vy=-JUMP*1.2;}
-          else if(o.type==="contena"){
-            // 上からなら乗れる
-            if(player.vy>=0 && (player.y-player.h*0.5) < o.y){
-              player.y=o.y;player.vy=0;player.jumps=2;
-            }else{endGame();}
-          }else if(o.type==="corn"){endGame();}
+        // collisions
+        if(!gameOver){
+          for(const o of obs){
+            const hit = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!hit) continue;
+            if(o.type==='jump'){ player.vy = -JUMP*1.2; }              // 踏めば跳ねる
+            else if(o.type==='contena'){
+              // 上からなら乗る（天面にスナップ）、横当たりならゲームオーバー
+              const comingDown = player.vy >= -20; // ほぼ下降中
+              const wasAbove   = (player.y - player.h*0.6) < o.y;
+              if(comingDown && wasAbove){
+                player.y = o.y; player.vy = 0; player.jumps = 2;
+              }else{
+                endGame();
+                break;
+              }
+            }else if(o.type==='corn'){ // コーンは即アウト
+              endGame(); break;
+            }
+          }
         }
       }
+
+      if(!gameOver) updateHUD();
+      requestAnimationFrame(loop);
     }
-    if(!gameOver)updateHUD();
-    requestAnimationFrame(loop);
-  }
 
-  function endGame(){
-    gameOver=true;document.getElementById("gameover").style.display="grid";
-  }
+    function endGame(){ if(gameOver) return; gameOver=true; gameover.style.display='grid'; }
 
-  document.getElementById("overlay").onclick=e=>{
-    const c=e.target.closest(".choice");if(!c)return;
-    player=createPlayer(c.dataset.char==="VR"?imgVR:imgOR);
-    document.getElementById("overlay").style.display="none";
-    start();
-  };
-});
+    // start flow
+    loading.style.display='none'; overlay.style.display='grid';
+    overlay.addEventListener('click', e=>{
+      const c=e.target.closest('.choice'); if(!c) return;
+      const img=(c.dataset.char==='VR' && VR) ? VR : (OR || VR);
+      player = makePlayer(img);
+      overlay.style.display='none';
+      start();
+    });
+
+    // prevent page scroll (UI以外)
+    ['touchstart','touchmove','gesturestart'].forEach(ev=>{
+      document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
+    });
+
+  }).catch(err=>{
+    console.error(err);
+    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
+  });
+})();
 </script>
 </body>
 </html>
