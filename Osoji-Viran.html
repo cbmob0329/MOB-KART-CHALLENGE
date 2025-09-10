@@ -59,7 +59,7 @@
     <div class="pill">TIME: <strong id="time">60.0</strong>s</div>
     <div class="pill">SCORE: <strong id="score">0</strong></div>
     <div class="spacer"></div>
-    <div class="pill" id="hint">ドラッグで左右移動（上下は少し）／タップで投下</div>
+    <div class="pill" id="hint">ドラッグで左右移動（高さ固定）／タップで投下</div>
   </div>
 
   <div id="wrap">
@@ -101,7 +101,7 @@ const retryBtn = document.getElementById('retry');
 const shareBtn = document.getElementById('share');
 const hint = document.getElementById('hint');
 
-let W=0,H=0, groundY=0, baseY=0, yBand=0;
+let W=0,H=0, groundY=0, baseY=0;
 function resize(){
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -113,9 +113,8 @@ function resize(){
   canvas.style.height = vh+"px";
   groundY = H*0.86;
 
-  // 基準高さ（画面の中段より少し上）と可動上下幅（“ほんの少し”）
-  baseY = H*0.42;       // 中心より上側
-  yBand = 28*DPR;       // 上下 ±28px 程度のみ移動可（狭い）
+  // 高さは固定（中段より少し上）
+  baseY = H*0.42;
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
@@ -147,10 +146,10 @@ let started=false;
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
-// ====== 入力（ドラッグで移動／タップで投下） ======
+// ====== 入力（ドラッグでXのみ追従／タップで投下） ======
 const input = { touching:false, id:null, sx:0, sy:0, lx:0, ly:0, moved:false, t0:0 };
-const TAP_TIME = 220;           // これ以下はタップ
-const TAP_MOVE = 12 * DPR;      // これ未満の移動量はタップ扱い
+const TAP_TIME = 220;
+const TAP_MOVE = 12 * DPR;
 
 function viewToCanvas(x,y){ return { x: x*DPR, y: y*DPR }; }
 
@@ -200,17 +199,16 @@ function rand(a,b){ return a + Math.random()*(b-a); }
 // ====== ゲーム状態 ======
 const world = { timeLeft:60.0, score:0, running:false };
 
-// プレイヤー（左右メイン＋上下少し）
+// プレイヤー（高さ固定・左右ゆっくり）
 const player = {
   x: W*0.22, y: baseY, w:84*DPR, h:84*DPR,
-  hoverAmp: 3*DPR, hoverT: 0,
-  stunned: 0, blinkT:0,  // 失敗時の赤チカチカ
-  lockDrop: 0,           // 投下不可 残り秒
-  moveEaseX:0.22, moveEaseY:0.18,
-  _bob:0
+  stunned: 0, blinkT:0,       // 失敗時の赤チカチカ
+  lockDrop: 0,                // 投下不可 残り秒
+  moveEaseX: 0.12,            // ← 小さいほどゆっくり追従（以前:0.22）
+  _bob: 0                     // 高さ固定のため 0
 };
 
-// 火の玉
+// 火の玉（高速落下）
 const fireball = { active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null };
 
 // 運搬キャラ
@@ -259,32 +257,21 @@ function update(dt){
   timeEl.textContent = world.timeLeft.toFixed(1);
   scoreEl.textContent = world.score;
 
-  // 投下ロックの表示
+  // 投下ロック表示
   if(player.lockDrop>0){
     player.lockDrop -= dt;
     hint.textContent = `投下ロック中… ${player.lockDrop.toFixed(1)}s`;
   }else{
-    hint.textContent = 'ドラッグで左右移動（上下は少し）／タップで投下';
+    hint.textContent = 'ドラッグで左右移動（高さ固定）／タップで投下';
   }
 
-  // 移動（左右メイン）
-  let targetX = player.x, targetY = player.y;
-  if(input.touching){
-    // Xは指の位置へ、Yは基準±yBandの範囲で少しだけ
-    targetX = clamp(input.lx - player.w/2, 20*DPR, W - 20*DPR - player.w);
-    const wishY = input.ly - player.h/2;
-    targetY = clamp(wishY, baseY - yBand, baseY + yBand);
-  }else if(mouseDown){
-    targetX = clamp(input.lx - player.w/2, 20*DPR, W - 20*DPR - player.w);
-    const wishY = input.ly - player.h/2;
-    targetY = clamp(wishY, baseY - yBand, baseY + yBand);
+  // 移動：Xのみ追従（ゆっくり）
+  let targetX = player.x;
+  if(input.touching || mouseDown){
+    targetX = clamp((input.lx) - player.w/2, 20*DPR, W - 20*DPR - player.w);
   }
   player.x = lerp(player.x, targetX, player.moveEaseX);
-  player.y = lerp(player.y, targetY, player.moveEaseY);
-
-  // ふわふわ演出（微小）
-  player.hoverT += dt*2.2;
-  player._bob = Math.sin(player.hoverT) * player.hoverAmp;
+  player.y = baseY; // 高さ完全固定
 
   // 失敗時の赤点滅
   if(player.stunned>0){ player.stunned -= dt; player.blinkT += dt*8; }
@@ -292,9 +279,9 @@ function update(dt){
   // 火の玉
   if(fireball.active){
     if(!fireball.seeking){
-      // 真下へ落下
-      fireball.vy += 0.0026 * DPR;
-      fireball.vy = Math.min(fireball.vy, 1.2*DPR);
+      // 高速落下（初速↑／加速度↑／最大速度↑）
+      fireball.vy += 0.0080 * DPR;              // 以前: 0.0026
+      fireball.vy = Math.min(fireball.vy, 2.40*DPR); // 以前: 1.2
       fireball.x += fireball.vx * dt * 1000;
       fireball.y += fireball.vy * dt * 1000;
 
@@ -308,7 +295,7 @@ function update(dt){
                   bx, by, c.bin.w, c.bin.h)){
             // 赤い破裂演出 → 回収へ（bin無し）
             c.bin.exploding = true; c.bin.explode = 0;
-            c.hasBin = true; // 表示は破裂演出に切り替わる
+            c.hasBin = true;
             fireball.active = false; world.score += 1;
           }
         }
@@ -332,7 +319,7 @@ function update(dt){
         if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2,
                 c.x, c.y-c.h, c.w, c.h)){
           // 失敗：赤チカチカ + 2秒投下不可
-          player.stunned = 0.6 * 3.33; // 点滅用（見栄え少し長め）
+          player.stunned = 0.6 * 3.33;
           player.blinkT = 0;
           player.lockDrop = 2.0;
           fireball.active = false;
@@ -358,7 +345,7 @@ function update(dt){
     }
 
     if(c.state==='fetch'){
-      // 右へ“遅め”ダッシュで補給（1.4倍）
+      // 右へ“遅め”ダッシュで補給（1.4倍のまま）
       const speed = Math.abs(c.baseSpeed)*1.4*DPR;
       c.x += speed * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
@@ -396,7 +383,7 @@ function tryDrop(){
   fireball.active = true; fireball.seeking=false; fireball.target=null;
   fireball.x = player.x + player.w*0.5;
   fireball.y = (player.y + player._bob) + player.h*0.6;
-  fireball.vx = 0; fireball.vy = 0.02 * DPR;
+  fireball.vx = 0; fireball.vy = 0.060 * DPR;  // ← 初速アップ（以前:0.02）
 }
 
 /* ====== 描画 ====== */
@@ -473,15 +460,14 @@ function draw(){
     }
   }
 
-  // プレイヤー（赤点滅あり）
-  const yDraw = player.y + player._bob;
+  // プレイヤー（高さ固定・赤点滅あり）
   const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
   if(blinking){ ctx.globalAlpha = 0.45; }
-  if(assets['viran.png']) ctx.drawImage(assets['viran.png'], player.x, yDraw, player.w, player.h);
-  else { ctx.fillStyle="#6cf"; ctx.fillRect(player.x, yDraw, player.w, player.h); }
+  if(assets['viran.png']) ctx.drawImage(assets['viran.png'], player.x, player.y, player.w, player.h);
+  else { ctx.fillStyle="#6cf"; ctx.fillRect(player.x, player.y, player.w, player.h); }
   if(blinking){
     ctx.globalAlpha = 1;
-    ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x, yDraw, player.w, player.h);
+    ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x, player.y, player.w, player.h);
   }
 
   ctx.restore();
@@ -495,7 +481,7 @@ function endGame(){
 }
 function resetGame(){
   world.timeLeft = 60.0; world.score = 0; world.running = true;
-  player.x = W*0.22; player.y = baseY; player.stunned=0; player.lockDrop=0; player.hoverT=0;
+  player.x = W*0.22; player.y = baseY; player.stunned=0; player.lockDrop=0;
   fireball.active=false; fireball.seeking=false; fireball.target=null;
   for(let i=0;i<carriers.length;i++){ const k = carriers[i].kind; carriers[i] = makeCarrier(k); }
   modal.style.display='none';
