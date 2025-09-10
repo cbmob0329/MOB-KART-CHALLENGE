@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v5.7（ジャンプ復旧／スタート式再開／着地改善 維持）</title>
+<title>MOB KART CHALLENGE — v5.8（ジャンプ確実化／再開フロー安定化）</title>
 <style>
   :root{ --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
          --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px); }
@@ -55,7 +55,7 @@
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.7</small></div>
+    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.8</small></div>
     <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
   </div>
 
@@ -194,7 +194,8 @@
 
   /* ===== OP → 選択（フェイルセーフ付き） ===== */
   const showCut=(fn,ms=2000)=>{ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); };
-  const openSelect=()=>{ state='select'; charSel.style.display='flex'; };
+  let goTimer=null; // 自動セレクト復帰タイマー
+  const openSelect=()=>{ if(state==='countdown'||state==='play') return; charSel.style.display='flex'; state='select'; };
   const closeSelect=()=>{ charSel.style.display='none'; };
 
   function bootFlow(){
@@ -203,26 +204,32 @@
     setTimeout(()=>{ if(state!=='play'&&state!=='countdown'&&state!=='select'){ openSelect(); } },3500);
   }
 
-  /* ===== 入力：コヨーテ＆ジャンプバッファ対応 ===== */
+  /* ===== 入力：コヨーテ＆ジャンプバッファ ===== */
   let wantBoost=false,wantUse=[false,false];
-  const COYOTE_DUR=0.12, JUMPBUF_DUR=0.12; // 秒
+  const COYOTE_DUR=0.12, JUMPBUF_DUR=0.18; // 秒（バッファ拡大）
   let coyote=0, jumpBuf=0;
 
-  function pressJump(){
-    jumpBuf = JUMPBUF_DUR; // 入力をバッファ
-  }
+  function pressJump(){ jumpBuf = JUMPBUF_DUR; }
   function addPress(el,fn){
-    if(window.PointerEvent){ el.addEventListener('pointerdown',e=>{e.preventDefault(); fn();},{passive:false}); }
-    else{
-      let guard=false; const h=()=>{ if(guard) return; guard=true; setTimeout(()=>guard=false,0); fn(); };
-      el.addEventListener('touchstart',e=>{e.preventDefault(); h();},{passive:false});
-      el.addEventListener('mousedown',e=>{e.preventDefault(); h();},{passive:false});
-      el.addEventListener('click',e=>{e.preventDefault(); h();},{passive:false});
+    if(window.PointerEvent){
+      el.addEventListener('pointerdown',e=>{e.preventDefault(); fn(e);},{passive:false});
+    }else{
+      let guard=false;
+      const h=(e)=>{ if(guard) return; guard=true; setTimeout(()=>guard=false,0); fn(e); };
+      el.addEventListener('touchstart',e=>{e.preventDefault(); h(e);},{passive:false});
+      el.addEventListener('mousedown',e=>{e.preventDefault(); h(e);},{passive:false});
+      el.addEventListener('click',e=>{e.preventDefault(); h(e);},{passive:false});
     }
   }
-  addPress(btnJump, ()=>pressJump()); addPress(btnBoost, ()=>wantBoost=true);
-  addPress(btnItem1, ()=>wantUse[0]=true); addPress(btnItem2, ()=>wantUse[1]=true);
-  addPress(cv, ()=>{ const h=innerHeight||document.documentElement.clientHeight; const y=(window.event&&window.event.clientY)||0; if(!y||y<h*0.75) pressJump(); });
+  addPress(btnJump, ()=>pressJump());
+  addPress(btnBoost, ()=>{ wantBoost=true; });
+  addPress(btnItem1, ()=>useSlot(0));
+  addPress(btnItem2, ()=>useSlot(1));
+  addPress(cv, (e)=>{ // 画面上部3/4のみジャンプ（UI誤タップ防止）
+    const h=(innerHeight||document.documentElement.clientHeight||0);
+    let y=0; if(e){ if(typeof e.clientY==='number') y=e.clientY; else if(e.touches&&e.touches[0]) y=e.touches[0].clientY; }
+    if(!h || y<h*0.75) pressJump();
+  });
   addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') pressJump(); if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
 
   /* ===== カウントダウン（RAF統合） ===== */
@@ -243,7 +250,8 @@
 
   let startLock=false;
   function startFlow(){
-    if(startLock) return; startLock=true; // 再入防止
+    if(startLock) return; startLock=true;
+    if(goTimer){ clearTimeout(goTimer); goTimer=null; } // 残存タイマー無効化
     closeSelect(); hardResetCountdown();
     resetWorld(); draw();
     requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); startLock=false; });
@@ -260,15 +268,17 @@
     placeEarlyContena(); scheduleNextSpawn();
     wantBoost=false; wantUse=[false,false]; last=0;
     // 入力状態もリセット
-    coyote=0; jumpBuf=0;
+    coyote=0; jumpBuf=0; jumpLock=0;
   }
 
   function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
     btnItem1.textContent=slots[0]?String(slots[0].type).toUpperCase():'アイテム1';
     btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
 
-  function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex';
-    setTimeout(()=>{ goModal.style.display='none'; openSelect(); }, 1600);
+  function showGo(){
+    goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex';
+    if(goTimer){ clearTimeout(goTimer); }
+    goTimer=setTimeout(()=>{ goModal.style.display='none'; openSelect(); }, 1600);
   }
   function hideGo(){ goModal.style.display='none'; }
   function die(){ state='gameover'; showGo(); }
@@ -358,6 +368,20 @@
   const GRAVITY=960; // 少しだけ早く落下
   const MAX_LAND_SPEED=520; // 接地直前の最大降下速度（見た目の瞬間移動を抑える）
 
+  function tryConsumeJump(){
+    if(jumpBuf<=0 || jumpLock>0) return false;
+    const maxJ=(wingTime>0)?4:2;
+    const canFirst = player.onGround || coyote>0;
+    const canSecond = (!player.onGround && player.jumpsLeft>0);
+    if(canFirst){
+      player.vy=-540; player.onGround=false; player.jumpsLeft=maxJ-1; jumpBuf=0; coyote=0; jumpLock=0.08;
+      return true;
+    }else if(canSecond){
+      player.vy=-490; player.jumpsLeft--; jumpBuf=0; jumpLock=0.08; return true;
+    }
+    return false;
+  }
+
   function gameStep(ts){
     try{
       if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
@@ -373,11 +397,6 @@
         if(wantBoost){ if(enFree>0){boosting=2.5;} else if(boostGauge>=boostMax){boosting=2.5; boostGauge=0; boostBar.classList.remove('ready');} wantBoost=false; }
         if(wantUse[0]){ useSlot(0); wantUse[0]=false; }
         if(wantUse[1]){ useSlot(1); wantUse[1]=false; }
-
-        // timers
-        if(jumpBuf>0) jumpBuf=Math.max(0,jumpBuf-dt);
-        if(coyote>0)  coyote=Math.max(0,coyote-dt);
-        if(jumpLock>0)jumpLock=Math.max(0,jumpLock-dt);
 
         if(enFree<=0){ boostGauge=Math.min(boostMax,boostGauge+dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
         if(boosting>0) boosting-=dt; if(enFree>0) enFree-=dt; if(invincible>0) invincible-=dt;
@@ -465,31 +484,22 @@
               }
             }else{
               player.vy = Math.min(player.vy, MAX_LAND_SPEED);
-              // スムーズ接地帯では「ほぼ地上」扱い（初段受付を広げる）
-              if(!player.onGround){ player.onGround=true; }
+              if(!player.onGround){ player.onGround=true; } // ほぼ地上扱い（初段を受ける）
             }
           }else{
             player.y = targetY|0; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
           }
         }else{
-          if(player.onGround && !onSlope){ // 地面から離れた瞬間にコヨーテ付与
-            coyote = COYOTE_DUR;
-          }
+          if(player.onGround && !onSlope){ coyote = COYOTE_DUR; } // 地面を離れた瞬間にコヨーテ
           player.onGround=false; if(!onSlope) player.tilt*=0.9;
         }
 
-        // ジャンプの自動処理（バッファ＆コヨーテ）
-        if(jumpBuf>0 && jumpLock<=0){
-          const maxJ=(wingTime>0)?4:2;
-          const canFirst = player.onGround || coyote>0;
-          const canSecond = (!player.onGround && player.jumpsLeft>0);
-          if(canFirst){
-            player.vy=-540; player.onGround=false; player.jumpsLeft=(player.onGround?maxJ:maxJ)-1; // onGroundは直後falseになるが論理上OK
-            jumpBuf=0; coyote=0; jumpLock=0.08;
-          }else if(canSecond){
-            player.vy=-490; player.jumpsLeft--; jumpBuf=0; jumpLock=0.08;
-          }
-        }
+        // ★ジャンプ処理をここで最優先評価（減衰より先）
+        tryConsumeJump();
+        // その後に減衰
+        if(jumpBuf>0) jumpBuf=Math.max(0,jumpBuf-dt);
+        if(coyote>0)  coyote=Math.max(0,coyote-dt);
+        if(jumpLock>0)jumpLock=Math.max(0,jumpLock-dt);
 
         // 致死判定
         if(invincible<=0){
@@ -533,10 +543,6 @@
     requestAnimationFrame(gameStep);
   }
   requestAnimationFrame(gameStep);
-
-  /* ===== Actions (アイテム使用) ===== */
-  addPress(btnItem1, ()=>useSlot(0));
-  addPress(btnItem2, ()=>useSlot(1));
 
   /* ===== Draw（画像未読込でも真っ黒回避） ===== */
   function tileX(img,y,h,f=1,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=img.width/img.height; const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
@@ -586,8 +592,8 @@
 
   /* ===== Events ===== */
   startBtn.addEventListener('click', ()=>startFlow());
-  btnChange.addEventListener('click', ()=>openSelect());
-  goChange.addEventListener('click', ()=>{ hideGo(); openSelect(); });
+  btnChange.addEventListener('click', ()=>{ if(goTimer){ clearTimeout(goTimer); goTimer=null; } openSelect(); });
+  goChange.addEventListener('click', ()=>{ if(goTimer){ clearTimeout(goTimer); goTimer=null; } hideGo(); openSelect(); });
   goQuit.addEventListener('click', ()=>location.reload());
 
   // 起動
