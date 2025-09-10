@@ -3,242 +3,178 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – bugfix (background vs ground trim)</title>
+<title>Runner – Fixed UI & Ground Contact</title>
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   #game{width:100%;height:100%;display:block;image-rendering:pixelated}
-  #overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.7);color:#fff;font-family:system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans","Yu Gothic", sans-serif}
+  /* HUD */
+  header.hud{position:absolute;left:0;right:0;top:0;height:48px;z-index:10;display:flex;justify-content:space-around;align-items:center;background:rgba(0,0,0,.5);color:#fff;font:14px sans-serif}
+  footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:72px;z-index:10;display:flex;justify-content:space-around;align-items:center;background:rgba(0,0,0,.5)}
+  button{padding:10px 20px;font-size:16px;border:none;border-radius:8px;background:#333;color:#fff}
+  /* 選択 */
+  #overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.7);color:#fff;font-family:sans-serif;z-index:20}
   .choices{display:flex;gap:20px}
   .choice{cursor:pointer;padding:10px;background:#222;border-radius:10px}
   .choice img{width:72px;height:72px;object-fit:contain}
 </style>
 </head>
 <body>
+<header class="hud">
+  <div id="dist">距離 0m</div>
+  <div id="speed">速度 0km/h</div>
+  <div id="jump">ジャンプ 2</div>
+  <div id="coin">コイン 0</div>
+</header>
 <canvas id="game" width="390" height="540"></canvas>
+<footer class="ctrl">
+  <button id="btnJump">ジャンプ</button>
+  <button id="btnBoost">ブースト</button>
+</footer>
 <div id="overlay">
   <div>
     <p>キャラを選んでスタート</p>
     <div class="choices">
-      <div class="choice" data-char="VR"><img src="VR.png" alt=""><p>VR</p></div>
-      <div class="choice" data-char="orange"><img src="orange.png" alt=""><p>Orange</p></div>
+      <div class="choice" data-char="VR"><img src="VR.png"><p>VR</p></div>
+      <div class="choice" data-char="orange"><img src="orange.png"><p>Orange</p></div>
     </div>
   </div>
 </div>
 
 <script>
-(() => {
-  const cvs = document.getElementById("game");
-  const ctx = cvs.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
-  const W=390, H=540;
+const cvs=document.getElementById("game"),ctx=cvs.getContext("2d");ctx.imageSmoothingEnabled=false;
+const W=390,H=540;
+function setup(){const dpr=Math.max(1,devicePixelRatio||1);cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}setup();
 
-  function setup(){ const dpr=Math.max(1, devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
-  setup(); addEventListener('resize', setup, {passive:true});
+function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
 
-  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png"),load("VR.png"),load("orange.png")])
+.then(([imgBG,imgGR,imgCO,imgJP,imgVR,imgOR])=>{
 
-  Promise.all([
-    load("sora.png"),      // 背景
-    load("mob.png"),       // 地面
-    load("corn.png"),      // コーン
-    load("jumpdai.png"),   // ジャンプ台
-    load("VR.png"),        // キャラ1
-    load("orange.png")     // キャラ2
-  ]).then(([imgBG, imgGR, imgCO, imgJP, imgVR, imgOR]) => {
+  // ===== トリム関数 =====
+  function scanTopTrim(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
+    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;
+    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH)return{trimTop:y,contentH:h-y};}}
+    return{trimTop:0,contentH:h};
+  }
+  function scanBottomTrim(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
+    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;
+    for(let y=h-1;y>=0;y--){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH)return{bottomTrim:h-1-y,h};}}
+    return{bottomTrim:0,h};
+  }
+  function scanTightRect(img){
+    const w=img.naturalWidth,h=img.naturalHeight,oc=document.createElement("canvas");oc.width=w;oc.height=h;
+    const ox=oc.getContext("2d",{willReadFrequently:true});ox.drawImage(img,0,0);
+    const d=ox.getImageData(0,0,w,h).data,TH=12;
+    let minX=w,minY=h,maxX=-1,maxY=-1;
+    for(let y=0;y<h;y++){for(let x=0;x<w;x++){if(d[(y*w+x)*4+3]>TH){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}}}
+    if(maxX<0)return{sx:0,sy:0,sw:w,sh:h};
+    return{sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
+  }
 
-    // ---- 透明トリムスキャン系 ----
-    function scanTopTrim(img){
-      const w=img.naturalWidth, h=img.naturalHeight;
-      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-      const d=ox.getImageData(0,0,w,h).data, TH=12;
-      for(let y=0; y<h; y++){
-        for(let x=0; x<w; x++){
-          if(d[(y*w+x)*4+3] > TH){ return { trimTop:y, contentH:h-y }; }
-        }
-      }
-      return { trimTop:0, contentH:h };
+  // ===== 地面基準 =====
+  const {trimTop,contentH}=scanTopTrim(imgGR);
+  const groundDrawH=contentH;
+  const floorY=()=>H-groundDrawH;
+
+  // ===== プレイヤー =====
+  let player=null;
+  function createPlayer(img){
+    const {bottomTrim,h}=scanBottomTrim(img);
+    const feetFrac=bottomTrim/h;
+    return {x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac};
+  }
+
+  // ===== 障害物 =====
+  const cornTrim=scanTightRect(imgCO);
+  const jumpTrim=scanTightRect(imgJP);
+  const obstacles=[];
+  let nextSpawn=200+Math.random()*300;
+
+  function spawn(){
+    const fy=floorY();
+    if(Math.random()<0.5){ // corn
+      const targetH=groundDrawH*0.6; // 大きさ調整
+      const scale=targetH/cornTrim.sh;
+      const w=Math.round(cornTrim.sw*scale),h=Math.round(cornTrim.sh*scale);
+      obstacles.push({x:W+40,y:fy-h,w,h,img:imgCO,trim:cornTrim,type:"corn"});
+    }else{ // jumpdai
+      const targetH=groundDrawH*0.4;
+      const scale=targetH/jumpTrim.sh;
+      const w=Math.round(jumpTrim.sw*scale),h=Math.round(jumpTrim.sh*scale);
+      obstacles.push({x:W+40,y:fy-h,w,h,img:imgJP,trim:jumpTrim,type:"jump"});
     }
-    function scanBottomTrim(img){
-      const w=img.naturalWidth, h=img.naturalHeight;
-      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-      const d=ox.getImageData(0,0,w,h).data, TH=12;
-      for(let y=h-1; y>=0; y--){
-        for(let x=0; x<w; x++){
-          if(d[(y*w+x)*4+3] > TH){ return { bottomTrim:(h-1-y), h }; }
-        }
-      }
-      return { bottomTrim:0, h };
+  }
+
+  // ===== 描画 =====
+  function drawBG(off){
+    const scale=H/imgBG.naturalHeight,tileW=imgBG.naturalWidth*scale;
+    let ox=off%tileW;if(ox>0)ox-=tileW;
+    for(let x=ox;x<W;x+=tileW)ctx.drawImage(imgBG,0,0,imgBG.naturalWidth,imgBG.naturalHeight,Math.floor(x),0,tileW,H);
+  }
+  function drawGround(off){
+    const srcY=trimTop,srcH=imgGR.naturalHeight-trimTop;
+    const scaleY=groundDrawH/srcH,tileW=imgGR.naturalWidth*scaleY;
+    let ox=off%tileW;if(ox>0)ox-=tileW;const y=floorY();
+    for(let x=ox;x<W;x+=tileW)ctx.drawImage(imgGR,0,srcY,imgGR.naturalWidth,srcH,Math.floor(x),y,tileW,groundDrawH);
+  }
+
+  // ===== 状態 =====
+  const GRAV=1500,JUMP=540,BASE=220;
+  let speed=BASE,dist=0,bgOff=0,grOff=0;
+
+  // ===== 入力 =====
+  document.getElementById("btnJump").onclick=()=>{if(player&&player.jumps>0){player.vy=-JUMP;player.jumps--;updateHUD();}};
+  document.getElementById("btnBoost").onpointerdown=()=>speed=400;
+  document.getElementById("btnBoost").onpointerup=()=>speed=BASE;
+
+  // ===== HUD =====
+  function updateHUD(){
+    document.getElementById("dist").textContent=`距離 ${Math.floor(dist*0.02)}m`;
+    document.getElementById("speed").textContent=`速度 ${Math.round(speed*0.07)}km/h`;
+    document.getElementById("jump").textContent=`ジャンプ ${player?player.jumps:2}`;
+  }
+
+  // ===== メインループ =====
+  let prev=0,running=false;
+  function start(){if(running)return;running=true;prev=performance.now();requestAnimationFrame(loop);}
+  function loop(t){
+    const dt=(t-prev)/1000;prev=t;
+    if(player){
+      player.vy+=GRAV*dt;player.y+=player.vy*dt;
+      const fy=floorY();if(player.y>fy){player.y=fy;player.vy=0;player.jumps=2;}
     }
-    function scanTightRect(img){
-      const w=img.naturalWidth, h=img.naturalHeight;
-      const oc=document.createElement('canvas'); oc.width=w; oc.height=h;
-      const ox=oc.getContext('2d',{willReadFrequently:true}); ox.drawImage(img,0,0);
-      const d=ox.getImageData(0,0,w,h).data, TH=12;
-      let minX=w, minY=h, maxX=-1, maxY=-1;
-      for(let y=0;y<h;y++){
-        for(let x=0;x<w;x++){
-          if(d[(y*w+x)*4+3] > TH){
-            if(x<minX)minX=x; if(y<minY)minY=y;
-            if(x>maxX)maxX=x; if(y>maxY)maxY=y;
-          }
-        }
-      }
-      if(maxX<0) return { sx:0, sy:0, sw:w, sh:h };
-      return { sx:minX, sy:minY, sw:maxX-minX+1, sh:maxY-minY+1 };
-    }
-
-    // ---- 地面の床ラインを mob.png から決定 ----
-    const { trimTop: groundTrimTop, contentH: groundContentH } = scanTopTrim(imgGR);
-    const groundDrawH = Math.max(48, Math.min(160, groundContentH));  // 安定幅
-    const floorY = () => Math.floor(H - groundDrawH);                  // 接地ライン（整数）
-
-    // ---- プレイヤー（選択後セット） ----
-    let player = null;
-
-    // ---- コーン / ジャンプ台（余白トリム済みソース矩形） ----
-    const cornTrim = scanTightRect(imgCO);
-    const jumpTrim = scanTightRect(imgJP);
-
-    // ---- 状態 ----
-    const GRAV=1500, JUMP=540, BASE=220, BOOST=480;
-    let speed=BASE, boosting=false, boost=60;
-    let dist=0, bgOff=0, grOff=0;
-
-    const obstacles = []; // {x,y,w,h,img,trim,type}
-    let nextSpawnDist = 250 + Math.random()*350;
-
-    // ---- スポーン（ランダム：corn / jumpdai） ----
-    function spawn(){
-      const fy = floorY();
-      if (Math.random()<0.5){
-        // 小さめコーン、必ず接地
-        const targetH = 40;
-        const scale = targetH / cornTrim.sh;
-        const w = Math.round(cornTrim.sw * scale);
-        const h = Math.round(cornTrim.sh * scale);
-        obstacles.push({ x: W+40, y: fy - h, w, h, img: imgCO, trim: cornTrim, type: "corn" });
-      }else{
-        // ジャンプ台、必ず接地
-        const targetH = 20;
-        const scale = targetH / jumpTrim.sh;
-        const w = Math.round(jumpTrim.sw * scale);
-        const h = Math.round(jumpTrim.sh * scale);
-        obstacles.push({ x: W+40, y: fy - h, w, h, img: imgJP, trim: jumpTrim, type: "jump" });
-      }
-    }
-
-    // ---- 背景タイル描画（背景はトリムなし！） ----
-    function drawBG(offsetX){
-      const scaleY = H / imgBG.naturalHeight;
-      const tileW  = imgBG.naturalWidth * scaleY;
-      let ox = offsetX % tileW; if (ox>0) ox -= tileW;
-      for(let x=ox; x<W; x+=tileW){
-        ctx.drawImage(imgBG, 0, 0, imgBG.naturalWidth, imgBG.naturalHeight,
-                      Math.floor(x), 0, Math.ceil(tileW), H);
-      }
-    }
-
-    // ---- 地面タイル描画（mob.png の上端だけトリムして貼る） ----
-    function drawGround(offsetX){
-      const srcY = groundTrimTop;
-      const srcH = imgGR.naturalHeight - groundTrimTop;
-      const scaleY = groundDrawH / srcH;
-      const tileW  = imgGR.naturalWidth * scaleY;
-      let ox = offsetX % tileW; if (ox>0) ox -= tileW;
-      const y = floorY();
-      for(let x=ox; x<W; x+=tileW){
-        ctx.drawImage(imgGR, 0, srcY, imgGR.naturalWidth, srcH,
-                      Math.floor(x), y, Math.ceil(tileW), groundDrawH);
-      }
-    }
-
-    // ---- 入力 ----
-    addEventListener('keydown', e=>{
-      if(e.code==='Space'||e.code==='ArrowUp'){ if(player && player.jumps>0){ player.vy=-JUMP; player.jumps--; } }
-      if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=true; }
-    });
-    addEventListener('keyup', e=>{
-      if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=false; }
-    });
-
-    // ---- メインループ ----
-    let prev = 0, running=false;
-    function start(){ if(running) return; running=true; prev=performance.now(); requestAnimationFrame(loop); }
-    function loop(t){
-      const dt = Math.min(0.033, (t-prev)/1000); prev=t;
-
-      // 速度／ブースト
-      if(boosting && boost>0){ speed=BOOST; boost=Math.max(0, boost-24*dt); }
-      else { speed=BASE; boost=Math.min(100, boost+10*dt); }
-
-      // 物理
-      player.vy += GRAV*dt;
-      player.y  += player.vy*dt;
-      const fy = floorY();
-      if (player.y > fy){ player.y = fy; player.vy = 0; player.jumps = 2; }
-
-      // 進行
-      dist  += speed*dt;
-      bgOff -= speed*0.20*dt;
-      grOff -= speed*1.00*dt;
-
-      // スポーン
-      if (dist > nextSpawnDist){ spawn(); nextSpawnDist += 260 + Math.random()*420; }
-
-      // 障害物更新
-      for(let i=obstacles.length-1; i>=0; i--){
-        const o = obstacles[i];
-        o.x -= speed*dt;
-        if (o.x + o.w < -40) obstacles.splice(i,1);
-      }
-
-      // ---- 描画（整数座標で） ----
-      ctx.clearRect(0,0,W,H);
-      drawBG(bgOff);
-      drawGround(grOff);
-
+    dist+=speed*dt;bgOff-=speed*0.2*dt;grOff-=speed*1.0*dt;
+    if(dist>nextSpawn){spawn();nextSpawn+=200+Math.random()*400;}
+    for(let i=obstacles.length-1;i>=0;i--){obstacles[i].x-=speed*dt;if(obstacles[i].x+obstacles[i].w<-40)obstacles.splice(i,1);}
+    ctx.clearRect(0,0,W,H);
+    drawBG(bgOff);drawGround(grOff);
+    obstacles.forEach(o=>ctx.drawImage(o.img,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,o.x,o.y,o.w,o.h));
+    if(player){
+      const fy=floorY();
+      const py=player.y-player.h+player.h*player.feetFrac;
+      ctx.drawImage(player.img,player.x,py,player.w,player.h);
       obstacles.forEach(o=>{
-        ctx.drawImage(o.img, o.trim.sx, o.trim.sy, o.trim.sw, o.trim.sh,
-                      Math.floor(o.x), Math.floor(o.y), o.w, o.h);
-      });
-
-      // プレイヤー（足元の下端透明ぶんだけ押し下げて描画 → 接地）
-      const feetPush = Math.floor(player.h * player.feetFrac);
-      const px = Math.floor(player.x);
-      const py = Math.floor(player.y - player.h + feetPush);
-      ctx.drawImage(player.img, px, py, player.w, player.h);
-
-      // 衝突（ジャンプ台は踏んだら強制ジャンプ）
-      for(const o of obstacles){
-        if (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y){
-          if (o.type === "jump") { player.vy = -JUMP * 1.2; }
+        if(player.x<o.x+o.w&&player.x+player.w>o.x&&py<o.y+o.h&&py+player.h>o.y){
+          if(o.type==="jump"){player.vy=-JUMP*1.2;}
         }
-      }
-
-      requestAnimationFrame(loop);
+      });
     }
+    updateHUD();
+    requestAnimationFrame(loop);
+  }
 
-    // ---- キャラ選択（選択 → 足元トリム計測 → スタート） ----
-    const overlay = document.getElementById('overlay');
-    overlay.addEventListener('click', e=>{
-      const c = e.target.closest('.choice'); if(!c) return;
-      const img = (c.dataset.char === 'VR') ? imgVR : imgOR;
-      const { bottomTrim, h } = scanBottomTrim(img);
-      const feetFrac = bottomTrim / h;
-
-      player = { x:80, y:floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
-      overlay.style.display = 'none';
-      start();
-    });
-
-  }).catch(err=>{
-    console.error(err);
-    alert('画像の読み込みに失敗しました。ファイル名・配置を確認してください。');
-  });
-
-})();
+  // ===== キャラ選択 =====
+  document.getElementById("overlay").onclick=e=>{
+    const c=e.target.closest(".choice");if(!c)return;
+    player=createPlayer(c.dataset.char==="VR"?imgVR:imgOR);
+    document.getElementById("overlay").style.display="none";
+    start();
+  };
+});
 </script>
 </body>
 </html>
