@@ -7,17 +7,32 @@
 <style>
   html,body{margin:0;height:100%;background:#000;overflow:hidden}
   #game{width:100%;height:100%;display:block;image-rendering:pixelated}
+  #overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.7);color:#fff;font-family:sans-serif}
+  .choices{display:flex;gap:20px}
+  .choice{cursor:pointer;padding:10px;background:#222;border-radius:10px}
+  .choice img{width:72px;height:72px}
 </style>
 </head>
 <body>
 <canvas id="game" width="390" height="540"></canvas>
+<div id="overlay">
+  <div>
+    <p>キャラを選んでスタート</p>
+    <div class="choices">
+      <div class="choice" data-char="VR"><img src="VR.png"><p>VR</p></div>
+      <div class="choice" data-char="orange"><img src="orange.png"><p>Orange</p></div>
+    </div>
+  </div>
+</div>
 <script>
 const cvs=document.getElementById("game"),ctx=cvs.getContext("2d");ctx.imageSmoothingEnabled=false;
 const W=390,H=540;
 function setup(){const dpr=devicePixelRatio||1;cvs.width=W*dpr;cvs.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);}setup();
 
 function load(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
-Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png"),load("VR.png")]).then(([imgBG,imgGR,imgCO,imgJP,imgPL])=>{
+
+Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png"),load("VR.png"),load("orange.png")])
+.then(([imgBG,imgGR,imgCO,imgJP,imgVR,imgOR])=>{
 
   // --- 透明トリム関数 ---
   function scanTopTrim(img){
@@ -49,10 +64,8 @@ Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png
   const groundDrawH=contentH; 
   function floorY(){return H-groundDrawH;}
 
-  // --- プレイヤー設定 ---
-  const {bottomTrim,h:ph}=scanBottomTrim(imgPL);
-  const playerFeetFrac=bottomTrim/ph;
-  const player={x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img:imgPL,feetFrac:playerFeetFrac};
+  // --- プレイヤー（選択後に代入） ---
+  let player=null;
 
   // --- コーン/ジャンプ台準備 ---
   const cornTrim=scanTightRect(imgCO),jumpTrim=scanTightRect(imgJP);
@@ -79,6 +92,7 @@ Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png
     for(let x=ox;x<W;x+=tileW){ctx.drawImage(img,0,trimTop,img.naturalWidth,img.naturalHeight-trimTop,Math.floor(x),y,tileW,hgt);}
   }
 
+  // --- メインループ ---
   let prev=0;
   function loop(t){
     const dt=(t-prev)/1000;prev=t;
@@ -99,7 +113,17 @@ Promise.all([load("sora.png"),load("mob.png"),load("corn.png"),load("jumpdai.png
     });
     requestAnimationFrame(loop);
   }
-  loop();
+
+  // --- キャラ選択 ---
+  document.getElementById("overlay").addEventListener("click",e=>{
+    const c=e.target.closest(".choice");if(!c)return;
+    const chosen=(c.dataset.char==="VR")?imgVR:imgOR;
+    const {bottomTrim,h:ph}=scanBottomTrim(chosen);
+    const feetFrac=bottomTrim/ph;
+    player={x:80,y:floorY(),vy:0,w:48,h:48,jumps:2,img:chosen,feetFrac};
+    document.getElementById("overlay").style.display="none";
+    requestAnimationFrame(loop);
+  });
 });
 </script>
 </body>
