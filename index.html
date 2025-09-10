@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v5.6（リスタート撤去／ジャンプ台確実化／着地スムーズ化）</title>
+<title>MOB KART CHALLENGE — v5.7（ジャンプ復旧／スタート式再開／着地改善 維持）</title>
 <style>
   :root{ --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
          --safe-top: env(safe-area-inset-top,0px); --safe-bottom: env(safe-area-inset-bottom,0px); }
@@ -55,7 +55,7 @@
 <body>
 <div id="app">
   <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.6</small></div>
+    <div class="title"><b>MOB KART CHALLENGE</b><small>v5.7</small></div>
     <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
   </div>
 
@@ -87,11 +87,11 @@
         <button class="opt" data-ch="orange"><img src="orange.png" alt="orange"></button>
         <button class="opt" data-ch="VR"><img src="VR.png" alt="VR"></button>
       </div>
-      <div class="stack"><button id="btnStart" class="cbtn">スタート</button></div>
+      <div class="stack"><button id="btnStart" class="cbtn" style="font-size:18px;padding:14px 28px">スタート</button></div>
     </div>
   </div>
 
-  <!-- リスタートは撤去。記録を出してから自動でキャラ選択へ戻す -->
+  <!-- リスタート機能は撤去。自動でキャラ選択に戻し、必ずスタートボタンで再開 -->
   <div class="centerModal" id="gameOver" style="display:none">
     <div class="card">
       <div id="goMsg" style="font-size:22px;font-weight:700;margin-bottom:10px">記録 0m！</div>
@@ -203,8 +203,14 @@
     setTimeout(()=>{ if(state!=='play'&&state!=='countdown'&&state!=='select'){ openSelect(); } },3500);
   }
 
-  /* ===== 入力 ===== */
-  let wantJump=false,wantBoost=false,wantUse=[false,false];
+  /* ===== 入力：コヨーテ＆ジャンプバッファ対応 ===== */
+  let wantBoost=false,wantUse=[false,false];
+  const COYOTE_DUR=0.12, JUMPBUF_DUR=0.12; // 秒
+  let coyote=0, jumpBuf=0;
+
+  function pressJump(){
+    jumpBuf = JUMPBUF_DUR; // 入力をバッファ
+  }
   function addPress(el,fn){
     if(window.PointerEvent){ el.addEventListener('pointerdown',e=>{e.preventDefault(); fn();},{passive:false}); }
     else{
@@ -214,10 +220,10 @@
       el.addEventListener('click',e=>{e.preventDefault(); h();},{passive:false});
     }
   }
-  addPress(btnJump, ()=>wantJump=true); addPress(btnBoost, ()=>wantBoost=true);
+  addPress(btnJump, ()=>pressJump()); addPress(btnBoost, ()=>wantBoost=true);
   addPress(btnItem1, ()=>wantUse[0]=true); addPress(btnItem2, ()=>wantUse[1]=true);
-  addPress(cv, ()=>{ const h=innerHeight||document.documentElement.clientHeight; const y=(window.event&&window.event.clientY)||0; if(!y||y<h*0.75) wantJump=true; });
-  addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') wantJump=true; if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
+  addPress(cv, ()=>{ const h=innerHeight||document.documentElement.clientHeight; const y=(window.event&&window.event.clientY)||0; if(!y||y<h*0.75) pressJump(); });
+  addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') pressJump(); if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
 
   /* ===== カウントダウン（RAF統合） ===== */
   let cdActive=false, cdStart=0, cdShown=-1;
@@ -235,10 +241,12 @@
   let lastRightX=0, nextSpawnX=null, lastKanbanX=-1e9;
   const MIN_GAP_PX=40;
 
+  let startLock=false;
   function startFlow(){
+    if(startLock) return; startLock=true; // 再入防止
     closeSelect(); hardResetCountdown();
     resetWorld(); draw();
-    requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); });
+    requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); startLock=false; });
     setTimeout(()=>loadList(deferred),300);
   }
 
@@ -250,7 +258,9 @@
     boostBar.classList.remove('ready');
     lastRightX=SAFE_M*PX_PER_M; nextSpawnX=null; lastKanbanX=-1e9;
     placeEarlyContena(); scheduleNextSpawn();
-    wantJump=wantBoost=false; wantUse=[false,false]; last=0;
+    wantBoost=false; wantUse=[false,false]; last=0;
+    // 入力状態もリセット
+    coyote=0; jumpBuf=0;
   }
 
   function refreshSlots(){ btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
@@ -258,7 +268,6 @@
     btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2'; }
 
   function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.style.display='flex';
-    // 自動でキャラ選択へ戻す（リスタートは撤去）
     setTimeout(()=>{ goModal.style.display='none'; openSelect(); }, 1600);
   }
   function hideGo(){ goModal.style.display='none'; }
@@ -364,7 +373,11 @@
         if(wantBoost){ if(enFree>0){boosting=2.5;} else if(boostGauge>=boostMax){boosting=2.5; boostGauge=0; boostBar.classList.remove('ready');} wantBoost=false; }
         if(wantUse[0]){ useSlot(0); wantUse[0]=false; }
         if(wantUse[1]){ useSlot(1); wantUse[1]=false; }
-        if(wantJump){ doJump(); wantJump=false; }
+
+        // timers
+        if(jumpBuf>0) jumpBuf=Math.max(0,jumpBuf-dt);
+        if(coyote>0)  coyote=Math.max(0,coyote-dt);
+        if(jumpLock>0)jumpLock=Math.max(0,jumpLock-dt);
 
         if(enFree<=0){ boostGauge=Math.min(boostMax,boostGauge+dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
         if(boosting>0) boosting-=dt; if(enFree>0) enFree-=dt; if(invincible>0) invincible-=dt;
@@ -393,9 +406,8 @@
 
         // physics
         player.vy += GRAVITY*dt;
-        player.y += player.vy*dt; // まず重力で落とす
-        if(jumpLock>0) jumpLock-=dt;
-
+        player.y += player.vy*dt;
+        const wasGround = player.onGround;
         const px=RUNX(), pw=player.w;
         const footW=Math.max(12,Math.round(pw*0.34)), footX=Math.round(px+(pw-footW)/2);
         const foot={x:footX,y:player.y+player.h-1,w:footW,h:2};
@@ -403,7 +415,7 @@
 
         const feet=player.y+player.h;
 
-        // 斜面（前足基準で進捗を測り、60%跨ぎで一度だけ発火）
+        // 斜面（前足の進捗で0.56跨ぎ時に強制ジャンプ）
         for(const o of obstacles){
           if(o.kind!=='jumpdai') continue;
           const sx=o.x-scrollX;
@@ -416,9 +428,8 @@
               if(topY<supportTop){ supportTop=topY; supportFrom='jumpdai'; supportObj=o; }
               onSlope=true;
               player.tilt=Math.max(-0.15,Math.min(0.24,(p-0.3)*0.6));
-              if(!o.kicked && (o.pLast||0)<=0.56 && p>0.56){ // 進捗が閾値を跨いだ瞬間
-                o.kicked=true; player.vy=-840; // 強制発火
-                boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
+              if(!o.kicked && (o.pLast||0)<=0.56 && p>0.56){
+                o.kicked=true; player.vy=-840; boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15);
               }
             }
             o.pLast=p;
@@ -437,31 +448,47 @@
           }
         }
 
-        // スムーズ接地（最大降下速度を制限して“ストン”）
+        // スムーズ接地
         const targetY = (supportTop - player.h + 1);
         const withinCatch = (feet >= supportTop-22 && feet <= supportTop+22);
         if(withinCatch){
           const dy = targetY - player.y;
-          if(dy >= -2){ // 地面より上にいる or ほぼ一致
+          if(dy >= -2){
             const step = Math.min(Math.max(dy,0), MAX_LAND_SPEED*dt);
             player.y += step;
             if(Math.abs(targetY - player.y) <= 1.5){
               player.y = targetY|0;
               if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
-                player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25; // トランポリン
+                player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25;
               }else{
                 player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
               }
             }else{
-              // 接地準備中：見た目なめらかに落とす
               player.vy = Math.min(player.vy, MAX_LAND_SPEED);
+              // スムーズ接地帯では「ほぼ地上」扱い（初段受付を広げる）
+              if(!player.onGround){ player.onGround=true; }
             }
           }else{
-            // めり込み気味なら即座に合わせる
             player.y = targetY|0; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
           }
         }else{
+          if(player.onGround && !onSlope){ // 地面から離れた瞬間にコヨーテ付与
+            coyote = COYOTE_DUR;
+          }
           player.onGround=false; if(!onSlope) player.tilt*=0.9;
+        }
+
+        // ジャンプの自動処理（バッファ＆コヨーテ）
+        if(jumpBuf>0 && jumpLock<=0){
+          const maxJ=(wingTime>0)?4:2;
+          const canFirst = player.onGround || coyote>0;
+          const canSecond = (!player.onGround && player.jumpsLeft>0);
+          if(canFirst){
+            player.vy=-540; player.onGround=false; player.jumpsLeft=(player.onGround?maxJ:maxJ)-1; // onGroundは直後falseになるが論理上OK
+            jumpBuf=0; coyote=0; jumpLock=0.08;
+          }else if(canSecond){
+            player.vy=-490; player.jumpsLeft--; jumpBuf=0; jumpLock=0.08;
+          }
         }
 
         // 致死判定
@@ -492,7 +519,7 @@
 
         // HUD
         elDist.textContent=Math.floor(meters)+' m';
-        dispT+=dt; if(dispT>=.2){ dispSp=Math.round(spd*KMH_PER_PX); dispT=0; }
+        dispT+=dt; if(dispT>=.2){ const spd=baseSpeed*(boosting>0?1.7:1); dispSp=Math.round(spd*KMH_PER_PX); dispT=0; }
         elSpeed.textContent=dispSp+' km/h';
         elJump.textContent='×'+(player.onGround?(wingTime>0?4:2):player.jumpsLeft);
         boostFill.style.width=(boostGauge/boostMax*100)+'%';
@@ -507,22 +534,9 @@
   }
   requestAnimationFrame(gameStep);
 
-  /* ===== Actions ===== */
-  function doJump(){
-    if(state!=='play') return;
-    const maxJ=(wingTime>0)?4:2;
-    if(player.onGround){
-      player.vy=-540;               // 少しだけ高く＆速い上昇
-      player.onGround=false;
-      player.jumpsLeft=maxJ-1;
-      jumpLock=0.08;
-    }else if(player.jumpsLeft>0){
-      player.vy=-490;               // 二段目も微増
-      player.jumpsLeft--;
-      jumpLock=0.08;
-    }
-    elJump.textContent='×'+(player.onGround?maxJ:player.jumpsLeft);
-  }
+  /* ===== Actions (アイテム使用) ===== */
+  addPress(btnItem1, ()=>useSlot(0));
+  addPress(btnItem2, ()=>useSlot(1));
 
   /* ===== Draw（画像未読込でも真っ黒回避） ===== */
   function tileX(img,y,h,f=1,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=img.width/img.height; const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
