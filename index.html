@@ -3,61 +3,33 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>MOB Runner - Mobile Exact</title>
+<title>MOB Runner – exact mobile</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
-  :root{
-    --stage-w: 390px;   /* PCでもスマホと同じ見た目にするため固定 */
-    --stage-h: 700px;   /* HUD 64px / 操作 96px を含む全高 */
-  }
+  :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#e9eef7;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Hiragino Sans","Yu Gothic",sans-serif;overscroll-behavior:none}
   #viewport{position:fixed;inset:0;display:grid;place-items:center}
-  #phone{
-    width:var(--stage-w); height:var(--stage-h); position:relative; overflow:hidden;
-    background:#070b12; border:1px solid #0e1522; border-radius:16px; box-shadow:0 12px 40px rgba(0,0,0,.45);
-    transform-origin:center center;
-  }
-  header.hud{
-    position:absolute; left:0; right:0; top:0; height:64px; z-index:10;
-    display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 12px;
-    background:linear-gradient(180deg, rgba(20,26,38,.92), rgba(16,21,31,.84));
-    border-bottom:1px solid rgba(255,255,255,.06);
-  }
+  #phone{width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);transform-origin:center center}
+  header.hud{position:absolute;left:0;right:0;top:0;height:64px;z-index:10;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:linear-gradient(180deg,rgba(20,26,38,.92),rgba(16,21,31,.84));border-bottom:1px solid rgba(255,255,255,.06)}
   .row{display:flex;gap:8px;align-items:center}
   .pill{background:#1b2233;padding:6px 10px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.05)}
   main.play{position:absolute;left:0;right:0;top:64px;bottom:96px;background:#060a12}
-  canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-  footer.ctrl{
-    position:absolute;left:0;right:0;bottom:0;height:96px;z-index:10;
-    display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:12px;
-    background:linear-gradient(180deg, rgba(16,21,31,.84), rgba(10,14,22,.96));
-    border-top:1px solid rgba(255,255,255,.06);
-  }
-  .btn{
-    -webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
-    display:flex;align-items:center;justify-content:center;background:#1a2132;border:1px solid rgba(255,255,255,.08);
-    color:#fff;padding:12px 10px;border-radius:14px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25)
-  }
-  .btn:active{transform:translateY(1px)}
-  .btn.primary{background:#1c2b44;border-color:#2e4f7a}
-  .btn.accent{background:#1a2b3e;border-color:#256787}
+  #game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+  footer.ctrl{position:absolute;left:0;right:0;bottom:0;height:96px;z-index:10;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;padding:12px;background:linear-gradient(180deg,rgba(16,21,31,.84),rgba(10,14,22,.96));border-top:1px solid rgba(255,255,255,.06)}
+  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;display:flex;align-items:center;justify-content:center;background:#1a2132;border:1px solid rgba(255,255,255,.08);color:#fff;padding:12px 10px;border-radius:14px;font-weight:700;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+  .btn:active{transform:translateY(1px)} .btn.primary{background:#1c2b44;border-color:#2e4f7a} .btn.accent{background:#1a2b3e;border-color:#256787}
   #overlay{position:absolute;inset:64px 0 96px;display:grid;place-items:center;z-index:20}
   .card{width:min(92%,360px);background:linear-gradient(180deg,#0e1320,#0b0f1a);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
-  .title{font-weight:800;font-size:18px;margin:0 0 10px}
-  .sub{color:#9aa3b2;font-size:13px;margin-bottom:12px}
+  .title{font-weight:800;font-size:18px;margin:0 0 10px} .sub{color:#9aa3b2;font-size:13px;margin-bottom:12px}
   .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .choice{background:#121a2a;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px;display:grid;gap:8px;justify-items:center;cursor:pointer;user-select:none}
-  .choice:active{transform:translateY(1px)}
-  .choice img{width:72px;height:72px;object-fit:contain;background:#0c111a;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
-  /* 小さなデバッグ表示（画像未読込時だけ薄く表示） */
-  #dbg{position:absolute;right:6px;bottom:102px;font-size:10px;color:#9aa;opacity:.5;pointer-events:none}
+  .choice:active{transform:translateY(1px)} .choice img{width:72px;height:72px;object-fit:contain;background:#0c111a;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
 </style>
 </head>
 <body>
   <div id="viewport">
     <div id="phone">
-      <!-- HUD -->
-      <header class="hud" aria-label="HUD">
+      <header class="hud">
         <div class="row">
           <span class="pill" id="dist">距離 0 m</span>
           <span class="pill" id="speed">速度 0 km/h</span>
@@ -67,251 +39,154 @@
         <div class="row"><span class="pill">BOOST <span id="boostPct">60%</span></span></div>
       </header>
 
-      <!-- プレイ領域 -->
       <main class="play">
-        <canvas id="game" width="390" height="540" aria-label="ゲーム画面"></canvas>
+        <canvas id="game" width="390" height="540"></canvas>
 
-        <!-- キャラ選択 -->
         <div id="overlay">
           <div class="card">
             <p class="title">どちらか選択してスタート</p>
-            <p class="sub">リポジトリ直下に <code>VR.png</code> / <code>orange.png</code> / <code>sora.png</code> / <code>mob.png</code> を置いてください（大文字拡張子も可）。</p>
+            <p class="sub">直下に <code>VR.png</code> / <code>orange.png</code> / <code>sora.png</code> / <code>mob.png</code> を置いてください。</p>
             <div class="choices">
-              <div class="choice" data-char="VR">
-                <img src="VR.png" alt="VR" onerror="this.style.opacity='.3';this.alt='VR.png 未配置';"><small>VR.png</small>
-              </div>
-              <div class="choice" data-char="orange">
-                <img src="orange.png" alt="orange" onerror="this.style.opacity='.3';this.alt='orange.png 未配置';"><small>orange.png</small>
-              </div>
+              <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
+              <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
             </div>
-            <p class="sub" style="margin-top:10px;">※ 未配置でもシルエットで開始できます。</p>
           </div>
         </div>
       </main>
 
-      <!-- 操作 -->
-      <footer class="ctrl" aria-label="操作">
+      <footer class="ctrl">
         <button class="btn primary" id="btnJump">ジャンプ</button>
         <div></div>
         <button class="btn accent" id="btnBoost">ブースト</button>
       </footer>
-
-      <div id="dbg"></div>
     </div>
   </div>
 
 <script>
 (() => {
-  /* ===== 0) 画面スケール：PCでもスマホと完全一致表示 ===== */
+  /* ==== PCでもスマホと同じ見た目（固定390×700をスケール） ==== */
   const phone = document.getElementById('phone');
-  function fitPhone(){
-    const stageW = 390, stageH = 700;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const scale = Math.min(vw / stageW, vh / stageH);
-    phone.style.transform = `scale(${scale})`;
-  }
-  window.addEventListener('resize', fitPhone, {passive:true});
-  window.visualViewport && window.visualViewport.addEventListener('resize', fitPhone, {passive:true});
-  fitPhone();
+  function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
+  addEventListener('resize', fit, {passive:true}); fit();
 
-  /* ===== 1) キャンバス（固定論理 390×540, DPR対応） ===== */
+  /* ==== Canvas ==== */
   const cvs = document.getElementById('game');
-  const ctx = cvs.getContext('2d');
-  const STAGE_W = 390, STAGE_H = 540;
-  let DPR = 1;
-  function setupCanvas(){
-    DPR = Math.max(1, window.devicePixelRatio || 1);
-    cvs.width  = Math.round(STAGE_W * DPR);
-    cvs.height = Math.round(STAGE_H * DPR);
-    ctx.setTransform(DPR,0,0,DPR,0,0);   // 以降は論理pxでOK
-  }
-  setupCanvas();
-  window.addEventListener('resize', setupCanvas, {passive:true});
+  const ctx = cvs.getContext('2d', { alpha:true });
+  ctx.imageSmoothingEnabled = false;  // サブピクセルぼけ→隙間の原因を回避
+  const W = 390, H = 540;
+  function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
+  setup(); addEventListener('resize', setup, {passive:true});
 
-  /* ===== 2) 画像ロード（小文字→失敗なら大文字などに自動フォールバック） ===== */
-  function loadImageWithFallback(baseNames){
-    // baseNames: 例 ["sora.png","SORA.PNG","sora.PNG","SORA.png"]
-    const img = new Image();
-    let idx = 0;
-    function tryNext(){
-      if (idx >= baseNames.length) return; // 最後まで失敗
-      img.src = baseNames[idx++];
-    }
-    img.addEventListener('error', tryNext);
-    tryNext();
-    return img;
-  }
-  const imgBG = loadImageWithFallback(["sora.png","SORA.PNG","sora.PNG","SORA.png"]);
-  const imgGR = loadImageWithFallback(["mob.png","MOB.PNG","mob.PNG","MOB.png"]);
-  const imgVR = loadImageWithFallback(["VR.png","VR.PNG"]);
-  const imgOR = loadImageWithFallback(["orange.png","ORANGE.PNG","orange.PNG","ORANGE.png"]);
+  /* ==== 画像 ==== */
+  const bg = new Image(); bg.src = 'sora.png';
+  const gr = new Image(); gr.src = 'mob.png';
+  const vr = new Image(); vr.src = 'VR.png';
+  const or = new Image(); or.src = 'orange.png';
 
-  /* ===== 3) 地面：透明上端の自動トリム ===== */
-  let groundTrimTop = 0;     // ソース画像の上から何pxトリムするか
-  let groundDrawH   = 96;    // 画面に描く高さ（見た目の厚み）
+  /* ==== 地面の余白トリム（自動＋手動微調整） ==== */
+  const GROUND_EXTRA_TRIM = 2; // ←ここを 0〜3 で調整できます（追加で上から削るpx）
+  let groundTrimTop = 0;      // 自動検出
+  let groundDrawH = 96;       // 画面上の見た目厚み（自動で置換）
   function analyzeGround(){
-    if (!imgGR.complete || !imgGR.naturalWidth) return;
-    // オフスクリーンでピクセル解析（同一オリジンのためOK）
-    const ow = imgGR.naturalWidth, oh = imgGR.naturalHeight;
-    const oc = document.createElement('canvas'); oc.width = ow; oc.height = oh;
-    const ox = oc.getContext('2d');
-    ox.drawImage(imgGR,0,0);
-    const buf = ox.getImageData(0,0,ow,oh).data;
-    // 上から下へ、αが一定しきい値を超える最初の行を探す
-    const TH = 8; // α>8程度で非透明とみなす（0〜255）
-    let found = 0;
-    outer: for (let y=0; y<oh; y++){
-      for (let x=0; x<ow; x++){
-        const a = buf[(y*ow + x)*4 + 3];
-        if (a > TH){ found = y; break outer; }
+    if (!gr.complete || !gr.naturalWidth) return;
+    const ow = gr.naturalWidth, oh = gr.naturalHeight;
+    const oc = document.createElement('canvas'); oc.width=ow; oc.height=oh;
+    const ox = oc.getContext('2d', { willReadFrequently:true });
+    ox.drawImage(gr,0,0);
+    const data = ox.getImageData(0,0,ow,oh).data;
+    const TH = 12; // α>12 で非透明とみなす
+    // 上から最初の非透明行を探す
+    let top = 0, found=false;
+    outer: for(let y=0;y<oh;y++){
+      for(let x=0;x<ow;x++){
+        if (data[(y*ow+x)*4+3]>TH){ top=y; found=true; break outer; }
       }
     }
-    groundTrimTop = found;                             // トリム量（ソース座標）
-    const contentH = Math.max(1, oh - groundTrimTop);  // 透明を除いた有効高さ
-    groundDrawH = Math.max(48, Math.min(160, contentH)); // 画面での見た目厚み
-    dbg(`mob: trimTop=${groundTrimTop}px, contentH=${contentH}px, drawH=${groundDrawH}px`);
+    groundTrimTop = found ? Math.max(0, top + GROUND_EXTRA_TRIM) : 0;
+    const contentH = Math.max(1, oh - groundTrimTop);
+    groundDrawH = Math.max(48, Math.min(160, contentH));
   }
-  imgGR.onload = analyzeGround;
+  gr.onload = analyzeGround;
 
-  /* ===== 4) レイヤ描画：横タイル ===== */
-  function drawBG(offsetX){
-    // 背景：高さ STAGE_H 全面
-    if (!imgBG.complete || !imgBG.naturalWidth){
-      ctx.fillStyle = '#0b1120'; ctx.fillRect(0,0,STAGE_W,STAGE_H); return;
-    }
-    const scaleY = STAGE_H / imgBG.naturalHeight;
-    const tileW  = imgBG.naturalWidth * scaleY;
-    let ox = offsetX % tileW; if (ox > 0) ox -= tileW;
-    const y = 0;
-    for (let x = ox; x < STAGE_W; x += tileW){
-      ctx.drawImage(imgBG, Math.round(x), y, Math.ceil(tileW), STAGE_H);
-    }
-  }
-  function drawGround(offsetX){
-    if (!imgGR.complete || !imgGR.naturalWidth){
-      // 読み込み前フォールバック
-      ctx.fillStyle = '#142238'; ctx.fillRect(0, STAGE_H - groundDrawH, STAGE_W, groundDrawH); return;
-    }
-    const srcW = imgGR.naturalWidth;
-    const srcH = imgGR.naturalHeight - groundTrimTop; // 有効部分のみ
-    const scaleY = groundDrawH / srcH;
-    const tileW  = srcW * scaleY;
-
-    let ox = offsetX % tileW; if (ox > 0) ox -= tileW;
-    const y = Math.round(STAGE_H - groundDrawH);  // 地面上端（整数で固定）
-    for (let x = ox; x < STAGE_W; x += tileW){
-      // ソースは上端をトリムして描く → 見た目の上端＝有効ピクセル上端＝床
-      ctx.drawImage(
-        imgGR,
-        0, groundTrimTop, srcW, srcH,   // src
-        Math.round(x), y, Math.ceil(tileW), groundDrawH // dest
-      );
+  /* ==== タイル描画（横ループ） ==== */
+  function drawTiledX(img, yTop, height, offsetX, srcY=0, srcH=null){
+    if (!img.complete || !img.naturalWidth){ ctx.fillStyle='#0b1120'; ctx.fillRect(0,yTop,W,height); return; }
+    const sY = srcY|0;
+    const sH = srcH?srcH:img.naturalHeight - sY;
+    const scaleY = height / sH;
+    const tileW = img.naturalWidth * scaleY;
+    // 正規化
+    let ox = offsetX % tileW; if (ox>0) ox -= tileW;
+    const y = Math.floor(yTop); // 整数に固定（隙間対策）
+    for(let x=ox; x<W; x+=tileW){
+      ctx.drawImage(img, 0, sY, img.naturalWidth, sH, Math.floor(x), y, Math.ceil(tileW), Math.ceil(height));
     }
   }
 
-  /* ===== 5) ゲーム状態 ===== */
-  const floorY = () => Math.round(STAGE_H - groundDrawH); // 床＝地面上端（整数）
-  const player = { x:80, y:floorY(), vy:0, w:48, h:48, jumps:2, img:null, color:'#f63' };
+  /* ==== 状態 ==== */
+  const floorY = () => Math.floor(H - groundDrawH);  // 地面上端（整数）
+  const player = { x:80, y:floorY(), vy:0, w:48, h:48, jumps:2, img:null, color:'#6cf' };
+  const GRAV=1500, JUMP=540, BASE=220, BOOST=480, KM=0.072;
 
-  // HUD
-  const elDist  = document.getElementById('dist');
-  const elSpeed = document.getElementById('speed');
-  const elJump  = document.getElementById('jump');
-  const elCoin  = document.getElementById('coin');
-  const elBoost = document.getElementById('boostPct');
+  let boosting=false, boost=60, speed=BASE, dist=0, bgOff=0, grOff=0;
 
-  // 操作
-  const btnJump  = document.getElementById('btnJump');
-  const btnBoost = document.getElementById('btnBoost');
-
-  // 物理・進行
-  const GRAV = 1500, JUMP_V = 540, BASE_SPEED=220, BOOST_SPEED=480, PXPS_TO_KMPH=0.072;
-  let boosting=false, boost=60, speed=BASE_SPEED, distPx=0, bgOff=0, grOff=0;
-
-  // キャラ選択
+  /* ==== キャラ選択 ==== */
   const overlay = document.getElementById('overlay');
-  overlay.addEventListener('click', (e)=>{
-    const c = e.target.closest('.choice'); if (!c) return;
-    if (c.dataset.char==='VR'){ player.img=imgVR; player.color='#6cf'; } else { player.img=imgOR; player.color='#f63'; }
+  overlay.addEventListener('click', e=>{
+    const c=e.target.closest('.choice'); if(!c) return;
+    player.img = (c.dataset.char==='VR') ? vr : or;
     player.y=floorY(); player.vy=0; player.jumps=2;
     overlay.style.display='none';
     start();
   });
 
-  // 入力
-  function doJump(){ if (player.jumps>0){ player.vy=-JUMP_V; player.jumps--; updateHUD(); } }
-  btnJump.addEventListener('pointerdown', e=>{ e.preventDefault(); doJump(); });
-  btnBoost.addEventListener('pointerdown', e=>{ e.preventDefault(); boosting=true; });
-  btnBoost.addEventListener('pointerup',   e=>{ e.preventDefault(); boosting=false; });
-  btnBoost.addEventListener('pointercancel', e=>{ e.preventDefault(); boosting=false; });
-  window.addEventListener('keydown', e=>{ if (e.code==='Space'||e.code==='ArrowUp') doJump(); if (e.code==='ShiftLeft'||e.code==='KeyB') boosting=true; });
-  window.addEventListener('keyup',   e=>{ if (e.code==='ShiftLeft'||e.code==='KeyB') boosting=false; });
+  /* ==== 入力 ==== */
+  const j=document.getElementById('btnJump'), b=document.getElementById('btnBoost');
+  function doJump(){ if(player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } }
+  j.onpointerdown=e=>{e.preventDefault();doJump();};
+  b.onpointerdown=e=>{e.preventDefault();boosting=true;};
+  b.onpointerup=e=>{e.preventDefault();boosting=false;};
+  b.onpointercancel=e=>{e.preventDefault();boosting=false;};
+  addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp')doJump(); if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=true;});
+  addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB')boosting=false;});
 
-  // HUD更新
-  function updateHUD(){
-    elDist.textContent  = `距離 ${Math.floor(distPx*0.02)} m`;
-    elSpeed.textContent = `速度 ${Math.round(speed*PXPS_TO_KMPH)} km/h`;
-    elJump.textContent  = `ジャンプ ${player.jumps}`;
-    elCoin.textContent  = `コイン 0`;
-    elBoost.textContent = `${Math.round(boost)}%`;
-    btnBoost.disabled   = boost<=0;
-  }
+  /* ==== HUD ==== */
+  const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump'), elCoin=document.getElementById('coin'), elBoost=document.getElementById('boostPct');
+  function updateHUD(){ elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`; elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`; elJump.textContent=`ジャンプ ${player.jumps}`; elCoin.textContent=`コイン 0`; elBoost.textContent=`${Math.round(boost)}%`; b.disabled=boost<=0; }
 
-  // ループ
+  /* ==== メインループ ==== */
   let running=false, prev=0;
-  function start(){ if (running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
+  function start(){ if(running)return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
   function loop(t){
-    if (!running) return;
-    const dt = Math.min(0.033, (t-prev)/1000); prev=t;
+    const dt=Math.min(0.033,(t-prev)/1000); prev=t;
 
-    // スピード/ブースト
-    if (boosting && boost>0){ speed=BOOST_SPEED; boost=Math.max(0, boost-24*dt); }
-    else { speed=BASE_SPEED; boost=Math.min(100, boost+10*dt); }
+    if(boosting && boost>0){ speed=BOOST; boost=Math.max(0,boost-24*dt); } else { speed=BASE; boost=Math.min(100,boost+10*dt); }
 
-    // 物理（床にビタ付け / サブピクセルの縁を排除）
     player.vy += GRAV*dt;
     player.y  += player.vy*dt;
-    const fy = floorY();
-    if (player.y > fy){ player.y = fy; player.vy=0; player.jumps=2; }
+    const fy=floorY();
+    if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; } // 足元＝地面上端にビタ付け
 
-    // 横オフセット
-    distPx += speed*dt;
-    bgOff  -= speed*0.20*dt;  // 背景はゆっくり
-    grOff  -= speed*1.00*dt;  // 地面は等速
+    dist  += speed*dt;
+    bgOff -= speed*0.2*dt;
+    grOff -= speed*1.0*dt;
 
-    // 描画（整数座標で揃える）
-    ctx.clearRect(0,0,STAGE_W,STAGE_H);
-    drawBG(bgOff);
-    drawGround(grOff);
+    // 描画
+    ctx.clearRect(0,0,W,H);
+    drawTiledX(bg, 0, H, bgOff);                                 // 背景（全面）
+    drawTiledX(gr, H-groundDrawH, groundDrawH, grOff, groundTrimTop, null); // 地面（上端トリム）
 
-    const px = Math.round(player.x), py = Math.round(player.y - player.h);
-    if (player.img && player.img.complete && player.img.naturalWidth>0){
-      ctx.drawImage(player.img, px, py, player.w, player.h);
-    } else {
-      ctx.fillStyle = player.color; ctx.fillRect(px, py, player.w, player.h);
-    }
+    const px=Math.floor(player.x), py=Math.floor(player.y-player.h);
+    if(player.img && player.img.complete && player.img.naturalWidth>0){ ctx.drawImage(player.img, px, py, player.w, player.h); }
+    else { ctx.fillStyle=player.color; ctx.fillRect(px, py, player.w, player.h); }
 
     updateHUD();
     requestAnimationFrame(loop);
   }
 
-  /* ===== 6) 画像デバッグ（sora/mob が未読込なら表示） ===== */
-  const dbgEl = document.getElementById('dbg');
-  function dbg(msg){ dbgEl.textContent = msg; }
-  function tickDebug(){
-    const bgOK = (imgBG.complete && imgBG.naturalWidth>0);
-    const grOK = (imgGR.complete && imgGR.naturalWidth>0);
-    dbgEl.textContent = `${bgOK?'BG:OK':'BG:待機'}  ${grOK?'GR:OK':'GR:待機'}`;
-    requestAnimationFrame(tickDebug);
-  }
-  tickDebug();
-
-  // タップでのページスクロール抑止（UI以外）
+  /* ==== スクロール抑止（UI以外） ==== */
   ['touchstart','touchmove','gesturestart'].forEach(ev=>{
-    document.addEventListener(ev, (e)=>{
-      if (e.target.closest('button, .choice')) return;
-      e.preventDefault();
-    }, {passive:false});
+    document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
   });
 })();
 </script>
