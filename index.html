@@ -2,611 +2,1003 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
-<title>MOB KART CHALLENGE — v6.1（入力/再開 安定版・TDZ修正）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>MOB KART CHALLENGE - Runner (Single file)</title>
+<meta name="theme-color" content="#0b0c10" />
 <style>
   :root{
-    --ui-fg:#fff; --ui-dim:#9fb0ce; --line:#2b3342;
-    --safe-top: env(safe-area-inset-top,0px);
-    --safe-bottom: env(safe-area-inset-bottom,0px);
+    --bg:#0b0c10; --panel:#141822; --panel2:#1a2030; --fg:#e9eef7; --dim:#9aa3b2; --accent:#13c4ff; --accent2:#ff3e7f;
+    --ok:#25d366; --warn:#ffb020; --danger:#ff4757;
   }
-  html,body{
-    margin:0;height:100%;background:#000;color:var(--ui-fg);
-    font-family:-apple-system,system-ui,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
-    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  /* ===== Reset / Fill ===== */
+  html{ height: -webkit-fill-available; }
+  body{
+    margin:0; background:#000; color:var(--fg); font-family: "SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif;
+    height:100dvh; min-height:100dvh;
   }
-  *{box-sizing:border-box}
-  #app{position:fixed;inset:0;overflow:hidden}
+  #wrap{ position:fixed; inset:0; display:flex; background:linear-gradient(160deg,#0b0c10 0%, #0c111a 60%, #0b0c10 100%); }
 
-  /* 固定UI */
-  .topbar{
-    position:fixed;inset:0 0 auto 0;z-index:300;display:flex;gap:12px;align-items:center;
-    padding:calc(8px + var(--safe-top)) 12px 8px;background:rgba(11,15,20,.9);backdrop-filter:blur(8px)
-  }
-  .title b{font-size:16px}.title small{display:block;color:var(--ui-dim);font-size:11px}
-  .right{margin-left:auto}
-  .ghost{background:#0f141b;border:1px solid var(--line);color:#dfe7f7;border-radius:14px;padding:8px 12px;font-size:13px}
+  /* ===== Canvas layer ===== */
+  #game{ position:absolute; inset:0; }
+  canvas#cv{ position:absolute; left:0; top:0; width:100%; height:100%; display:block; touch-action:none; background:#000; }
 
-  .hud{
-    position:fixed;top:calc(48px + var(--safe-top));left:0;right:0;z-index:260;display:flex;gap:10px;align-items:center;
-    padding:8px 12px;pointer-events:none
-  }
-  .pill{pointer-events:auto;min-width:72px;padding:8px 12px;border-radius:18px;background:#182028;border:1px solid var(--line)}
-  .pill h6{margin:0;font-size:10px;color:var(--ui-dim)} .pill .v{font-size:14px;margin-top:2px}
+  /* ===== HUD (fixed, safe-area aware) ===== */
+  .hud{ position:fixed; left:0; right:0; top:0; padding-top:calc(env(safe-area-inset-top) + 8px); pointer-events:none; }
+  .hud-row{ display:flex; justify-content:space-between; gap:8px; padding:8px 12px; }
+  .pill{ pointer-events:auto; background:rgba(20,24,34,.92); border-radius:16px; padding:8px 12px; min-width:88px; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  .pill .s{ font-size:12px; color:var(--dim); }
+  .pill .b{ font-size:18px; font-weight:700; }
 
-  /* ブーストゲージはHUDより一段下で存在感 */
-  .boostrow{position:fixed;left:12px;right:12px;top:calc(128px + var(--safe-top));z-index:250}
-  .boostbar{height:18px;border-radius:10px;border:1px solid var(--line);background:#0c1118;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.35)}
-  .boostbar .fill{height:100%;width:0;background:linear-gradient(90deg,#1fb6ff,#60a5fa)}
-  .boostbar.ready{box-shadow:0 0 0 2px rgba(31,182,255,.18), inset 0 0 14px rgba(96,165,250,.45)}
+  /* Boost bar on its own row (一段下) */
+  .boost-row{ padding:0 12px 8px 12px; }
+  .boostWrap{ pointer-events:auto; background:rgba(20,24,34,.92); border-radius:12px; padding:10px 12px; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  .bar{ height:10px; width:100%; background:#222a3b; border-radius:10px; overflow:hidden; }
+  .bar>i{ display:block; height:100%; width:0%; background:linear-gradient(90deg,#36f,#13c4ff); }
 
-  #stageWrap{position:fixed;inset:0;z-index:50}
-  #cv{width:100%;height:100%;display:block;background:#000;touch-action:none}
+  /* ===== Bottom Controls ===== */
+  .ctrl{ position:fixed; left:0; right:0; bottom:0; padding-bottom:calc(env(safe-area-inset-bottom) + 10px); pointer-events:none; }
+  .ctrl-inner{ display:flex; justify-content:space-between; gap:10px; padding:10px 12px; }
+  .btn{ pointer-events:auto; user-select:none; -webkit-user-select:none; background:#0f121a; border:1px solid #1f2a3f;
+        color:#fff; border-radius:18px; min-width:120px; padding:16px 18px; font-weight:700; text-align:center;
+        box-shadow:0 10px 24px rgba(0,0,0,.35); }
+  .btn:active{ transform:translateY(1px); }
+  .btn.boost{ background:#171019; border-color:#32212d; }
+  .slots{ display:flex; gap:10px; }
+  .slot{ pointer-events:auto; background:#0f121a; border:1px dashed #2a3755; color:#9fb2d4; border-radius:16px; width:76px; height:64px; display:flex; align-items:center; justify-content:center; font-size:12px; box-shadow:0 10px 24px rgba(0,0,0,.35); }
+  .slot.filled{ border-style:solid; color:#fff; }
 
-  .controls{
-    position:fixed;left:0;right:0;bottom:0;z-index:320;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;
-    padding:10px 12px calc(10px + var(--safe-bottom));pointer-events:auto
-  }
-  .cbtn{border-radius:16px;padding:14px 10px;border:1px solid var(--line);background:#0e1218;box-shadow:0 8px 24px rgba(0,0,0,.35);color:#dfe7f7;font-size:15px}
-  .cbtn:active{transform:translateY(1px)} .jump{background:#0f1523} .boost{background:#1a0f12} .item{background:#0f171a}
-  .cbtn[disabled]{opacity:.35}
+  /* ===== Overlays ===== */
+  .centerOverlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; pointer-events:none; }
+  .fade{ transition:opacity .4s ease; }
+  .hidden{ opacity:0; pointer-events:none; }
+  .op, .countdown, .bigmsg, .menu{ position:absolute; display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .op img{ width:min(60vw,380px); height:auto; }
+  .countdown .num{ font-size:64px; font-weight:900; text-shadow:0 8px 24px rgba(0,0,0,.55); }
+  .bigmsg .txt{ font-size:40px; font-weight:900; text-shadow:0 8px 24px rgba(0,0,0,.55); }
+  .menu .row{ display:flex; gap:10px; }
+  .menu .mBtn{ pointer-events:auto; padding:12px 18px; background:#1a2132; border-radius:14px; font-weight:700; border:1px solid #2a3652; }
+  .menu .mBtn.primary{ background:#11324a; border-color:#1a5a86; }
+  .topright{ position:fixed; top:calc(env(safe-area-inset-top) + 8px); right:12px; z-index:20; }
+  .small{ font-size:12px; color:#9aa3b2; }
 
-  .cut{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;pointer-events:none}
-  .cut img{max-width:70vw;max-height:60vh;filter:drop-shadow(0 10px 24px rgba(0,0,0,.55));opacity:0;transform:scale(.95);transition:.25s}
-  .cut.show img{opacity:1;transform:scale(1)}
-  .countdown{position:fixed;inset:0;z-index:210;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:64px;letter-spacing:2px;text-shadow:0 8px 30px rgba(0,0,0,.6);opacity:0;transition:.15s;pointer-events:none}
-  .countdown.show{opacity:1}
-
-  .centerModal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);z-index:400;pointer-events:auto}
-  .centerModal.show{display:flex}
-  .card{background:#0b0f15;border:1px solid #253044;border-radius:16px;padding:16px;min-width:260px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
-  .row{display:flex;gap:10px;align-items:center;justify-content:center}
-  .opt{border:1px solid var(--line);background:#0d121a;border-radius:12px;padding:8px 10px}
-  .opt img{height:64px}
-  .stack{display:flex;gap:10px;justify-content:center;margin-top:10px}
-
-  #fatal{position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6)}
-  #fatal .msg{background:#180d0d;border:1px solid #4a2323;color:#ffdede;border-radius:12px;padding:12px;max-width:90vw;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap}
+  /* キャラ選択 */
+  .select{ position:fixed; inset:0; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:12px; background:rgba(0,0,0,.5); }
+  .cardRow{ display:flex; gap:14px; }
+  .char{ pointer-events:auto; background:#0f121a; border:2px solid #2a3755; border-radius:16px; padding:10px; width:min(42vw,200px); text-align:center; }
+  .char img{ width:100%; height:auto; display:block; }
+  .char .nm{ margin-top:6px; font-weight:700; }
 </style>
 </head>
 <body>
-<div id="app">
-  <div class="topbar">
-    <div class="title"><b>MOB KART CHALLENGE</b><small>v6.1</small></div>
-    <div class="right"><button id="btnFS" class="ghost">全画面</button></div>
+<div id="wrap">
+  <div id="game"><canvas id="cv" width="1280" height="720"></canvas></div>
+
+  <!-- ===== HUD ===== -->
+  <div class="hud fade" id="hud">
+    <div class="hud-row">
+      <div class="pill"><div class="s">距離</div><div class="b"><span id="uiDist">0</span> m</div></div>
+      <div class="pill"><div class="s">速度</div><div class="b"><span id="uiSpd">0</span> km/h</div></div>
+      <div class="pill"><div class="s">ジャンプ</div><div class="b">×<span id="uiJump">0</span></div></div>
+      <div class="pill"><div class="s">コイン</div><div class="b"><span id="uiCoin">0</span>/10</div></div>
+      <div class="pill small">キャラ <span id="uiChar">-</span></div>
+    </div>
+    <div class="boost-row">
+      <div class="boostWrap">
+        <div class="s">ブースト</div>
+        <div class="bar"><i id="boostBar"></i></div>
+      </div>
+    </div>
   </div>
 
-  <div class="hud">
-    <div class="pill"><h6>距離</h6><div class="v" id="hudDist">0 m</div></div>
-    <div class="pill"><h6>速度</h6><div class="v" id="hudSpeed">0 km/h</div></div>
-    <div class="pill"><h6>ジャンプ</h6><div class="v" id="hudJump">×2</div></div>
-    <div class="pill" id="hudCoin"><h6>コイン</h6><div class="v">0/10</div></div>
-    <div class="pill"><h6>キャラ</h6><div class="v"><button id="btnChange" class="ghost">変更</button></div></div>
-  </div>
-  <div class="boostrow"><div class="boostbar" id="boostBar"><div class="fill"></div></div></div>
-
-  <div id="stageWrap"><canvas id="cv" width="540" height="960"></canvas></div>
-
-  <div class="controls">
-    <button id="btnJump"  class="cbtn jump">ジャンプ</button>
-    <button id="btnBoost" class="cbtn boost">ブースト</button>
-    <button id="btnItem1" class="cbtn item" disabled>アイテム1</button>
-    <button id="btnItem2" class="cbtn item" disabled>アイテム2</button>
+  <!-- ===== Controls ===== -->
+  <div class="ctrl fade" id="ctrl">
+    <div class="ctrl-inner">
+      <div class="btn jumpBtn" id="btnJump">ジャンプ</div>
+      <div class="btn boost" id="btnBoost">ブースト</div>
+      <div class="slots">
+        <div class="slot" id="slot1">アイテム<br>1</div>
+        <div class="slot" id="slot2">アイテム<br>2</div>
+      </div>
+    </div>
   </div>
 
-  <div class="cut" id="cut"><img id="cutImg" alt=""></div>
-  <div class="countdown" id="countdown">3</div>
-
-  <div class="centerModal" id="charSel">
-    <div class="card">
-      <div style="font-size:20px;font-weight:700;margin-bottom:8px">キャラ選択</div>
+  <!-- ===== Overlays ===== -->
+  <div class="centerOverlay">
+    <div class="op fade" id="opBox" style="opacity:0">
+      <img id="opImg" alt="OP">
+      <div class="small">タップでスキップ</div>
+    </div>
+    <div class="select fade hidden" id="selectBox">
+      <div class="pill">キャラクターを選択</div>
+      <div class="cardRow">
+        <div class="char" data-id="orange"><img id="imgOrange" alt=""><div class="nm">ORANGE</div></div>
+        <div class="char" data-id="VR"><img id="imgVR" alt=""><div class="nm">VR</div></div>
+      </div>
+    </div>
+    <div class="countdown fade hidden" id="countBox"><div class="num" id="countNum"></div></div>
+    <div class="bigmsg fade hidden" id="msgBox"><div class="txt" id="msgTxt"></div></div>
+    <div class="menu fade hidden" id="menuBox">
+      <div class="pill">どうする？</div>
       <div class="row">
-        <button class="opt" id="pickOrange"><img src="orange.png" alt="orange"></button>
-        <button class="opt" id="pickVR"><img src="VR.png" alt="VR"></button>
-      </div>
-      <div class="stack"><button id="btnStart" class="cbtn" style="font-size:18px;padding:14px 28px">スタート</button></div>
-    </div>
-  </div>
-
-  <div class="centerModal" id="gameOver">
-    <div class="card">
-      <div id="goMsg" style="font-size:22px;font-weight:700;margin-bottom:10px">記録 0m！</div>
-      <div class="stack">
-        <button id="goRestart" class="cbtn">リスタート</button>
-        <button id="goChange"  class="cbtn">キャラ選択へ</button>
-        <button id="goQuit"    class="cbtn">やめる</button>
+        <div class="mBtn primary" id="mStart">スタート</div>
+        <div class="mBtn" id="mSelect">キャラ選択</div>
+        <div class="mBtn" id="mQuit">やめる</div>
       </div>
     </div>
   </div>
-
-  <div id="fatal"><div class="msg" id="fatalMsg"></div></div>
 </div>
 
 <script>
-(() => {
-/* ================== 便利: ボタン用タップ束ね（pointer/touch/click） ================== */
-function bindTap(el, handler){
-  let gate=0;
-  function wrap(ev){ ev&&ev.preventDefault&&ev.preventDefault(); const now=performance.now(); if(now-gate<100) return; gate=now; try{ handler(); }catch(e){ console.error(e); } }
-  el.addEventListener('pointerdown',wrap,{passive:false});
-  el.addEventListener('touchstart',wrap,{passive:false});
-  el.addEventListener('click',wrap,{passive:false});
-}
+/* ==========================================================
+   Utility
+========================================================== */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rand=(a,b)=>a+Math.random()*(b-a);
+const randi=(a,b)=>Math.floor(rand(a,b+1));
+const now=()=>performance.now();
 
-/* ================== Canvas / サイズ ================== */
-const cv=document.getElementById('cv'); const ctx=cv.getContext('2d'); ctx.imageSmoothingEnabled=false;
-let vw=cv.width|0, vh=cv.height|0;
-function safeViewport(){
-  let w=(innerWidth||document.documentElement.clientWidth||540);
-  let h=(innerHeight||document.documentElement.clientHeight||960);
-  if(!h || h<200){ h=(screen&&screen.height)||960; }
-  w=Math.max(540,Math.min(720,Math.round(w)));
-  h=Math.max(900,Math.min(1200,Math.round(h)));
-  return [w,h];
-}
-function fit(){ const [w,h]=safeViewport(); vw=cv.width=w; vh=cv.height=h; }
-addEventListener('resize',fit,{passive:true}); addEventListener('orientationchange',fit,{passive:true}); addEventListener('pageshow',fit,{passive:true}); fit();
+/* ==========================================================
+   Images (ファイル名は指定通り。大文字/小文字厳守)
+========================================================== */
+const IMG_LIST = {
+  bg:'sora.PNG',
+  ground:'mob.png',
+  op:'op.png',
+  orange:'orange.png',
+  VR:'VR.png',
 
-/* ================== DOM参照 ================== */
-const elDist=document.getElementById('hudDist'), elSpeed=document.getElementById('hudSpeed'),
-      elJump=document.getElementById('hudJump'), elCoin=document.getElementById('hudCoin').querySelector('.v'),
-      cut=document.getElementById('cut'), cutImg=document.getElementById('cutImg'), countdown=document.getElementById('countdown'),
-      boostBar=document.getElementById('boostBar'), boostFill=boostBar.querySelector('.fill'),
-      charSel=document.getElementById('charSel'), btnStart=document.getElementById('btnStart'),
-      btnChange=document.getElementById('btnChange'), pickOrange=document.getElementById('pickOrange'), pickVR=document.getElementById('pickVR'),
-      goModal=document.getElementById('gameOver'), goMsg=document.getElementById('goMsg'),
-      fatal=document.getElementById('fatal'), fatalMsg=document.getElementById('fatalMsg');
+  corn:'corn.PNG',
+  dokan:'dokan.png',
+  jumpdai:'jumpdai.png',
+  kanban1:'kanban1.png',
+  kanban2:'kanban2.png',
+  kanban3:'kanban3.png',
+  kanban4:'kanban4.png',
+  kanban5:'kanban5.png',
+  kanban6:'kanban6.png',
 
-const btnFS=document.getElementById('btnFS'), btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost'),
-      btnItem1=document.getElementById('btnItem1'), btnItem2=document.getElementById('btnItem2'),
-      goRestart=document.getElementById('goRestart'), goChange=document.getElementById('goChange'), goQuit=document.getElementById('goQuit');
+  coin:'coin.png',
+  gold:'gold.png',
+  hoshi1:'hoshi1.png',
+  hoshi2:'hoshi2.png',
+  mutekiop:'mutekiop.png',
 
-/* ================== Util ================== */
-const shrink=(r,p)=>({x:r.x+p,y:r.y+p,w:r.w-2*p,h:r.h-2*p});
-const rects=(a,b)=>!(a.x+a.w<b.x||b.x+b.w<a.x||a.y+a.h<b.y||b.y+b.h<a.y);
-function showFatal(e){ fatalMsg.textContent=String(e&&e.stack||e); fatal.style.display='flex'; }
-function toggleFS(){ const el=document.documentElement;
-  if(!document.fullscreenElement && !document.webkitFullscreenElement){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); btnFS.textContent='全画面解除'; }
-  else{ (document.exitFullscreen||document.webkitExitFullscreen).call(document); btnFS.textContent='全画面'; }}
+  viranop:'viran op.png',
+  viran:'viran.png',
+  tama:'tama.png',
 
-/* ================== 画像ロード（大文字/小文字厳守） ================== */
-const essential=['sora.PNG','hatake2.png','do-ro.png','mob.png','orange.png','VR.png','op.png','jumpdai.png','contena.png','tora.png','dokan.png'];
-const deferred=['corn.PNG','kanban1.png','kanban2.png','kanban3.png','kanban4.png','kanban5.png','kanban6.png','coin.png','gold.png','hoshi1.png','hoshi2.png','mutekiop.png','viran op.png','viran.png','tama.png','tsubasa.png','jump.png','en.png','gomi.png'];
-const IMG={}; function loadList(list){ for(const fn of list){ const im=new Image(); im.src=encodeURI(fn); im.onload=()=>{IMG[fn]=im; analyzeTop(fn,im)}; im.onerror=()=>{IMG[fn]=im}; } }
-loadList(essential);
+  tsubasa:'tsubasa.png',
+  jumpItem:'jump.png',
+  en:'en.png',
 
-/* ================== 乗れる物体の上端自動推定 ================== */
-const rideSrcKind={'contena.png':'contena','tora.png':'tora','dokan.png':'dokan'};
-const DEFAULT_RIDE_PX={contena:14,tora:10,dokan:12};
-const RIDE_TWEAK_PX={contena:1,tora:1,dokan:3};
-const rideFrac={};
-function analyzeTop(src,img){
-  const kind=rideSrcKind[src]; if(!kind) return;
-  try{
-    const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height; if(!w||!h) return;
-    const c=document.createElement('canvas'); c.width=w; c.height=h; const g=c.getContext('2d'); g.drawImage(img,0,0);
-    const data=g.getImageData(0,0,w,h).data;
-    const xmin=Math.floor(w*0.15), xmax=Math.ceil(w*0.85), step=Math.max(1,Math.floor((xmax-xmin)/24));
-    let top=h;
-    for(let x=xmin;x<=xmax;x+=step){ for(let y=0;y<h;y++){ if(data[(y*w+x)*4+3]>16){ if(y<top) top=y; break; } } }
-    if(top!==h) rideFrac[kind]=top/h;
-  }catch(e){}
-}
-const rideInsetPx=(kind,scaledH)=> {
-  const base = rideFrac.hasOwnProperty(kind)?Math.round(scaledH*rideFrac[kind]):(DEFAULT_RIDE_PX[kind]||2);
-  return base + (RIDE_TWEAK_PX[kind]||0);
+  // 追加物
+  gomi:'gomi.png',
+  contena:'contena.png',
+  tora:'tora.png'
 };
 
-/* ================== 世界・物理・状態 ================== */
-const GY=()=>Math.floor(vh*0.80), RUNX=()=>Math.floor(vw*0.25);
-const SAFE_M=80, PX_PER_M=30, KMH_PER_PX=0.12;
+const images = {};
+let loaded = 0, toLoad = Object.keys(IMG_LIST).length;
 
-const SIZE={
-  player:{w:90,h:64}, corn:{w:54,h:76}, gomi:{w:110,h:102},
-  cont:{w:172,h:158}, tora:{w:176,h:122}, dokan:{w:126,hMax:110},
-  jump:{w:240,h:78}, kanban:{w:540,h:405}, coin:{w:26,h:26}, item:{w:34,h:34}
+function loadImages(cb){
+  for(const k in IMG_LIST){
+    const img = new Image();
+    img.src = IMG_LIST[k];
+    img.onload = ()=>{ if(++loaded===toLoad) cb(); };
+    img.onerror = ()=>{ if(++loaded===toLoad) cb(); };
+    images[k]=img;
+  }
+}
+
+/* ==========================================================
+   Canvas & Scaling
+========================================================== */
+const cv = document.getElementById('cv');
+const g = cv.getContext('2d');
+let vw=1280, vh=720; // internal logical size
+function resize(){
+  // canvas fills via CSS; we keep internal fixed for math
+}
+window.addEventListener('resize', resize);
+
+/* ==========================================================
+   Game State
+========================================================== */
+const STATE = { OP:0, SELECT:1, READY:2, COUNT:3, PLAY:4, GAMEOVER:5, MENU:6 };
+let state = STATE.OP;
+
+const ui = {
+  hud:document.getElementById('hud'),
+  ctrl:document.getElementById('ctrl'),
+  opBox:document.getElementById('opBox'),
+  opImg:document.getElementById('opImg'),
+  selectBox:document.getElementById('selectBox'),
+  imgOrange:document.getElementById('imgOrange'),
+  imgVR:document.getElementById('imgVR'),
+  countBox:document.getElementById('countBox'),
+  countNum:document.getElementById('countNum'),
+  msgBox:document.getElementById('msgBox'),
+  msgTxt:document.getElementById('msgTxt'),
+  menuBox:document.getElementById('menuBox'),
+  btnJump:document.getElementById('btnJump'),
+  btnBoost:document.getElementById('btnBoost'),
+  slot1:document.getElementById('slot1'),
+  slot2:document.getElementById('slot2'),
+  uiDist:document.getElementById('uiDist'),
+  uiSpd:document.getElementById('uiSpd'),
+  uiJump:document.getElementById('uiJump'),
+  uiCoin:document.getElementById('uiCoin'),
+  uiChar:document.getElementById('uiChar'),
+  boostBar:document.getElementById('boostBar'),
+  mStart:document.getElementById('mStart'),
+  mSelect:document.getElementById('mSelect'),
+  mQuit:document.getElementById('mQuit'),
 };
 
-let state='boot', scrollX=0, meters=0;
-let baseSpeed=333, boostGauge=0, boostMax=100, boosting=0, enFree=0, invincible=0, wingTime=0;
-let coins=0, needCoin=10, sparkleT=0, sparkleFrame=0, nextVillAtM=1200+Math.random()*800;
+ui.opImg.src = IMG_LIST.op;
+ui.imgOrange.src = IMG_LIST.orange;
+ui.imgVR.src = IMG_LIST.VR;
 
-const player={sprite:'orange.png', w:SIZE.player.w, h:SIZE.player.h, x:RUNX()|0, y:(GY()-SIZE.player.h)|0, vy:0, onGround:true, jumpsLeft:2, tilt:0, prevFeet:0};
+/* ==========================================================
+   World / Player / Objects
+========================================================== */
+const WORLD = {
+  groundY: 560,          // 地面上端
+  speed: 6,              // 走行ベース
+  boostSpeed: 10,
+  gravity: 1.15,
+  jumpVy: -15.5,
+  doubleVy: -14,
+  airDrag: 0.995,
+  scrollX: 0,
+  meters: 0,
+  kmh: 0,
+  startSafeMeters: 120,  // 安全領域
+  obstacleMinGap: 210,   // 最低間隔(px) ※密集防止
+  recentTypes: [],       // 直近出現履歴
+};
 
-const items=[], obstacles=[], fires=[], villains=[];
-const slots=[null,null];
+const PLAYER = {
+  charId: null, // 'orange' | 'VR'
+  x: 350, y: 0, w: 72, h: 64, vy:0,
+  jumpsLeft: 2, maxJumps: 2,
+  // ヒットボックス（視覚スプライトから余白を除外）
+  hitW: 50, hitH:58, hitOffX:11, hitOffY:6,
+  onGround: false, onPlatform:null, angle:0,
+  alive:true, boosting:false, boostT:0, boostGauge:0, boostMax:100, boostCharge:25/60, // 1.66/s
+  inv:false, invT:0,
+  multiJump:false, multiJumpT:0, // tsubasa
+  infiniteBoost:false, infiniteBoostT:0, // en
+  items:[], coins:0,
+};
 
-/* ====== 入力状態（※TDZ回避のため宣言はここ1か所だけ） ====== */
-let wantBoost=false, wantUse=[false,false];
-const COYOTE_DUR=0.12, JUMPBUF_DUR=0.18;
-let coyote=0, jumpBuf=0, jumpLock=0;
-
-/* ================== OP/選択/開始フロー ================== */
-const showCut=(fn,ms=2000)=>{ cutImg.src=encodeURI(fn); cut.classList.add('show'); setTimeout(()=>cut.classList.remove('show'),ms); };
-let goTimer=null; // 自動復帰
-function openSelect(){ if(state==='countdown'||state==='play') return; charSel.classList.add('show'); state='select'; }
-function closeSelect(){ charSel.classList.remove('show'); }
-function goToSelect(){ if(goTimer){ clearTimeout(goTimer); goTimer=null; } goModal.classList.remove('show'); openSelect(); }
-
-function bootFlow(){
-  state='op'; showCut('op.png',2000);
-  setTimeout(openSelect,2200);
-  setTimeout(()=>{ if(state!=='play'&&state!=='countdown'&&state!=='select'){ openSelect(); } },3500);
+function resetPlayer(){
+  PLAYER.x = 360;
+  PLAYER.y = WORLD.groundY - PLAYER.h;
+  PLAYER.vy = 0;
+  PLAYER.jumpsLeft = PLAYER.maxJumps = 2;
+  PLAYER.onGround = true;
+  PLAYER.onPlatform = null;
+  PLAYER.angle = 0;
+  PLAYER.alive = true;
+  PLAYER.boosting=false; PLAYER.boostT=0; PLAYER.boostGauge=0;
+  PLAYER.inv=false; PLAYER.invT=0;
+  PLAYER.multiJump=false; PLAYER.multiJumpT=0;
+  PLAYER.infiniteBoost=false; PLAYER.infiniteBoostT=0;
+  PLAYER.items.length=0; updateSlots();
+  ui.uiCoin.textContent = "0";
 }
 
-/* ================== Canvasタップでジャンプ ================== */
-cv.addEventListener('pointerdown', e=>{ const h=(innerHeight||document.documentElement.clientHeight||0); if(!h || e.clientY<h*0.75) pressJump(); }, {passive:false});
-cv.addEventListener('touchstart', e=>{ const t=e.touches&&e.touches[0]; const h=(innerHeight||document.documentElement.clientHeight||0); if(!h || (t?t.clientY:0)<h*0.75) pressJump(); }, {passive:false});
-cv.addEventListener('click', e=>{ const h=(innerHeight||document.documentElement.clientHeight||0); if(!h || e.clientY<h*0.75) pressJump(); }, {passive:false});
+const objs = []; // 障害物など
+const items = []; // 浮遊アイテム
+const coins = []; // コイン（常に最大1）
+const flames = []; // 残留火の玉
+let nextSpawnX = 900; // 最初の出現
+let lastTypeTimes = {}; // クールタイムで密集抑制
 
-/* ================== カウントダウン ================== */
-let cdActive=false, cdStart=0, cdShown=-1;
-function hardResetCountdown(){ cdActive=false; cdShown=-1; countdown.classList.remove('show'); }
-function beginCountdown(){ cdActive=true; cdStart=performance.now(); cdShown=-1; countdown.classList.add('show'); }
-function driveCountdown(now){
-  if(!cdActive) return;
-  const t=(now-cdStart)/1000;
-  const step=t<0.7?0:t<1.4?1:t<2.1?2:t<2.8?3:4;
-  if(step!==cdShown){ countdown.textContent=['3','2','1','GO',''][step]||''; cdShown=step; }
-  if(step>=4){ countdown.classList.remove('show'); cdActive=false; state='play'; }
+/* オブジェクト作成ヘルパ */
+function makeObj(type, x, y, w, h, opts={}){
+  const o = {type, x, y, w, h, vx:0, vy:0, life:1, phase:0, t:0, angle:0, ...opts};
+  // 既定ヒットボックス（内容にフィットするよう少し小さめ）
+  o.hitW = opts.hitW ?? Math.floor(w*0.86);
+  o.hitH = opts.hitH ?? Math.floor(h*0.86);
+  o.hitOffX = opts.hitOffX ?? Math.floor((w-o.hitW)/2);
+  o.hitOffY = opts.hitOffY ?? Math.floor((h-o.hitH)/2);
+  objs.push(o); return o;
 }
 
-/* ================== フロー（開始/再開/リセット） ================== */
-let lastRightX=0, nextSpawnX=null, lastKanbanX=-1e9;
-const MIN_GAP_PX=40;
-
-let startLock=false;
-function startFlow(){
-  if(startLock) return; startLock=true;
-  if(goTimer){ clearTimeout(goTimer); goTimer=null; }
-  closeSelect(); hardResetCountdown(); resetWorld(); draw();
-  requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); startLock=false; });
-  setTimeout(()=>loadList(deferred),300);
+function rectsOverlap(ax,ay,aw,ah,bx,by,bw,bh){
+  return (ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by);
 }
-function restartFlow(){
-  if(goTimer){ clearTimeout(goTimer); goTimer=null; }
-  goModal.classList.remove('show');
-  hardResetCountdown(); resetWorld(); draw();
-  requestAnimationFrame(()=>{ state='countdown'; beginCountdown(); });
-}
-function resetWorld(){
-  scrollX=0; meters=0; boostGauge=0; boosting=0; enFree=0; invincible=0; wingTime=0;
-  coins=0; sparkleT=0; sparkleFrame=0; items.length=0; obstacles.length=0; fires.length=0; villains.length=0;
-  slots[0]=slots[1]=null; refreshSlots(); nextVillAtM=1200+Math.random()*800;
-  player.x=RUNX()|0; player.y=(GY()-player.h)|0; player.vy=0; player.onGround=true; player.jumpsLeft=2; player.tilt=0; player.prevFeet=player.y+player.h;
-  boostBar.classList.remove('ready');
-  lastRightX=SAFE_M*PX_PER_M; nextSpawnX=null; lastKanbanX=-1e9;
-  placeEarlyContena(); scheduleNextSpawn();
-  wantBoost=false; wantUse=[false,false]; last=0; coyote=0; jumpBuf=0; jumpLock=0;
-}
+function actorHitBox(a){ return { x:a.x + a.hitOffX, y:a.y + a.hitOffY, w:a.hitW, h:a.hitH }; }
 
-/* ================== ボタン結線 ================== */
-bindTap(btnFS, ()=>toggleFS());
-bindTap(btnChange, ()=>openSelect());
-bindTap(btnStart, ()=>startFlow());
-bindTap(pickOrange, ()=>player.sprite='orange.png');
-bindTap(pickVR, ()=>player.sprite='VR.png');
-
-bindTap(btnJump, ()=>pressJump());
-bindTap(btnBoost, ()=>{ wantBoost=true; });
-bindTap(btnItem1, ()=>useSlot(0));
-bindTap(btnItem2, ()=>useSlot(1));
-
-bindTap(goRestart, ()=>restartFlow());
-bindTap(goChange,  ()=>goToSelect());
-bindTap(goQuit,    ()=>location.reload());
-
-/* ================== 入力補助 ================== */
-function pressJump(){ jumpBuf=JUMPBUF_DUR; }
-addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp') pressJump(); if(e.code==='ShiftRight') wantBoost=true; },{passive:true});
-
-/* ================== 生成系（障害物/アイテム/ヴィラン） ================== */
-function scheduleNextSpawn(){ const gapM=6+Math.random()*8; nextSpawnX = lastRightX + gapM*PX_PER_M; }
-const ensureGap=x=> (x<lastRightX+MIN_GAP_PX)?(lastRightX+MIN_GAP_PX):x;
-
-function spawnAt(kind,x){
-  const gy=GY()|0, ground=h=>(gy-h)|0; let placedRight=lastRightX;
-  if(kind==='contena'){ x=ensureGap(x); const n=(Math.random()<.55?2:3);
-    for(let i=0;i<n;i++){ const ox=x+i*(SIZE.cont.w+10); obstacles.push({kind:'contena',x:ox|0,y:ground(SIZE.cont.h),w:SIZE.cont.w,h:SIZE.cont.h,deadlySide:true}); placedRight=ox+SIZE.cont.w; } }
-  else if(kind==='corn'){ x=ensureGap(x); obstacles.push({kind:'corn',x:x|0,y:ground(SIZE.corn.h),w:SIZE.corn.w,h:SIZE.corn.h,deadly:true}); placedRight=x+SIZE.corn.w; }
-  else if(kind==='gomi'){ x=ensureGap(x); obstacles.push({kind:'gomi',x:x|0,y:ground(SIZE.gomi.h),w:SIZE.gomi.w,h:SIZE.gomi.h,deadly:true,t:Math.random()*6}); placedRight=x+SIZE.gomi.w; }
-  else if(kind==='tora'){ x=ensureGap(x); obstacles.push({kind:'tora',x:x|0,y:ground(SIZE.tora.h),w:SIZE.tora.w,h:SIZE.tora.h,deadlySide:true,cool:0}); placedRight=x+SIZE.tora.w; }
-  else if(kind==='dokan'){ x=ensureGap(x); obstacles.push({kind:'dokan',x:x|0,baseY:gy,phase:0,y:ground(28),w:SIZE.dokan.w,h:28,deadlySide:true}); placedRight=x+SIZE.dokan.w; }
-  else if(kind==='jumpdai'){ x=ensureGap(x); obstacles.push({kind:'jumpdai',x:x|0,y:ground(SIZE.jump.h),w:SIZE.jump.w,h:SIZE.jump.h,kicked:false,pLast:0}); placedRight=x+SIZE.jump.w; }
-  else if(kind==='kanban'){ if(x-lastKanbanX<1400) return; x=ensureGap(x); const k=1+Math.floor(Math.random()*6);
-    obstacles.push({kind:'kanban',img:'kanban'+k+'.png',x:x|0,y:ground(SIZE.kanban.h),w:SIZE.kanban.w,h:SIZE.kanban.h}); lastKanbanX=x; placedRight=x+SIZE.kanban.w; }
-  if(placedRight>lastRightX) lastRightX=placedRight;
-}
-function pickKind(){ const pool=[['corn',3],['gomi',3],['contena',3.5],['tora',2.2],['dokan',2.2],['jumpdai',2],['kanban',0.08]];
-  let sum=0; for(const p of pool) sum+=p[1]; let r=Math.random()*sum; for(const p of pool){ r-=p[1]; if(r<=0) return p[0]; } return 'corn'; }
-function placeEarlyContena(){
-  let base=SAFE_M*PX_PER_M + 8*PX_PER_M;
-  let x=Math.max(lastRightX+MIN_GAP_PX, base + ((Math.random()*6|0)*PX_PER_M));
-  const sets=4+(Math.random()*3|0);
-  for(let s=0;s<sets;s++){ spawnAt('contena',x); if(Math.random()<0.4) spawnAt('jumpdai', lastRightX+80); x=lastRightX+(8+Math.random()*8)*PX_PER_M; }
-}
-
-/* アイテム */
-function useSlot(i){
-  const it=slots[i]; if(!it) return;
-  if(it.type==='tsubasa') wingTime=5.0;
-  if(it.type==='en') enFree=5.0;
-  if(it.type==='jump'){
-    let near=null, dmin=1e9;
-    for(const o of obstacles){ const deadly=(o.deadly||o.deadlySide), d=o.x - scrollX - RUNX(); if(deadly && d>0 && d<dmin){ dmin=d; near=o; } }
-    if(near){ Object.assign(near,{kind:'jumpdai',w:SIZE.jump.w,h:SIZE.jump.h,y:(GY()-SIZE.jump.h)|0,deadly:false,deadlySide:false,kicked:false,pLast:0,backTimer:4.0}); }
+/* ==========================================================
+   Background patterns
+========================================================== */
+let bgPattern = null, gdPattern = null;
+function buildPatterns(){
+  if(images.bg.width>0){
+    const p = document.createElement('canvas'); const cg=p.getContext('2d');
+    p.width = images.bg.width; p.height = images.bg.height;
+    cg.drawImage(images.bg,0,0); bgPattern = g.createPattern(p,'repeat');
   }
-  slots[i]=null; refreshSlots();
-}
-function refreshSlots(){
-  btnItem1.disabled=!slots[0]; btnItem2.disabled=!slots[1];
-  btnItem1.textContent=slots[0]?String(slots[0].type).toUpperCase():'アイテム1';
-  btnItem2.textContent=slots[1]?String(slots[1].type).toUpperCase():'アイテム2';
-}
-
-/* Collectibles（レア） */
-let lastCoinAtM=-9999, lastRareAtM=-9999;
-function spawnCollectibles(){
-  const gy=GY()|0;
-  if(!items.some(it=>it.type==='coin') && Math.random()<0.0012 && meters-lastCoinAtM>900){
-    const n=(Math.random()<.5?3:5), start=scrollX+vw+180+Math.random()*260, baseY=gy-(80+Math.random()*50);
-    for(let i=0;i<n;i++) items.push({type:'coin',x:(start+i*32)|0,y:(baseY+Math.sin(i)*6)|0,w:26,h:26});
-    lastCoinAtM=meters;
-  }
-  if(!items.some(it=>it.type!=='coin') && Math.random()<0.0018 && meters-lastRareAtM>900){
-    const types=['tsubasa','jump','en']; const type=types[Math.floor(Math.random()*3)];
-    const y=gy-(60+Math.random()*40);
-    items.push({type, x:(scrollX+vw+200+Math.random()*260)|0, y:y|0, w:34,h:34, t:Math.random()*6});
-    lastRareAtM=meters;
+  if(images.ground.width>0){
+    const p = document.createElement('canvas'); const cg=p.getContext('2d');
+    p.width = images.ground.width; p.height = images.ground.height;
+    cg.drawImage(images.ground,0,0); gdPattern = g.createPattern(p,'repeat');
   }
 }
 
-/* ヴィラン */
-function maybeVillain(){
-  if(meters>=nextVillAtM && villains.length===0){
-    showCut('viran op.png',2000);
-    setTimeout(()=>{ if(state!=='play') return;
-      villains.push({x:scrollX+RUNX()+260, y:-80, vy:20, state:'descend', hoverY:GY()-220, left:5+Math.floor(Math.random()*4), t:1});
-    },450);
-    nextVillAtM += 1000 + Math.random()*1000;
+/* ==========================================================
+   Spawners (非重なり/密集抑制)
+========================================================== */
+const TYPE = {
+  CORN:'CORN', GOMI:'GOMI', CONT:'CONT', TORA:'TORA',
+  DOKAN:'DOKAN', JUMP:'JUMP', KANBAN:'KANBAN'
+};
+const KANBANS = ['kanban1','kanban2','kanban3','kanban4','kanban5','kanban6'];
+
+function canPlace(x,w){
+  // 直近の予約範囲と衝突しない（スクリーン上にいるものと十分離す）
+  for(const o of objs){
+    if(Math.abs((o.x+o.w/2) - (x+w/2)) < WORLD.obstacleMinGap) return false;
+  }
+  return true;
+}
+
+function spawnSequence(startX){
+  // 難易度と距離で構成。序盤はコンテナ中心
+  let x = Math.max(startX, WORLD.scrollX + 800);
+  const picks = [];
+  const dist = WORLD.meters;
+
+  const want = randi(1,3); // まとめて1〜3個
+  for(let i=0;i<want;i++){
+    let type;
+    if(dist < 400){ // 序盤
+      type = (Math.random()<0.75)? TYPE.CONT : (Math.random()<0.5? TYPE.JUMP:TYPE.CORN);
+    }else{
+      const roll = Math.random();
+      if(roll<0.22) type=TYPE.CORN;
+      else if(roll<0.40) type=TYPE.GOMI;
+      else if(roll<0.60) type=TYPE.CONT;
+      else if(roll<0.72) type=TYPE.TORA;
+      else if(roll<0.86) type=TYPE.DOKAN;
+      else type=TYPE.JUMP;
+    }
+    // 看板は低頻度
+    if(Math.random()<0.07) type=TYPE.KANBAN;
+
+    // 非重なり
+    const baseGap = WORLD.obstacleMinGap + randi(0,140);
+    x += baseGap;
+    picks.push([type,x]);
+  }
+  for(const [t,xpos] of picks) spawnOne(t,xpos);
+  nextSpawnX = x + WORLD.obstacleMinGap;
+}
+
+function spawnOne(type, X){
+  switch(type){
+    case TYPE.CORN:{
+      const img=images.corn; const s=0.9; const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      if(!canPlace(X,w)) return;
+      makeObj(TYPE.CORN,X,y,w,h);
+    }break;
+    case TYPE.GOMI:{
+      const img=images.gomi; const s=0.9; const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      const o=makeObj(TYPE.GOMI,X,y,w,h,{vx: rand(-0.6,0.6), range: randi(30,70)});
+      o.baseX = X;
+    }break;
+    case TYPE.CONT:{
+      const img=images.contena; const s=1.0;
+      const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      // 連結 (2〜3連が稀に)
+      const n = Math.random()<0.35 ? randi(2,3) : 1;
+      for(let i=0;i<n;i++){
+        const Xn = X + i*(w+8);
+        if(!canPlace(Xn,w)) continue;
+        makeObj(TYPE.CONT,Xn,y,w,h);
+      }
+    }break;
+    case TYPE.TORA:{
+      const img=images.tora; const s=1.0;
+      const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      makeObj(TYPE.TORA,X,y,w,h);
+    }break;
+    case TYPE.DOKAN:{
+      const img=images.dokan; const s=1.0;
+      const baseH = img.height*s*0.25; // 最初は地面から少し見える
+      const w=img.width*s, h=img.height*s;
+      const yBottom = WORLD.groundY;
+      const o=makeObj(TYPE.DOKAN,X,yBottom-baseH,w,baseH,{fullH:h, baseH, yBottom, phase:0, t:0});
+    }break;
+    case TYPE.JUMP:{
+      const img=images.jumpdai; const s=1.0;
+      const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      makeObj(TYPE.JUMP,X,y,w,h,{triggered:false});
+    }break;
+    case TYPE.KANBAN:{
+      const name = KANBANS[randi(0,KANBANS.length-1)];
+      const img=images[name];
+      const s = Math.min(1.2, Math.max(0.8, 420/img.width)); // かなり大きく表示
+      const w=img.width*s, h=img.height*s;
+      const y = WORLD.groundY - h;
+      makeObj(TYPE.KANBAN,X,y,w,h,{imgName:name});
+    }break;
   }
 }
-function updateVill(dt){
-  for(let i=0;i<villains.length;i++){
-    const v=villains[i];
-    if(v.state==='descend'){ v.y+=v.vy*dt; if(v.y>=v.hoverY){ v.y=v.hoverY; v.state='hover'; } }
-    else if(v.state==='hover'){ const tx=scrollX+RUNX()+260; v.x+=(tx-v.x)*0.03; v.t-=dt; if(v.t<=0){ v.state='throw'; v.t=1.0+Math.random()*1.1; } }
-    else if(v.state==='throw'){ const txx=scrollX+RUNX()+80+Math.random()*140; fires.push({x:v.x,y:v.y+18,vx:(txx-v.x)*0.6,vy:40,ay:520,w:42,h:42,landed:false}); v.left--; v.state='hover'; if(v.left<=0) v.state='ascend'; }
-    else if(v.state==='ascend'){ v.y-=18*dt*60; if(v.y<-120) v.state='done'; }
+
+/* ==========================================================
+   Items & Coins
+========================================================== */
+function trySpawnItem(){
+  // レア、浮遊、取得可能高さ
+  if(PLAYER.items.length>=2) return;
+  if(Math.random()<0.015){
+    const type = ['tsubasa','jumpItem','en'][randi(0,2)];
+    const img = images[type];
+    const h = img.height * 0.9, w = img.width*0.9;
+    const baseY = WORLD.groundY - h - randi(90,160); // 高過ぎない
+    const it = {type, x: WORLD.scrollX + randi(900,1200), y: baseY, w, h, t:0, dir:1};
+    items.push(it);
   }
-  while(villains.length && villains[0].state==='done') villains.shift();
+}
+function trySpawnCoin(){
+  if(coins.length>0) return;
+  if(Math.random()<0.008){ // とてもレア
+    const img = images.coin;
+    const h = img.height * 0.9, w = img.width*0.9;
+    const y = WORLD.groundY - h - randi(70,120);
+    coins.push({x: WORLD.scrollX + randi(900,1200), y, w, h, t:0});
+  }
 }
 
-/* ================== ループ ================== */
-let last=0, dispSp=0, dispT=0;
-const GRAVITY=960, MAX_LAND_SPEED=520;
+/* ==========================================================
+   Villain
+========================================================== */
+let nextViranAt = randi(1000,2000); // meters
+let viran = null;
 
-function tryConsumeJump(){
-  if(jumpBuf<=0 || jumpLock>0) return false;
-  const maxJ=(wingTime>0)?4:2;
-  const canFirst = player.onGround || coyote>0;
-  const canSecond = (!player.onGround && player.jumpsLeft>0);
-  if(canFirst){ player.vy=-540; player.onGround=false; player.jumpsLeft=maxJ-1; jumpBuf=0; coyote=0; jumpLock=0.08; return true; }
-  if(canSecond){ player.vy=-490; player.jumpsLeft--; jumpBuf=0; jumpLock=0.08; return true; }
-  return false;
+function spawnViran(){
+  // カットイン
+  showCutIn(images.viranop);
+  // 本体
+  viran = {
+    x: PLAYER.x + WORLD.scrollX + 520,
+    y: -200,
+    w: images.viran.width, h: images.viran.height,
+    vy: 0.35, dir:1, t:0, throwing:true, leftToThrow:randi(5,8), retreat:false
+  };
 }
 
-function gameStep(ts){
-  try{
-    if(!last) last=ts; let dt=(ts-last)/1000; last=ts; if(dt>1/30) dt=1/30;
+function updateViran(dt){
+  if(!viran) return;
+  viran.t += dt;
+  // ふわふわ降下/上昇
+  if(!viran.retreat){
+    // 常に前方・追い越されない（少し速い）
+    const targetX = PLAYER.x + WORLD.scrollX + 520;
+    viran.x += (targetX - viran.x)*0.02;
+    viran.y += viran.vy + Math.sin(viran.t*0.002)*0.4;
 
-    if(state==='countdown') driveCountdown(ts);
+    // ランダムに前方へ火の玉を投下
+    if(viran.throwing && Math.random()<0.02){
+      const tx = viran.x - 40;
+      const ty = viran.y + viran.h*0.6;
+      const fx = tx - randi(120,260); // 進行方向前方
+      const fy = WORLD.groundY - 20;
+      flames.push({x:tx, y:ty, w:images.tama.width, h:images.tama.height, vx: -randi(2,4), vy: 3, landed:false});
+      if(--viran.leftToThrow<=0){ viran.throwing=false; viran.retreat=true; }
+    }
+  }else{
+    viran.y -= 0.5+Math.sin(viran.t*0.002)*0.2;
+    if(viran.y<-300){ viran=null; }
+  }
+}
 
-    if(state==='play'){
-      const mult=(boosting>0)?1.7:1, spd=baseSpeed*mult;
-      scrollX += spd*dt; meters=scrollX/PX_PER_M;
+/* ==========================================================
+   Effects / Cut-ins
+========================================================== */
+let cutIn = null;
+function showCutIn(img){
+  cutIn = {img, t:0, dur:2000, alpha:1};
+}
+function drawCutIn(dt){
+  if(!cutIn) return;
+  cutIn.t += dt;
+  const a = cutIn.t<cutIn.dur-400 ? 1 : clamp(1-(cutIn.t-(cutIn.dur-400))/400,0,1);
+  const w = Math.min(vw*0.6, cutIn.img.width);
+  const h = w * (cutIn.img.height/cutin_img_h(cutIn.img));
+  g.save();
+  g.globalAlpha = a;
+  g.drawImage(cutIn.img, (vw-w)/2, (vh-h)/2, w, h);
+  g.restore();
+  if(cutIn.t>=cutIn.dur) cutIn=null;
+}
+function cutin_img_h(i){ return i.width? i.height:1 }
 
-      if(nextSpawnX && (scrollX+vw+120)>=nextSpawnX){ spawnAt(pickKind(),nextSpawnX|0); scheduleNextSpawn(); }
+/* ==========================================================
+   UI / Buttons
+========================================================== */
+function updateHUD(){
+  ui.uiDist.textContent = Math.floor(WORLD.meters);
+  ui.uiSpd.textContent = Math.round(WORLD.kmh);
+  ui.uiJump.textContent = PLAYER.jumpsLeft;
+  ui.uiCoin.textContent = PLAYER.coins + "/10";
+  ui.boostBar.style.width = (PLAYER.boostGauge/PLAYER.boostMax*100).toFixed(1)+"%";
+}
 
-      if(wantBoost){ if(enFree>0){boosting=2.5;} else if(boostGauge>=boostMax){boosting=2.5; boostGauge=0; boostBar.classList.remove('ready');} wantBoost=false; }
+function updateSlots(){
+  [ui.slot1, ui.slot2].forEach((el,i)=>{
+    if(PLAYER.items[i]){ el.classList.add('filled'); el.textContent = itemLabel(PLAYER.items[i]); }
+    else{ el.classList.remove('filled'); el.innerHTML = "アイテム<br>"+(i+1); }
+  });
+}
+function itemLabel(t){ return t==='tsubasa'?'つばさ':'jumpItem'===t?'ジャンプ台化':'∞ブースト'; }
 
-      if(enFree<=0){ boostGauge=Math.min(boostMax,boostGauge+dt*8); if(boostGauge>=boostMax) boostBar.classList.add('ready'); }
-      if(boosting>0) boosting-=dt; if(enFree>0) enFree-=dt; if(invincible>0) invincible-=dt;
-      if(wingTime>0){ wingTime-=dt; if(wingTime<=0 && !player.onGround) player.jumpsLeft=0; }
+/* Buttons */
+ui.btnJump.addEventListener('touchstart',e=>{e.preventDefault(); doJump();}, {passive:false});
+ui.btnJump.addEventListener('mousedown',e=>{e.preventDefault(); doJump();});
 
-      spawnCollectibles(); maybeVillain();
+ui.btnBoost.addEventListener('touchstart',e=>{e.preventDefault(); doBoost();},{passive:false});
+ui.btnBoost.addEventListener('mousedown',e=>{e.preventDefault(); doBoost();});
 
-      const gy=GY()|0;
+ui.slot1.addEventListener('click',()=>useItem(0));
+ui.slot2.addEventListener('click',()=>useItem(1));
 
-      // 動く障害物
-      for(let i=0;i<obstacles.length;i++){
-        const o=obstacles[i];
-        if(o.kind==='dokan'){
-          o.phase=(o.phase+dt)%4; const t=o.phase;
-          const h=(t<1)?Math.round(28+t*(SIZE.dokan.hMax-28)):(t<3)?SIZE.dokan.hMax:Math.round(SIZE.dokan.hMax-(t-3)*(SIZE.dokan.hMax-28));
-          o.h=h|0; o.y=(gy-h)|0; o.w=SIZE.dokan.w;
-        }else{ o.y=(gy-o.h)|0; }
-        if(o.cool) o.cool=Math.max(0,o.cool-dt);
-        if(o.backTimer){ o.backTimer-=dt; if(o.backTimer<=0){ Object.assign(o,{kind:'corn',w:SIZE.corn.w,h:SIZE.corn.h,y:(gy-SIZE.corn.h)|0,deadly:true,deadlySide:false,backTimer:0}); } }
+/* ==========================================================
+   Player actions
+========================================================== */
+function doJump(){
+  if(state!==STATE.PLAY) return;
+  if(PLAYER.jumpsLeft>0){
+    const vy = (PLAYER.jumpsLeft===PLAYER.maxJumps)? WORLD.jumpVy : WORLD.doubleVy;
+    PLAYER.vy = vy;
+    PLAYER.onGround=false; PLAYER.onPlatform=null;
+    PLAYER.jumpsLeft--;
+  }
+}
+function doBoost(){
+  if(state!==STATE.PLAY) return;
+  if(PLAYER.infiniteBoost || (PLAYER.boostGauge>=PLAYER.boostMax && !PLAYER.boosting)){
+    PLAYER.boosting = true;
+    PLAYER.boostT = 2500; // 2.5s
+    if(!PLAYER.infiniteBoost) PLAYER.boostGauge = 0;
+  }
+}
+
+/* ==========================================================
+   Items use
+========================================================== */
+function useItem(idx){
+  if(state!==STATE.PLAY) return;
+  const t = PLAYER.items[idx]; if(!t) return;
+  if(t==='tsubasa'){
+    PLAYER.multiJump=true; PLAYER.multiJumpT=5000; PLAYER.maxJumps=4; PLAYER.jumpsLeft=Math.max(PLAYER.jumpsLeft,2);
+  }else if(t==='jumpItem'){
+    // 最も近いコーン/土管をジャンプ台化
+    let target=null, best=1e9;
+    for(const o of objs){
+      if(o.type===TYPE.CORN || o.type===TYPE.DOKAN){
+        const d = o.x - (WORLD.scrollX + PLAYER.x);
+        if(d>0 && d<best){ best=d; target=o; }
       }
-      while(obstacles.length && obstacles[0].x<scrollX-520) obstacles.shift();
+    }
+    if(target){
+      const img=images.jumpdai;
+      target.type=TYPE.JUMP;
+      target.w=img.width; target.h=img.height;
+      target.y = WORLD.groundY - target.h;
+      target.triggered=false;
+    }
+  }else if(t==='en'){
+    PLAYER.infiniteBoost=true; PLAYER.infiniteBoostT=5000;
+    PLAYER.boosting=true; PLAYER.boostT=5000;
+  }
+  PLAYER.items.splice(idx,1); updateSlots();
+}
 
-      // 火の玉
-      for(let i=0;i<fires.length;i++){ const f=fires[i]; if(!f.landed){ f.vy+=520*dt; f.x+=f.vx*dt; f.y+=f.vy*dt; if(f.y+f.h>=gy-1){ f.y=gy-f.h; f.vx=0; f.vy=0; f.landed=true; } } }
-      while(fires.length && fires[0].x<scrollX-520) fires.shift();
-      updateVill(dt);
+/* ==========================================================
+   Game Loop
+========================================================== */
+let last=0;
+function loop(t){
+  requestAnimationFrame(loop);
+  const dt = Math.min(50, t-last || 16); last = t;
+  update(dt);
+  draw(dt);
+}
 
-      // 物理
-      player.vy += GRAVITY*dt;
-      player.y += player.vy*dt;
-      const px=RUNX(), pw=player.w;
-      const footW=Math.max(12,Math.round(pw*0.34)), footX=Math.round(px+(pw-footW)/2);
-      const foot={x:footX,y:player.y+player.h-1,w:footW,h:2};
-      let supportTop=gy, onSlope=false, supportFrom='ground', supportObj=null;
+function update(dt){
+  // 状態別
+  if(state===STATE.PLAY){
+    // 速度
+    let spd = WORLD.speed + (PLAYER.boosting? 4:0);
+    WORLD.scrollX += spd;
+    WORLD.meters += spd * 0.06; // だいたい
+    WORLD.kmh = (spd*3.6)|0;
 
-      const feet=player.y+player.h;
+    // ブーストゲージ自然増
+    if(!PLAYER.boosting && !PLAYER.infiniteBoost) PLAYER.boostGauge = clamp(PLAYER.boostGauge + PLAYER.boostCharge*dt,0,PLAYER.boostMax);
 
-      // ジャンプ台（斜面・60%で強制ジャンプ＆加速）
-      for(const o of obstacles){
-        if(o.kind!=='jumpdai') continue;
-        const sx=o.x-scrollX;
-        const pxFront = px + pw*0.60;
-        if(pxFront>=sx && pxFront<=sx+o.w){
-          const p=(pxFront - sx)/o.w;
-          const topY=(gy - p*o.h)|0;
-          const touching = (feet>=topY-8 && feet<=topY+22);
-          if(touching){
-            if(topY<supportTop){ supportTop=topY; supportFrom='jumpdai'; supportObj=o; }
-            onSlope=true; player.tilt=Math.max(-0.15,Math.min(0.24,(p-0.3)*0.6));
-            if(!o.kicked && (o.pLast||0)<=0.56 && p>0.56){ o.kicked=true; player.vy=-840; boosting=Math.max(boosting,1.3); jumpLock=Math.max(jumpLock,0.15); }
-          }
-          o.pLast=p;
-        } else { o.pLast=0; }
-      }
+    // ブースト時間
+    if(PLAYER.boosting){
+      if(PLAYER.infiniteBoost){ /* 時間は別管理 */ }
+      else{ PLAYER.boostT -= dt; if(PLAYER.boostT<=0) PLAYER.boosting=false; }
+    }
+    if(PLAYER.infiniteBoost){ PLAYER.infiniteBoostT -= dt; if(PLAYER.infiniteBoostT<=0){ PLAYER.infiniteBoost=false; PLAYER.boosting=false; } }
 
-      // 乗れる（密着）
-      for(const o of obstacles){
-        if(o.kind!=='contena'&&o.kind!=='tora'&&o.kind!=='dokan') continue;
-        const sx=o.x-scrollX, rect={x:sx,y:o.y,w:o.w,h:o.h};
-        if(rects(foot,rect)){
-          const inset=rideInsetPx(o.kind,o.h), topY=o.y+inset;
-          if(topY<supportTop){ supportTop=Math.round(topY); supportFrom=o.kind; supportObj=o; }
-        }
-      }
+    // 無敵
+    if(PLAYER.inv){ PLAYER.invT -= dt; if(PLAYER.invT<=0) PLAYER.inv=false; }
 
-      // 着地補間（瞬間移動感の軽減）
-      const targetY = (supportTop - player.h + 1);
-      const withinCatch = (feet >= supportTop-22 && feet <= supportTop+22);
-      if(withinCatch){
-        const dy = targetY - player.y;
-        if(dy >= -2){
-          const step = Math.min(Math.max(dy,0), MAX_LAND_SPEED*dt);
-          player.y += step;
-          if(Math.abs(targetY - player.y) <= 1.5){
-            player.y = targetY|0;
-            if(supportFrom==='tora' && supportObj && (!supportObj.cool||supportObj.cool<=0)){
-              player.vy=-760; player.onGround=false; jumpLock=0.12; supportObj.cool=0.25;
-            }else{
-              player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
-            }
-          }else{
-            player.vy = Math.min(player.vy, MAX_LAND_SPEED);
-            if(!player.onGround){ player.onGround=true; }
-          }
-        }else{
-          player.y = targetY|0; player.vy=0; if(!player.onGround){ player.onGround=true; player.jumpsLeft=(wingTime>0?4:2); }
-        }
-      }else{
-        if(player.onGround && !onSlope){ coyote = COYOTE_DUR; }
-        player.onGround=false; if(!onSlope) player.tilt*=0.9;
-      }
-
-      // ★ジャンプ先に消費（確実発火）
-      if(jumpBuf>0 && jumpLock<=0){ tryConsumeJump(); }
-      if(jumpBuf>0) jumpBuf=Math.max(0,jumpBuf-dt);
-      if(coyote>0)  coyote=Math.max(0,coyote-dt);
-      if(jumpLock>0)jumpLock=Math.max(0,jumpLock-dt);
-
-      // アウト判定
-      if(invincible<=0){
-        const A=shrink({x:px,y:player.y,w:pw,h:player.h},4);
-        for(const ff of fires){ const rx=ff.x-scrollX; if(rects(A,shrink({x:rx,y:ff.y,w:ff.w,h:ff.h},4))){ die(); return; } }
-        for(const o of obstacles){
-          const rx2=o.x-scrollX, B0={x:rx2,y:o.y,w:o.w,h:o.h};
-          if(o.kind==='corn'||o.kind==='gomi'){ if(rects(A,shrink(B0,6))){ die(); return; } }
-          else if(o.kind==='contena'||o.kind==='tora'||o.kind==='dokan'){
-            const top=o.y+rideInsetPx(o.kind,o.h), B=shrink(B0,4);
-            const onTop=(A.y+A.h)<=top+12 && A.x+A.w>B.x && A.x<B.x+B.w;
-            if(!onTop && rects(A,B)){ die(); return; }
-          }
-        }
-      }
-
-      // アイテム取得
-      for(let i=items.length-1;i>=0;i--){
-        const it=items[i]; if(it.type!=='coin'){ it.t=(it.t||0)+dt*1.6; it.y=(it.y+Math.sin(it.t)*0.4)|0; }
-        const irx=it.x-scrollX;
-        if(rects(shrink({x:px,y:player.y,w:pw,h:player.h},4),{x:irx,y:it.y,w:it.w,h:it.h})){
-          if(it.type==='coin'){ if(++coins>=needCoin){ coins=0; invincible=5.0; showCut('mutekiop.png',2000);} }
-          else{ if(!(slots[0]&&slots[1])){ if(!slots[0]) slots[0]={type:it.type}; else slots[1]={type:it.type}; refreshSlots(); } }
-          items.splice(i,1);
-        } else if(irx<-200) items.splice(i,1);
-      }
-
-      // HUD
-      elDist.textContent=Math.floor(meters)+' m';
-      dispT+=dt; if(dispT>=.2){ const spd=baseSpeed*(boosting>0?1.7:1); dispSp=Math.round(spd*KMH_PER_PX); dispT=0; }
-      elSpeed.textContent=dispSp+' km/h';
-      elJump.textContent='×'+(player.onGround?(wingTime>0?4:2):player.jumpsLeft);
-      boostFill.style.width=(boostGauge/boostMax*100)+'%';
-      if(invincible>0){ sparkleT+=dt*8; if(sparkleT>1){ sparkleT=0; sparkleFrame^=1; } }
+    // アイテム/コイン出現
+    if(WORLD.meters>WORLD.startSafeMeters){
+      trySpawnItem();
+      trySpawnCoin();
     }
 
-    draw();
-  }catch(e){ console.error(e); showFatal(e); }
-  requestAnimationFrame(gameStep);
+    // スポーン
+    if(WORLD.scrollX + 1200 > nextSpawnX) spawnSequence(nextSpawnX);
+
+    // オブジェクト更新
+    for(const o of objs){
+      o.t += dt;
+      // 振る舞い
+      if(o.type===TYPE.GOMI){
+        // ガサゴソ左右
+        const dx = Math.sin(o.t*0.003) * o.range;
+        o.x = o.baseX + dx;
+      }else if(o.type===TYPE.DOKAN){
+        // 伸び→停止→縮む
+        const cycle = 4000; const tt = o.t % cycle;
+        if(tt<1000){ // 伸び
+          const r = tt/1000; o.h = o.baseH + (o.fullH-o.baseH)*r;
+          o.y = o.yBottom - o.h;
+        }else if(tt<3000){ // 停止
+          o.h = o.fullH; o.y = o.yBottom - o.h;
+        }else{ // 縮む
+          const r = (tt-3000)/1000; o.h = o.fullH - (o.fullH-o.baseH)*r;
+          o.y = o.yBottom - o.h;
+        }
+      }
+    }
+
+    // 火の玉
+    for(const f of flames){
+      if(!f.landed){
+        f.vy += 0.35;
+        f.x += f.vx;
+        f.y += f.vy;
+        if(f.y+f.h >= WORLD.groundY){ f.y = WORLD.groundY - f.h; f.vx = 0; f.vy=0; f.landed=true; }
+      }
+    }
+
+    // ヴィラン出現
+    if(!viran && WORLD.meters>=nextViranAt){
+      showCutIn(images.viranop);
+      setTimeout(()=>spawnViran(), 350); // ちょい遅らせて本体
+      nextViranAt += randi(1000,2000);
+    }
+    updateViran(dt);
+
+    // アイテム浮遊
+    for(const it of items){
+      it.t += dt; it.y += Math.sin(it.t*0.004)*0.4*it.dir;
+    }
+    for(const c of coins){
+      c.t += dt; c.y += Math.sin(c.t*0.004)*0.35;
+    }
+
+    // プレイヤー物理
+    // 足場吸着（地面）
+    let groundY = WORLD.groundY;
+    // 足場: 土管/コンテナ/トランポリン/ジャンプ台
+    let onPlat = null, platIsSlope=false, slopeK=0;
+
+    const ahead = objs.filter(o => (o.x+o.w) > (WORLD.scrollX+PLAYER.x-120) && o.x < (WORLD.scrollX+PLAYER.x+160));
+    for(const o of ahead){
+      // 判定用スクリーン位置を世界座標で比較
+      // 足場上面
+      if(o.type===TYPE.DOKAN || o.type===TYPE.CONT || o.type===TYPE.TORA || o.type===TYPE.JUMP){
+        // ジャンプ台の斜面
+        if(o.type===TYPE.JUMP){
+          // 斜面に沿う: 左下→右上が斜面と仮定
+          const left = o.x, right=o.x+o.w, top=o.y;
+          if(WORLD.scrollX+PLAYER.x+PLAYER.hitW/2 >= left && WORLD.scrollX+PLAYER.x <= right){
+            platIsSlope=true;
+            // 線形の高さ
+            const px = clamp((WORLD.scrollX+PLAYER.x - left)/o.w, 0, 1);
+            const slopeY = top + (1-px)*o.h*0.35; // 左が下・右が上：適度に傾斜
+            if(slopeY < groundY){ groundY = slopeY; onPlat=o; slopeK = -0.35; }
+          }
+        }else{
+          // 平面の上
+          const top = o.y;
+          if(top < groundY &&
+            WORLD.scrollX+PLAYER.x+PLAYER.hitW*0.5 > o.x && WORLD.scrollX+PLAYER.x+PLAYER.hitW*0.5 < o.x+o.w){
+            groundY = top; onPlat = o;
+          }
+        }
+      }
+    }
+
+    // 垂直速度
+    PLAYER.vy += WORLD.gravity;
+    PLAYER.vy *= WORLD.airDrag;
+    PLAYER.y += PLAYER.vy;
+
+    // 接地判定（±12px吸着）
+    const targetY = groundY - PLAYER.h;
+    if(PLAYER.y > targetY-12 && PLAYER.vy>=0){
+      PLAYER.y = targetY;
+      PLAYER.vy = 0;
+      if(!PLAYER.onGround){ PLAYER.onGround=true; PLAYER.jumpsLeft=PLAYER.maxJumps; }
+      PLAYER.onPlatform = onPlat;
+      PLAYER.angle = platIsSlope? slopeK*15 : 0;
+      // ジャンプ台：60%地点通過時に自動ジャンプ（飛び越え無効）
+      if(onPlat && onPlat.type===TYPE.JUMP){
+        const px = (WORLD.scrollX+PLAYER.x - onPlat.x)/onPlat.w;
+        if(px>=0.60 && !onPlat.triggered){
+          onPlat.triggered=true;
+          PLAYER.vy = WORLD.jumpVy*1.05;
+          PLAYER.jumpsLeft = Math.max(PLAYER.jumpsLeft, 1);
+          WORLD.speed += 0.5; // 少し加速
+        }
+      }
+      // トランポリン上から踏むとハイジャンプ
+      if(onPlat && onPlat.type===TYPE.TORA){
+        PLAYER.vy = WORLD.jumpVy*1.6;
+        PLAYER.onGround=false; PLAYER.onPlatform=null;
+      }
+    }else{
+      PLAYER.onGround=false; PLAYER.onPlatform=null; PLAYER.angle *= 0.9;
+    }
+
+    // 横衝突（即死系）
+    const pHB = actorHitBox({...PLAYER, x:PLAYER.x+WORLD.scrollX});
+    // 障害物即死: コーン/ゴミ/コンテナ側面/土管側面/トランポリン側面/看板側面/火の玉
+    if(!PLAYER.inv){
+      // 火の玉
+      for(const f of flames){
+        const hb = {x:f.x, y:f.y, w:f.w, h:f.h};
+        if(rectsOverlap(pHB.x,pHB.y,pHB.w,pHB.h, hb.x,hb.y,hb.w,hb.h)){
+          gameOver(); return;
+        }
+      }
+      for(const o of ahead){
+        if(o.type===TYPE.JUMP){ // 斜面は側面でもアウトにしない（登る前提）
+          // ただし正面から下側に強く当たった場合のみアウト
+        }else{
+          const hb = {x:o.x+o.hitOffX, y:o.y+o.hitOffY, w:o.hitW, h:o.hitH};
+          if(rectsOverlap(pHB.x,pHB.y,pHB.w,pHB.h, hb.x,hb.y,hb.w,hb.h)){
+            // 上に乗ってる場合を除外
+            const playerBottom = pHB.y+pHB.h;
+            const objTop = hb.y;
+            const verticalOk = Math.abs(playerBottom-objTop)<=14 && PLAYER.vy>=-0.5;
+            if(!(verticalOk && (o.type===TYPE.CONT || o.type===TYPE.DOKAN || o.type===TYPE.TORA || o.type===TYPE.JUMP))){
+              gameOver(); return;
+            }
+          }
+        }
+      }
+    }
+
+    // アイテム取得
+    for(let i=items.length-1;i>=0;i--){
+      const it=items[i];
+      const hb = {x:it.x,y:it.y,w:it.w,h:it.h};
+      if(rectsOverlap(pHB.x,pHB.y,pHB.w,pHB.h, hb.x,hb.y,hb.w,hb.h)){
+        if(PLAYER.items.length<2){
+          PLAYER.items.push(it.type); updateSlots();
+          items.splice(i,1);
+        }
+      }
+    }
+    // コイン取得
+    for(let i=coins.length-1;i>=0;i--){
+      const c=coins[i];
+      const hb = {x:c.x,y:c.y,w:c.w,h:c.h};
+      if(rectsOverlap(pHB.x,pHB.y,pHB.w,pHB.h, hb.x,hb.y,hb.w,hb.h)){
+        coins.splice(i,1);
+        PLAYER.coins++; ui.uiCoin.textContent = PLAYER.coins+"/10";
+        if(PLAYER.coins>=10){
+          PLAYER.coins=0; ui.uiCoin.textContent = "0/10";
+          // 無敵
+          PLAYER.inv=true; PLAYER.invT=5000;
+          showCutIn(images.mutekiop);
+        }
+      }
+    }
+
+    // つばさ/∞ブーストの時間
+    if(PLAYER.multiJump){ PLAYER.multiJumpT -= dt; if(PLAYER.multiJumpT<=0){ PLAYER.multiJump=false; PLAYER.maxJumps=2; } }
+
+    // ヴィラン・障害物をスクリーン外で掃除
+    while(objs.length && objs[0].x + objs[0].w < WORLD.scrollX-200){ objs.shift(); }
+    while(items.length && items[0].x + items[0].w < WORLD.scrollX-200){ items.shift(); }
+    while(coins.length && coins[0].x + coins[0].w < WORLD.scrollX-200){ coins.shift(); }
+    while(flames.length && flames[0].x + flames[0].w < WORLD.scrollX-200){ flames.shift(); }
+
+    updateHUD();
+
+  } // end PLAY
 }
-requestAnimationFrame(gameStep);
 
-/* ================== 描画 ================== */
-function tileX(img,y,h,f=1,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=img.width/img.height; const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
-function tileXRef(img,y,h,f,ref,over=0){ if(!(img&&img.width)) return; y=(y-over)|0; h=(h+over)|0; const asp=(ref&&ref.width)?(ref.width/ref.height):(img.width/img.height); const pw=Math.max(16,Math.round(h*asp)); const tx=-((scrollX*f)%pw); for(let x=tx-pw;x<vw+pw;x+=pw) ctx.drawImage(img,x|0,y|0,pw|0,h|0); }
+function draw(dt){
+  // clear
+  g.clearRect(0,0,vw,vh);
 
-function draw(){
-  // 空
-  const sky=ctx.createLinearGradient(0,0,0,vh); sky.addColorStop(0,'#7ec9ff'); sky.addColorStop(1,'#a0defa'); ctx.fillStyle=sky; ctx.fillRect(0,0,vw,vh);
-  const gy=GY()|0;
-  tileX(IMG['sora.PNG'],0,vh,0.25);
-
-  // 畑（背景帯）
-  const grassH=Math.round(vh*0.20), grassTopY=Math.max(0, gy-grassH-Math.round(vh*0.24));
-  if(IMG['hatake2.png']) tileX(IMG['hatake2.png'],grassTopY,grassH,0.6,1);
-
-  // 畑と地面の間の帯（do-ro）→ 下にmob（地面タイル）
-  const seamH=10, bandTop=(grassTopY+grassH)|0, bandH=Math.max(0,(gy-seamH)-bandTop);
-  if(IMG['do-ro.png']) tileX(IMG['do-ro.png'],bandTop,bandH,1,1);
-  if(IMG['mob.png']){ tileXRef(IMG['mob.png'],(gy-seamH)|0,seamH,1,IMG['do-ro.png'],1); tileXRef(IMG['mob.png'],gy|0,(vh-gy+1)|0,1,IMG['do-ro.png'],1); }
-
-  // 障害物
-  for(const o of obstacles){
-    const sx=o.x-scrollX; if(sx<-520||sx>vw+520) continue;
-    let im=null;
-    if(o.kind==='corn') im=IMG['corn.PNG']; else if(o.kind==='gomi') im=IMG['gomi.png']; else if(o.kind==='contena') im=IMG['contena.png'];
-    else if(o.kind==='tora') im=IMG['tora.png']; else if(o.kind==='dokan') im=IMG['dokan.png']; else if(o.kind==='jumpdai') im=IMG['jumpdai.png'];
-    else if(o.kind==='kanban') im=IMG[o.img];
-    if(im&&im.width) ctx.drawImage(im,sx|0,o.y|0,o.w|0,o.h|0); else { ctx.fillStyle='#666'; ctx.fillRect(sx|0,o.y|0,o.w|0,o.h|0); }
+  // BG
+  if(bgPattern){
+    g.save();
+    g.fillStyle=bgPattern;
+    g.translate(- (WORLD.scrollX*0.2 % images.bg.width), 0);
+    g.fillRect(0,0,vw+images.bg.width,vh);
+    g.restore();
+  }else{
+    g.fillStyle="#6ec1ff"; g.fillRect(0,0,vw,vh);
   }
 
-  // アイテム
-  for(const it of items){
-    const sx=it.x-scrollX; if(sx<-260||sx>vw+260) continue;
-    const name=(it.type==='coin')?'coin.png':(it.type==='tsubasa'?'tsubasa.png':(it.type==='en'?'en.png':'jump.png'));
-    const im=IMG[name]; if(im&&im.width) ctx.drawImage(im,sx|0,it.y|0,it.w|0,it.h|0);
+  // Middle (草・土) 簡易帯
+  g.fillStyle="#4a8a36"; g.fillRect(0, WORLD.groundY-146, vw, 24);
+  g.fillStyle="#705a2f"; g.fillRect(0, WORLD.groundY-122, vw, 122);
+
+  // Ground
+  if(gdPattern){
+    g.save();
+    g.fillStyle=gdPattern;
+    g.translate(- (WORLD.scrollX % images.ground.width), 0);
+    g.fillRect(0, WORLD.groundY, vw+images.ground.width, vh - WORLD.groundY);
+    g.restore();
+  }else{
+    g.fillStyle="#3b3b3b"; g.fillRect(0, WORLD.groundY, vw, vh-WORLD.groundY);
   }
 
-  // 火の玉 / ヴィラン
-  for(const f of fires){ const sx=f.x-scrollX; if(sx<-260||sx>vw+260) continue; const im=IMG['tama.png']; if(im&&im.width) ctx.drawImage(im,sx|0,f.y|0,f.w|0,f.h|0); }
-  for(const v of villains){ const sx=v.x-scrollX; const im=IMG['viran.png']; if(im&&im.width) ctx.drawImage(im,(sx-60)|0,(v.y-50)|0,120,100); }
+  // Objects
+  for(const o of objs){
+    const sx = o.x - WORLD.scrollX, sy = o.y;
+    switch(o.type){
+      case TYPE.CORN: g.drawImage(images.corn, sx, sy); break;
+      case TYPE.GOMI: g.drawImage(images.gomi, sx, sy); break;
+      case TYPE.CONT: g.drawImage(images.contena, sx, sy); break;
+      case TYPE.TORA: g.drawImage(images.tora, sx, sy); break;
+      case TYPE.DOKAN: g.drawImage(images.dokan, sx, sy, o.w, o.h); break;
+      case TYPE.JUMP: g.save(); g.translate(sx,sy); g.drawImage(images.jumpdai,0,0); g.restore(); break;
+      case TYPE.KANBAN: g.drawImage(images[o.imgName], sx, sy); break;
+    }
+    // debug hitbox
+    // g.strokeStyle="rgba(255,0,0,.35)"; const hb={x:sx+o.hitOffX,y:sy+o.hitOffY,w:o.hitW,h:o.hitH}; g.strokeRect(hb.x,hb.y,hb.w,hb.h);
+  }
 
-  // プレイヤー
-  ctx.save(); ctx.translate((RUNX()+player.w/2)|0,(player.y+player.h/2)|0); ctx.rotate(player.tilt); ctx.translate((-player.w/2)|0,(-player.h/2)|0);
-  const body=(invincible>0)?'gold.png':player.sprite, pb=IMG[body];
-  if(pb&&pb.width){ ctx.drawImage(pb,0,0,player.w|0,player.h|0); if(invincible>0){ const sp=IMG[sparkleFrame?'hoshi1.png':'hoshi2.png']; if(sp&&sp.width) ctx.drawImage(sp,-6,-6,(player.w+12)|0,(player.h+12)|0); } }
-  else{ ctx.fillStyle='#0bf'; ctx.fillRect(0,0,player.w|0,player.h|0); }
-  ctx.restore();
+  // Flames
+  for(const f of flames){
+    const sx = f.x - WORLD.scrollX;
+    g.drawImage(images.tama, sx, f.y);
+  }
+
+  // Items / coins
+  for(const it of items){ const sx=it.x - WORLD.scrollX; g.drawImage(images[it.type], sx, it.y); }
+  for(const c of coins){ const sx=c.x - WORLD.scrollX; g.drawImage(images.coin, sx, c.y); }
+
+  // Player
+  drawPlayer();
+
+  // Viran
+  if(viran){ const sx=viran.x - WORLD.scrollX; g.drawImage(images.viran, sx, viran.y); }
+
+  // Cut-in
+  drawCutIn(dt);
 }
 
-/* ================== GO/アウト ================== */
-function showGo(){ goMsg.textContent='記録 '+Math.floor(meters)+'m！'; goModal.classList.add('show'); if(goTimer){ clearTimeout(goTimer); } goTimer=setTimeout(()=>{ goModal.classList.remove('show'); openSelect(); }, 20000); }
-function die(){ state='gameover'; showGo(); }
+function drawPlayer(){
+  const img = (PLAYER.charId==='VR')? images.VR : images.orange;
+  const sx = PLAYER.x, sy = PLAYER.y;
+  g.save();
+  g.translate(sx + PLAYER.w/2, sy + PLAYER.h/2);
+  g.rotate(PLAYER.angle * Math.PI/180);
+  // 無敵中は金ボディ＋キラキラ
+  if(PLAYER.inv){
+    g.drawImage(images.gold, -PLAYER.w/2, -PLAYER.h/2);
+    const sparkle = (Math.floor(now()/120)%2===0)? images.hoshi1:images.hoshi2;
+    g.drawImage(sparkle, -PLAYER.w/2-6, -PLAYER.h/2-6);
+  }else{
+    g.drawImage(img, -PLAYER.w/2, -PLAYER.h/2);
+  }
+  g.restore();
 
-/* ================== ループ開始 & エラー表示 ================== */
-window.addEventListener('error', (e)=>{ fatalMsg.textContent=String(e&&e.message||e); fatal.style.display='flex'; });
+  // debug HB
+  // const hb = actorHitBox(PLAYER); g.strokeStyle="rgba(0,255,0,.35)"; g.strokeRect(hb.x, hb.y, hb.w, hb.h);
+}
 
-/* ================== 起動 ================== */
-bootFlow();
+/* ==========================================================
+   State / Flow
+========================================================== */
+function setState(s){
+  state = s;
+  if(s===STATE.OP){
+    ui.hud.classList.add('hidden');
+    ui.ctrl.classList.add('hidden');
+    ui.opBox.style.opacity=1;
+    ui.opBox.classList.remove('hidden');
+    setTimeout(()=>{ ui.opBox.style.opacity=0; setTimeout(()=>{ ui.opBox.classList.add('hidden'); toSelect(); }, 400); }, 2000);
+  }
+}
+function toSelect(){
+  state=STATE.SELECT;
+  ui.selectBox.classList.remove('hidden'); ui.selectBox.style.opacity=1;
+  ui.uiChar.textContent = "-";
+}
+function afterSelect(id){
+  PLAYER.charId=id; ui.uiChar.textContent = id.toUpperCase();
+  ui.selectBox.style.opacity=0; setTimeout(()=>ui.selectBox.classList.add('hidden'),300);
+  // Ready
+  readyGo();
+}
+function readyGo(){
+  state=STATE.READY;
+  // Reset world
+  WORLD.scrollX=0; WORLD.meters=0; WORLD.kmh=0; nextSpawnX=900;
+  objs.length=0; items.length=0; coins.length=0; flames.length=0; viran=null; nextViranAt=randi(1000,2000);
+  resetPlayer();
+  // UI on
+  ui.hud.classList.remove('hidden'); ui.ctrl.classList.remove('hidden');
+  // Countdown
+  state=STATE.COUNT;
+  ui.countBox.classList.remove('hidden'); ui.countBox.style.opacity=1;
+  const seq=['3','2','1','GO'];
+  let i=0;
+  const tick=()=>{
+    ui.countNum.textContent = seq[i++];
+    if(i<seq.length) setTimeout(tick, 650);
+    else{
+      setTimeout(()=>{
+        ui.countBox.style.opacity=0; setTimeout(()=>ui.countBox.classList.add('hidden'),300);
+        state=STATE.PLAY;
+      }, 450);
+    }
+  }; tick();
+}
 
-})();
+function gameOver(){
+  if(state!==STATE.PLAY) return;
+  state=STATE.GAMEOVER;
+  const d = Math.floor(WORLD.meters);
+  ui.msgTxt.textContent = `記録 ${d} m！`;
+  ui.msgBox.classList.remove('hidden'); ui.msgBox.style.opacity=1;
+  setTimeout(()=>{ ui.msgBox.style.opacity=0; setTimeout(()=>{ ui.msgBox.classList.add('hidden'); showMenu(); }, 600); }, 2000);
+}
+function showMenu(){
+  state=STATE.MENU;
+  ui.menuBox.classList.remove('hidden'); ui.menuBox.style.opacity=1;
+}
+
+/* Menu buttons */
+ui.mStart.addEventListener('click', ()=>{ ui.menuBox.style.opacity=0; setTimeout(()=>ui.menuBox.classList.add('hidden'),250); readyGo(); });
+ui.mSelect.addEventListener('click', ()=>{ ui.menuBox.style.opacity=0; setTimeout(()=>ui.menuBox.classList.add('hidden'),250); toSelect(); });
+ui.mQuit.addEventListener('click', ()=>{ location.reload(); });
+
+/* Select interactions */
+document.querySelectorAll('.char').forEach(el=>{
+  el.addEventListener('click', ()=>afterSelect(el.dataset.id));
+});
+
+/* OP skip */
+ui.opBox.addEventListener('click', ()=>{ if(state===STATE.OP){ ui.opBox.style.opacity=0; setTimeout(()=>{ ui.opBox.classList.add('hidden'); toSelect(); }, 200); }});
+
+/* ==========================================================
+   Start
+========================================================== */
+loadImages(()=>{
+  buildPatterns();
+  setState(STATE.OP);
+  requestAnimationFrame(loop);
+});
 </script>
 </body>
 </html>
