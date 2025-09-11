@@ -1,413 +1,315 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
-<title>Osoji-Viran</title>
-<meta name="theme-color" content="#0b0c10" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<title>ヴィラン掃除：移動と吹き出し修正</title>
 <style>
-  :root{ --bg:#0b0c10; --fg:#e9eef7; --dim:#9aa3b2; --accent:#13c4ff; --danger:#ff4d6d; --btn:#16202e; --glass:rgba(15,20,28,.65); }
-  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
-  body{display:flex;flex-direction:column}
-  #app{position:fixed; inset:0; display:flex; flex-direction:column;}
-  .topbar{flex:0 0 auto; display:flex; align-items:center; gap:12px;
-    padding:10px calc(env(safe-area-inset-right,0) + 12px) 10px calc(env(safe-area-inset-left,0) + 12px);
-    background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.05));
-    backdrop-filter:blur(6px); z-index:5;}
-  .pill{padding:6px 10px; border-radius:999px; background:var(--glass); font-size:14px}
-  .pill strong{color:#fff}
-  .spacer{flex:1}
-  #wrap{position:relative; flex:1 1 auto;}
-  #cv{position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; background:#000}
-  .modal{position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:10;
-    background:rgba(0,0,0,.55); backdrop-filter:blur(4px);}
-  .card{width:min(92vw,420px); background:linear-gradient(180deg,#121824,#0e131c); border:1px solid #27334a;
-    border-radius:18px; padding:18px; box-shadow:0 10px 40px rgba(0,0,0,.45)}
-  .card h2{margin:8px 0 6px 0; font-size:22px}
-  .muted{color:var(--dim); font-size:14px}
-  .row{display:flex; gap:10px; align-items:center; margin-top:10px}
-  .grow{flex:1}
-  .cta{display:flex; gap:10px; margin-top:14px}
-  .cta .btn{flex:1; height:48px; border-radius:14px; font-weight:700; background:var(--btn); border:1px solid #263246; color:#dfe7f5; display:flex; align-items:center; justify-content:center}
-  .loader{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column;
-    background:rgba(0,0,0,.55); z-index:9; gap:8px; text-align:center;}
-  .bar{width:60%; height:8px; background:#263246; border-radius:999px; overflow:hidden}
-  .bar>i{display:block; height:100%; width:0%; background:var(--accent)}
-  *{ -webkit-tap-highlight-color: rgba(0,0,0,0); }
+  html,body{margin:0;height:100%;background:#0a0a0a;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+  #wrap{position:fixed;inset:0;display:flex;flex-direction:column}
+  header{padding:8px 12px;font-size:14px;background:#121212;display:flex;gap:10px;align-items:center}
+  header .dot{width:8px;height:8px;border-radius:50%;background:#18e06f;display:inline-block}
+  canvas{flex:1;display:block;background:#111;touch-action:none}
+  footer{padding:6px 10px;background:#121212;color:#aaa;font-size:12px}
 </style>
 </head>
 <body>
-<div id="app">
-  <div class="topbar">
-    <div class="pill">TIME: <strong id="time">30.0</strong>s</div>
-    <div class="pill">SCORE: <strong id="score">0</strong></div>
-    <div class="spacer"></div>
-    <div class="pill" id="hint">ドラッグで左右移動（高さ固定：上寄り）／タップで投下</div>
-  </div>
-
-  <div id="wrap">
-    <canvas id="cv" width="0" height="0"></canvas>
-
-    <div class="loader" id="loader">
-      <div>読み込み中… <span id="ldTxt">0%</span></div>
-      <div class="bar"><i id="ldBar"></i></div>
-      <div class="muted" style="max-width:90vw">画像が欠けていてもプレースホルダーで開始します</div>
-    </div>
-
-    <div class="modal" id="result">
-      <div class="card">
-        <h2>結果</h2>
-        <div class="row"><div class="grow">燃やした数</div><div><strong id="finalScore" style="font-size:22px">0</strong></div></div>
-        <div class="muted">もう一度挑戦できます。</div>
-        <div class="cta">
-          <div class="btn" id="retry">RETRY</div>
-          <div class="btn" id="share">SHARE</div>
-        </div>
-      </div>
-    </div>
-  </div>
+<div id="wrap">
+  <header>
+    <span class="dot"></span><span>取りに行く時＝吹き出し同伴／戻り開始で吹き出し消去／端固着防止</span>
+  </header>
+  <canvas id="cv"></canvas>
+  <footer>画面外へ取りに行き→戻る→フィールド内ホームへ復帰。端には固まらない仕様。</footer>
 </div>
 
 <script>
-(()=>{
-// ===== 基本 =====
-const DPR = Math.max(1, window.devicePixelRatio || 1);
-const canvas = document.getElementById('cv');
-const ctx = canvas.getContext('2d');
-const timeEl = document.getElementById('time');
-const scoreEl = document.getElementById('score');
-const loader = document.getElementById('loader');
-const ldTxt = document.getElementById('ldTxt');
-const ldBar = document.getElementById('ldBar');
-const modal = document.getElementById('result');
-const retryBtn = document.getElementById('retry');
-const shareBtn = document.getElementById('share');
-const hint = document.getElementById('hint');
+(() => {
+  const cv = document.getElementById('cv');
+  const cx = cv.getContext('2d');
 
-let W=0,H=0, groundY=0, baseY=0;
-function resize(){
-  const vw = window.innerWidth, vh = window.innerHeight;
-  W = vw * DPR; H = vh * DPR;
-  canvas.width = W; canvas.height = H;
-  canvas.style.width = vw+"px"; canvas.style.height = vh+"px";
-  groundY = H*0.86;
-  baseY = H*0.25; // 上寄り固定
-}
-window.addEventListener('resize', resize, {passive:true});
-resize();
-
-// ===== 画像ロード =====
-function loadImgSafe(src, timeoutMs=4000){
-  return new Promise((resolve)=>{
-    const im = new Image(); let done=false;
-    const finish = (ok)=>{ if(done) return; done=true; resolve({ok, img: ok?im:null, src}); };
-    const timer = setTimeout(()=>finish(false), timeoutMs);
-    im.onload = ()=>{ clearTimeout(timer); finish(true); };
-    im.onerror = ()=>{ clearTimeout(timer); finish(false); };
-    im.src = src + '?_=' + Date.now();
-  });
-}
-const files = ['work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png','isoge.png','totte.png'];
-const assets = {};
-let started = false;
-(async ()=>{
-  let done=0;
-  for(const f of files){
-    loadImgSafe(f).then(r=>{
-      done++; assets[f] = r.ok ? r.img : null;
-      const p = Math.round(done/files.length*100);
-      ldTxt.textContent = p + '%'; ldBar.style.width = p + '%';
-      if(done===files.length) startGame();
-    });
+  // レイアウト
+  function resize() {
+    cv.width = Math.floor(window.innerWidth * (window.devicePixelRatio||1));
+    cv.height = Math.floor(window.innerHeight * (window.devicePixelRatio||1) - 0);
+    cv.style.width = '100%';
+    cv.style.height = '100%';
   }
-  setTimeout(()=>{ if(!started) startGame(); }, 3000);
-})();
+  addEventListener('resize', resize, {passive:true});
+  resize();
 
-// ===== 入力 =====
-const input = { touching:false, id:null, lx:0, t0:0, moved:false };
-const TAP_TIME = 220, TAP_MOVE = 12*DPR;
-function viewToCanvas(x,y){ return { x:x*DPR, y:y*DPR }; }
-canvas.addEventListener('touchstart',(e)=>{
-  const t=e.changedTouches[0];
-  input.touching=true; input.id=t.identifier; input.moved=false; input.t0=performance.now();
-  input.lx=viewToCanvas(t.clientX,t.clientY).x;
-},{passive:false});
-canvas.addEventListener('touchmove',(e)=>{
-  for(const t of e.changedTouches){
-    if(t.identifier===input.id){
-      const p=viewToCanvas(t.clientX,t.clientY);
-      if(Math.abs(p.x-input.lx)>TAP_MOVE) input.moved=true;
-      input.lx=p.x; e.preventDefault(); break;
-    }
-  }
-},{passive:false});
-canvas.addEventListener('touchend',(e)=>{
-  if(!input.touching) return;
-  const dt=performance.now()-input.t0;
-  if(!input.moved && dt<=TAP_TIME) tryDrop();
-  input.touching=false; input.id=null;
-},{passive:false});
+  // フィールド安全域（端に固着しないための内側マージン）
+  const MARGIN = 32; // 物理px（描画座標）
+  const SPEED = 3;   // 基本速度
+  const DT = 1;      // フレーム刻み
 
-// ===== ユーティリティ =====
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function rand(a,b){ return a + Math.random()*(b-a); }
-function aabb(x,y,w,h, X,Y,W2,H2){ return !(x+w<X || X+W2<x || y+h<Y || Y+H2<y); }
-
-// ===== 状態 =====
-const world={timeLeft:30.0, score:0, running:false};
-const player={x:W*0.22, y:baseY, w:84*DPR, h:84*DPR, stunned:0, blinkT:0, lockDrop:0, moveEaseX:0.12};
-const fireball={active:false, x:0,y:0, vy:0, r:18*DPR};
-
-// 画面内マージン（“常に見える”ため）
-const MARGIN = 8*DPR;
-
-function makeCarrier(kindIndex){
-  const speed=(0.10+Math.random()*0.06)*DPR;
-  const dir=Math.random()<0.5?-1:1;
-  // ★初期位置は“ほぼ画面内”から開始（端に寄せる）
-  const startX = dir>0 ? (MARGIN) : (W - MARGIN - 72*DPR);
-  return{
-    kind:kindIndex, x:startX, y:groundY-20*DPR, w:72*DPR, h:72*DPR,
-    vx:speed*dir, baseSpeed:speed, hopT:Math.random()*6,
-    hasBin:true, bin:{w:56*DPR, h:56*DPR, explode:0, exploding:false},
-    state:'patrol',
-    beh:'patrol', behT:rand(2.5,4.5),
-    pauseLeft:0, slowLeft:0,
-    edgePause:0,  // 端の小停止
-    // 吹き出し（fetchのみ）
-    bubble:{name:null, time:0, fetchCd:null}
+  // 吹き出し画像（任意）
+  const bubbleImgs = {
+    nera: loadImg('nera.png'),
+    otosi: loadImg('otosi.png'),
+    koti: loadImg('koti.png'),
+    imada: loadImg('imada.png'),
+    isoge: loadImg('isoge.png'),
+    totte: loadImg('totte.png')
   };
-}
-// 各色2体ずつ＝6体固定
-const carriers=[makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3)];
-
-// ===== ループ =====
-let last=performance.now();
-function startGame(){ if(started) return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
-function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; if(world.running) update(dt); draw(); requestAnimationFrame(loop); }
-
-// ===== 更新 =====
-function update(dt){
-  // タイマー
-  world.timeLeft-=dt; if(world.timeLeft<=0){ world.timeLeft=0; endGame(); }
-  timeEl.textContent=world.timeLeft.toFixed(1); scoreEl.textContent=world.score;
-
-  // 投下ロック
-  if(player.lockDrop>0) player.lockDrop=Math.max(0, player.lockDrop-dt);
-  hint.textContent = (player.lockDrop>0) ? `投下ロック中… ${player.lockDrop.toFixed(1)}s` : 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
-
-  // プレイヤー移動（Xのみ）
-  if(input.touching){
-    const tx=clamp(input.lx-player.w/2, MARGIN, W - MARGIN - player.w);
-    player.x += (tx-player.x)*player.moveEaseX;
-  }
-  player.y=baseY;
-  if(player.stunned>0){ player.stunned=Math.max(0,player.stunned-dt); player.blinkT+=dt*8; }
-
-  // 火の玉
-  if(fireball.active){
-    fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.40*DPR);
-    fireball.y+=fireball.vy*dt*1000;
-    // 命中
-    for(const c of carriers){
-      if(c.hasBin && !c.bin.exploding){
-        const bx=c.x+(c.w-c.bin.w)/2;
-        const by=(c.y-c.h)-c.bin.h-6*DPR;
-        if(aabb(fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2, bx,by,c.bin.w,c.bin.h)){
-          c.bin.exploding=true; c.bin.explode=0;
-          fireball.active=false; world.score++;
-        }
-      }
-    }
-    // 地面 → ペナルティ
-    if(fireball.active && fireball.y>groundY){
-      fireball.active=false; player.stunned=2.0; player.blinkT=0; player.lockDrop=2.0;
-    }
+  function loadImg(src){
+    const img = new Image();
+    img.src = src;
+    return img;
   }
 
-  // 運搬キャラ
-  for(const c of carriers){
-    // ぴょん
-    c.hopT+=dt*8; const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
+  // 文字吹き出しのフォールバック文言
+  const bubbleTexts = {
+    go: 'いってくる！',
+    hurry: 'いそげ！',
+    drop: 'おとすぞ…',
+    think: 'ねらい中…',
+  };
 
-    // 破裂進行
-    if(c.bin.exploding){
-      c.bin.explode += dt*1.8;
-      if(c.bin.explode>=1){
-        // ゴミ箱消滅 → fetchへ
-        c.bin.exploding=false; c.hasBin=false; c.state='fetch';
-        c.beh='patrol'; c.edgePause=0;
-        // ★このキャラだけ即吹き出し
-        const pick = (Math.random()<0.5)? 'isoge.png':'totte.png';
-        c.bubble.name = pick; c.bubble.time = 1.1; c.bubble.fetchCd = rand(2.0,3.0);
-      }
-    }
+  // キャラクター
+  const actor = {
+    x: 0, y: 0, w: 40, h: 48,
+    vx: 0, vy: 0,
+    // “ホーム位置”＝戻り先（毎サイクル再抽選）
+    homeX: 0, homeY: 0,
+    state: 'idle', // idle | go_fetch | returning
+    stateTimer: 0,
+    speech: { visible:false, type:'', text:'', img:null },
+  };
 
-    // 吹き出しタイマー（fetchのみ）
-    if(c.bubble.time>0) c.bubble.time=Math.max(0,c.bubble.time-dt);
-    if(c.bubble.fetchCd!==null) c.bubble.fetchCd=Math.max(0,c.bubble.fetchCd-dt);
+  function rand(min,max){ return Math.random()*(max-min)+min; }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
-    if(c.state==='fetch'){
-      // 右端へ補給（通常速度）
-      const speed=Math.abs(c.baseSpeed)*1.0*DPR;
-      c.x += speed * dt * 1000;
-
-      // fetch中の定期吹き出し
-      if(c.bubble.fetchCd!==null && c.bubble.time<=0 && c.bubble.fetchCd<=0){
-        c.bubble.name = (Math.random()<0.5)? 'isoge.png':'totte.png';
-        c.bubble.time = 1.1;
-        c.bubble.fetchCd = rand(2.0,3.0);
-      }
-
-      // 右外で補給 → 復帰（左へ）
-      if(c.x - c.w > W + 40*DPR){
-        c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
-        c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
-        c.hasBin=true; c.state='patrol';
-        c.beh='patrol'; c.behT=rand(2.5,4.5);
-        c.pauseLeft=0; c.slowLeft=0; c.edgePause=0;
-        c.bubble.fetchCd=null; // fetch専用解放
-      }
-    }else{ // === patrol ===
-      // 行動（Pause/Slow）
-      c.behT -= dt;
-      if(c.behT<=0 && !c.bin.exploding){
-        if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
-        else{ c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5; }
-        c.behT = rand(3.0,6.0);
-      }
-
-      if(c.edgePause>0){
-        // 端停止中：動かない
-        c.edgePause -= dt;
-        if(c.edgePause<=0){ c.vx = -c.vx; } // 停止後に反転
-      }else if(c.beh==='pause'){
-        c.pauseLeft -= dt;
-        if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
-      }else{
-        c.x += c.vx * dt * 1000; // patrol/slow の移動
-      }
-
-      if(c.beh==='slow'){
-        c.slowLeft -= dt;
-        if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
-      }
-
-      // ★画面内クランプ（常に見える）
-      const minX = MARGIN, maxX = W - MARGIN - c.w;
-      if(c.x < minX){ c.x = minX; c.edgePause = 0.30; c.vx = 0; }
-      if(c.x > maxX){ c.x = maxX; c.edgePause = 0.30; c.vx = 0; }
-    }
-
-    c.y = groundY - 20*DPR - hop;
+  function playArea(){
+    return {
+      left: MARGIN,
+      top: MARGIN,
+      right: cv.width - MARGIN,
+      bottom: cv.height - MARGIN
+    };
   }
-}
 
-function tryDrop(){
-  if(player.lockDrop>0 || fireball.active) return;
-  fireball.active=true; fireball.x=player.x+player.w/2; fireball.y=player.y+player.h; fireball.vy=0.06*DPR;
-}
+  function chooseHomeInside(){
+    const A = playArea();
+    actor.homeX = rand(A.left, A.right);
+    actor.homeY = rand(A.top,  A.bottom);
+  }
 
-// ===== 描画 =====
-function draw(){
-  ctx.clearRect(0,0,W,H);
+  // 初期配置
+  chooseHomeInside();
+  actor.x = actor.homeX;
+  actor.y = actor.homeY;
 
-  // 背景（固定）
-  if(assets['work.png']){
-    const img=assets['work.png']; const scale=(H/img.height); const w=img.width*scale;
-    ctx.drawImage(img,0,0,w,H); if(w<W){ ctx.fillStyle="#111826"; ctx.fillRect(w,0,W-w,H); }
-  }else{ ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H); }
+  // 状態遷移ヘルパ
+  function enterIdle(){
+    actor.state = 'idle';
+    actor.stateTimer = rand(60, 240); // 1〜4秒待機
+    actor.vx = 0; actor.vy = 0;
+    // 念のため端吸着からの復帰
+    nudgeFromEdges();
+  }
+  function enterGoFetch(){
+    actor.state = 'go_fetch';
+    actor.stateTimer = 0;
+    // 外へ出る方向（左か右の近い方へ）
+    const towardsLeft = actor.x < cv.width/2;
+    actor.vx = towardsLeft? -SPEED : SPEED;
+    actor.vy = 0;
+    // 吹き出しON（同伴）
+    showBubblePick();
+  }
+  function enterReturning(){
+    actor.state = 'returning';
+    actor.stateTimer = 0;
+    // 吹き出しOFF（戻りは非表示）
+    hideBubble();
+    // 速度はホームへ向ける
+    aimToHome();
+  }
+  function aimToHome(){
+    const dx = actor.homeX - actor.x;
+    const dy = actor.homeY - actor.y;
+    const len = Math.hypot(dx,dy) || 1;
+    actor.vx = (dx/len) * SPEED;
+    actor.vy = (dy/len) * SPEED;
+  }
 
-  // キャリア：描画順「キャラ → ゴミ箱 → 吹き出し（前面）」
-  for(const c of carriers){
-    const sx=c.x, sy=c.y-c.h;
-
-    // 1) キャラ
-    const cim=assets[c.kind+'.png'];
-    if(cim) ctx.drawImage(cim,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
-
-    // 2) ゴミ箱（頭の上）
-    if(c.hasBin){
-      const bx=c.x+(c.w-c.bin.w)/2;
-      const by=sy - c.bin.h;
-      if(c.bin.exploding){
-        const t=Math.min(1,c.bin.explode);
-        if(assets['gomi.png']){
-          ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore();
-        }else{ ctx.fillStyle=`rgba(200,200,200,${1-t})`; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
-        // 赤いスパイク爆発
-        ctx.save();
-        ctx.globalCompositeOperation='lighter';
-        ctx.fillStyle=`rgba(255,60,80,${0.65*(1-t)})`;
-        ctx.beginPath();
-        const cx=bx+c.bin.w/2, cy=by+c.bin.h/2;
-        const spikes=18, inner=10*DPR*(1+t*0.6), outer=28*DPR*(1+t*1.5);
-        for(let i=0;i<spikes*2;i++){
-          const ang=(Math.PI*i)/spikes + t*5.6;
-          const r=(i%2===0)?outer:inner;
-          const px=cx+Math.cos(ang)*r, py=cy+Math.sin(ang)*r;
-          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-        }
-        ctx.closePath(); ctx.fill();
-        ctx.restore();
-      }else{
-        if(assets['gomi.png']) ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);
-        else { ctx.fillStyle="#999"; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
-      }
+  // 吹き出し表示
+  function showBubblePick(){
+    // 画像があればランダムで選択、無ければテキスト
+    const keys = Object.keys(bubbleImgs);
+    const choice = keys[Math.floor(Math.random()*keys.length)];
+    const img = bubbleImgs[choice];
+    if (img && img.complete && img.naturalWidth>0){
+      actor.speech.visible = true;
+      actor.speech.img = img;
+      actor.speech.text = '';
+      actor.speech.type = 'img';
+    } else {
+      actor.speech.visible = true;
+      actor.speech.img = null;
+      actor.speech.type = 'text';
+      // 文言もランダム
+      const tkeys = Object.keys(bubbleTexts);
+      actor.speech.text = bubbleTexts[tkeys[Math.floor(Math.random()*tkeys.length)]];
     }
+  }
+  function hideBubble(){
+    actor.speech.visible = false;
+    actor.speech.img = null;
+    actor.speech.text = '';
+    actor.speech.type = '';
+  }
 
-    // 3) 吹き出し（fetchだけ、発したキャラに密着）
-    if(c.bubble.name && c.bubble.time>0){
-      const bimg=assets[c.bubble.name];
-      const bw=56*DPR;
-      const bh=bimg ? (bw*(bimg.height/bimg.width)) : 40*DPR;
-      const margin=2*DPR;
-      let bx = sx + c.w + margin;                 // 右側優先
-      if(bx + bw > W - 2*DPR){ bx = sx - bw - margin; } // はみ出す時は左
-      let by = sy + c.h*0.35 - bh/2;              // 頭の“横”
-      // 画面内クランプ
-      bx = clamp(bx, 2*DPR, W - bw - 2*DPR);
-      by = clamp(by, 2*DPR, groundY - bh - 2*DPR);
-      if(bimg) ctx.drawImage(bimg, bx, by, bw, bh);
-      else { ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(bx,by,bw,bh); }
+  // 端固着防止（内側へ軽く押し戻す & 微小ノイズ）
+  function nudgeFromEdges(){
+    const A = playArea();
+    let nudged = false;
+    if (actor.x < A.left){ actor.x = A.left + 1; nudged = true; }
+    if (actor.x > A.right){ actor.x = A.right - 1; nudged = true; }
+    if (actor.y < A.top){ actor.y = A.top + 1; nudged = true; }
+    if (actor.y > A.bottom){ actor.y = A.bottom - 1; nudged = true; }
+    if (nudged){
+      // ゼロ速度で貼り付かないよう微小ランダム
+      actor.vx += (Math.random()-0.5)*0.4;
+      actor.vy += (Math.random()-0.5)*0.4;
     }
   }
 
-  // 火の玉
-  if(fireball.active){
-    if(assets['tama.png']) ctx.drawImage(assets['tama.png'],fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2);
-    else { ctx.fillStyle="#ffdd66"; ctx.beginPath(); ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2); ctx.fill(); }
+  // 1サイクル： idle -> go_fetch -> returning -> idle
+  enterIdle();
+
+  // 取りに行く完了判定（画面外へ抜けたらOK）
+  function isOffscreen(){
+    const offMargin = 20;
+    return (actor.x < -offMargin || actor.x > cv.width+offMargin ||
+            actor.y < -offMargin || actor.y > cv.height+offMargin);
+  }
+  // ホーム到達判定
+  function isAtHome(){
+    const eps = 4;
+    return Math.abs(actor.x - actor.homeX) < eps &&
+           Math.abs(actor.y - actor.homeY) < eps;
   }
 
-  // プレイヤー（赤チカチカ）
-  const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
-  if(blinking){ ctx.globalAlpha=0.45; }
-  if(assets['viran.png']) ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);
-  else { ctx.fillStyle="#6cf"; ctx.fillRect(player.x,player.y,player.w,player.h); }
-  if(blinking){
-    ctx.globalAlpha=1; ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x,player.y,player.w,player.h);
-  }
-}
+  // ループ
+  function update(){
+    // 状態更新
+    if (actor.state === 'idle'){
+      actor.stateTimer -= 1;
+      // 指定時間待ったら取りに行く
+      if (actor.stateTimer <= 0){
+        // 次のホーム位置は戻り後に変える（戻ったら散らばるため）
+        // 先に go_fetch へ
+        enterGoFetch();
+      } else {
+        // 待機中に端固着にならないよう軽い内側バイアス
+        nudgeFromEdges();
+      }
+    }
+    else if (actor.state === 'go_fetch'){
+      actor.x += actor.vx * DT;
+      actor.y += actor.vy * DT;
+      if (isOffscreen()){
+        // 戻り開始：ここで次ホームを再抽選→必ず内側へ帰還
+        chooseHomeInside();
+        enterReturning();
+      }
+    }
+    else if (actor.state === 'returning'){
+      // 毎フレームホームへ向ける（数値誤差で停滞しないよう）
+      aimToHome();
+      actor.x += actor.vx * DT;
+      actor.y += actor.vy * DT;
+      if (isAtHome()){
+        // 新しいホームに到着→次サイクルへ
+        enterIdle();
+      }
+    }
 
-// ===== 終了/リトライ =====
-function endGame(){ world.running=false; document.getElementById('finalScore').textContent=world.score; modal.style.display='flex'; }
-function resetGame(){
-  world.timeLeft=30.0; world.score=0; world.running=true;
-  player.stunned=0; player.lockDrop=0; player.blinkT=0;
-  fireball.active=false; fireball.vy=0;
-  carriers.length=0;
-  carriers.push( makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3) );
-  modal.style.display='none';
-}
-retryBtn.addEventListener('click', resetGame);
-shareBtn.addEventListener('click', async ()=>{
-  const text = `Osoji-Viran｜スコア ${world.score}（30秒）`;
-  try{
-    if(navigator.share) await navigator.share({text, url: location.href});
-    else await navigator.clipboard.writeText(text);
-    alert('結果を共有/コピーしました！');
-  }catch{}
-});
+    // 端からの吸着は常に避ける
+    nudgeFromEdges();
+  }
+
+  // 描画
+  function draw(){
+    cx.clearRect(0,0,cv.width,cv.height);
+
+    // フィールド安全域の可視化（デバッグ）
+    cx.save();
+    cx.strokeStyle = '#2a2a2a';
+    cx.lineWidth = 2;
+    cx.strokeRect(MARGIN, MARGIN, cv.width-2*MARGIN, cv.height-2*MARGIN);
+    cx.restore();
+
+    // “ホーム位置”目印
+    cx.save();
+    cx.fillStyle = '#0bd1ff';
+    cx.globalAlpha = 0.15;
+    cx.beginPath();
+    cx.arc(actor.homeX, actor.homeY, 24, 0, Math.PI*2);
+    cx.fill();
+    cx.restore();
+
+    // キャラクター（仮：丸）
+    cx.save();
+    cx.fillStyle = '#ffd83d';
+    cx.beginPath();
+    cx.ellipse(actor.x, actor.y, actor.w*0.5, actor.h*0.5, 0, 0, Math.PI*2);
+    cx.fill();
+    cx.restore();
+
+    // 吹き出し（取りに行く時のみ可視）
+    if (actor.speech.visible){
+      const bx = actor.x + 18;   // 頭の横
+      const by = actor.y - actor.h*0.7;
+      if (actor.speech.img){
+        const scale = 0.5; // 小さめ
+        const iw = actor.speech.img.naturalWidth || 128;
+        const ih = actor.speech.img.naturalHeight || 64;
+        const dw = iw*scale, dh = ih*scale;
+        cx.drawImage(actor.speech.img, bx, by, dw, dh);
+      } else if (actor.speech.text){
+        // シンプルテキスト吹き出し
+        const pad = 8;
+        cx.save();
+        cx.font = 'bold 22px sans-serif';
+        const w = cx.measureText(actor.speech.text).width + pad*2;
+        const h = 30 + pad*2;
+        cx.fillStyle = 'rgba(255,255,255,0.95)';
+        roundRect(cx, bx, by, w, h, 8);
+        cx.fill();
+        cx.fillStyle = '#111';
+        cx.fillText(actor.speech.text, bx+pad, by+pad+22);
+        // しっぽ
+        cx.beginPath();
+        cx.moveTo(bx+10, by+h);
+        cx.lineTo(bx+22, by+h);
+        cx.lineTo(bx+14, by+h+10);
+        cx.closePath();
+        cx.fill();
+        cx.restore();
+      }
+    }
+  }
+
+  function roundRect(ctx,x,y,w,h,r){
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+
+  // ループ駆動
+  function loop(){
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+  loop();
+
 })();
 </script>
 </body>
