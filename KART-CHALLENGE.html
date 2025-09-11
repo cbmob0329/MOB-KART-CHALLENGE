@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + contena + jump pad</title>
+<title>Runner – stable ground metrics</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -136,7 +136,7 @@
       }
     };
 
-    /* ==== 背景：タイルスクロール ==== */
+    /* ==== 背景：一度確定したタイル幅でのみ描画 ==== */
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
@@ -150,18 +150,20 @@
       return { draw };
     })();
 
-    /* ==== 地面：上端トリム→接地ライン整数化 ==== */
+    /* ==== 地面：数値を固定して共有（ここが今回の修正ポイント） ==== */
     const GR = (()=> {
       const t=Px.topTrim(IMG_GR);
-      const drawH=Math.max(48, Math.min(160, t.contentH)); // 表示厚
+      const drawH=Math.max(48, Math.min(160, t.contentH));      // ← 確定
       const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
       const scaleY = drawH / srcH;
-      const tileW  = IMG_GR.naturalWidth * scaleY;
-      function floorY(){ return Math.floor(H - drawH); }   // 接地ライン（整数）
+      const tileW  = IMG_GR.naturalWidth * scaleY;              // ← 確定
+      const y      = Math.floor(H - drawH);                     // ← 接地Yを整数で固定
+      function floorY(){ return y; }                            // ← 以後ずっと同じ値
       function draw(offsetX){
-        const y=floorY(); let ox = offsetX % tileW; if(ox>0)ox-=tileW;
+        let ox = offsetX % tileW; if(ox>0) ox -= tileW;
         for(let x=ox;x<W;x+=tileW){
-          ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH);
+          ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,
+                        Math.floor(x), y, Math.ceil(tileW), drawH);
         }
       }
       return { draw, floorY, drawH };
@@ -169,7 +171,12 @@
 
     /* ==== プレイヤー ==== */
     function makePlayer(img){
-      const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
+      if(!img){ // どちらの画像も無い場合のフェイルセーフ
+        const dummy=document.createElement('canvas'); dummy.width=dummy.height=1;
+        const g=dummy.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1);
+        img=dummy;
+      }
+      const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
       return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
     }
     let player=null;
@@ -202,41 +209,36 @@
     }
     function makeJumpPad(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.34); // 低めのジャンプ台
+      const targetH = Math.round(GR.drawH * 0.34);
       const s = targetH / jumpTrim.sh;
       const w = Math.round(jumpTrim.sw * s), h = Math.round(jumpTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_JP, trim: jumpTrim, type:'jump', cd:0 };
     }
 
     /* ==== スポーン：重なり禁止 & 最低間隔 ==== */
-    let nextAllowedDist = 200;                 // 最初の湧きまでの距離
-    const minGap = 90;                         // 連続障害物の最小間隔（px）
-    const spawnMargin = 40;                    // 画面右からの出現オフセット
+    let nextAllowedDist = 200;
+    const minGap = 90;
+    const spawnMargin = 40;
     function rightmostFutureX(){
-      let r = W + spawnMargin; // 基本の出現位置
+      let r = W + spawnMargin;
       for(const o of obstacles){ r = Math.max(r, o.x + o.w); }
       return r;
     }
     function trySpawn(totalDist){
       if(totalDist < nextAllowedDist) return;
-
-      // 出現タイプ（重なりは禁止）
       const rnd = Math.random();
       let type = (rnd < 0.45) ? 'corn' : (rnd < 0.75 ? 'contena' : 'jump');
-
       const startX = Math.max(W + spawnMargin, rightmostFutureX() + minGap);
 
       if(type==='corn'){
         obstacles.push( makeCorn(startX) );
         nextAllowedDist = totalDist + 160 + Math.random()*160;
-
       }else if(type==='contena'){
         const set = makeContSet(startX);
         obstacles.push(...set);
         const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
         nextAllowedDist = totalDist + Math.max(240, setWidth) + 160 + Math.random()*120;
-
-      }else{ // jump
+      }else{
         const jp = makeJumpPad(startX);
         obstacles.push(jp);
         nextAllowedDist = totalDist + 220 + Math.random()*160;
@@ -284,20 +286,20 @@
     /* ==== コーンの緩い当たり判定（2段） ==== */
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
-      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 }; // 下広
-      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 }; // 上細
+      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 };
+      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 };
       const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
       const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
       return A||B;
     }
 
     /* ==== 着地・ジャンプ台の調整値 ==== */
-    const LAND_SNAP = 8;   // 上面に吸着できる縦バッファ（コンテナ＆ジャンプ台）
-    const H_PAD     = 16;  // 横方向に広げるバッファ
-    const JUMP_PAD_BOOST = 1.25; // ジャンプ台の跳ね上げ倍率
-    const JUMP_PAD_CD = 0.22;    // 多重発動防止（秒）
+    const LAND_SNAP = 8;   // コンテナ/ジャンプ台の上面吸着
+    const H_PAD     = 16;  // 横方向バッファ
+    const JUMP_PAD_BOOST = 1.25;
+    const JUMP_PAD_CD = 0.22;
 
-    /* ==== ループ ==== */
+    /* ==== メインループ ==== */
     let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
@@ -333,31 +335,29 @@
         }
       }
 
-      // ===== 描画 =====
+      // ===== 描画（固定値で描く） =====
       ctx.clearRect(0,0,W,H);
-      // 背景
-      (function(){ const scale=H/IMG_BG.naturalHeight, tileW=IMG_BG.naturalWidth*scale; let ox=bgOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_BG,0,0,IMG_BG.naturalWidth,IMG_BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } })();
-      // 地面
-      (function(){ const t=Px.topTrim(IMG_GR); const drawH=Math.max(48, Math.min(160, t.contentH)); const srcY=t.trimTop, srcH=IMG_GR.naturalHeight-t.trimTop; const scale=drawH/srcH; const tileW=IMG_GR.naturalWidth*scale; const y=Math.floor(H-drawH); let ox=grOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } })();
+      BG.draw(bgOff);
+      GR.draw(grOff);
 
-      // 障害物描画
+      // 障害物
       obstacles.forEach(o=>{
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
 
-      // プレイヤー描画＋当たり判定
+      // プレイヤー
       if(player){
         const feetPush = Math.floor(player.h * player.feetFrac);
         const px = Math.floor(player.x);
         const py = Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
+        // 当たり判定
         if(!gameOver){
           const currBottom = player.y;
           const prevBottom = player.prevBottom;
 
           for(const o of obstacles){
-            // 横方向の重なり（上面着地は左右にゆとりを持って判定）
             const overlapXWide = (px + player.w > o.x - H_PAD) && (px < o.x + o.w + H_PAD);
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!overlapXWide && !aabb) continue;
@@ -378,14 +378,11 @@
               const top = o.y, comingDown = player.vy >= 0;
               const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
               if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
-                // 天面に吸着してから強制ジャンプ（多重発動防止）
                 player.y = top;
                 player.vy = -JUMP * JUMP_PAD_BOOST;
                 player.jumps = 2;
                 o.cd = JUMP_PAD_CD;
               }
-              // ジャンプ台は横から当たってもゲームオーバーにしない（踏むためのもの）
-              // ただし何もしない場合はAABBでもスルー
             }
           }
         }
