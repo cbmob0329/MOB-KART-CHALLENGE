@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + jumpdai (no pass-through)</title>
+<title>Runner – cone + contena (no jump pad)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -14,7 +14,7 @@
     background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
     transform-origin:center center;
   }
-  /* HUD（固定） */
+  /* HUD（Canvasの外） */
   header.hud{
     position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
@@ -22,10 +22,12 @@
     font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-  /* プレイ領域 */
+
+  /* プレイ領域（HUD/ボタンと分離） */
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-  /* 操作（固定） */
+
+  /* 操作ボタン（Canvasの外） */
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
     display:flex;gap:12px;align-items:center;justify-content:center;padding:10px 12px;
@@ -36,18 +38,21 @@
     background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
   .btn:active{transform:translateY(1px)}
   .muted{opacity:.6;filter:saturate(.2)}
+
   /* キャラ選択 */
-  #overlay{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
+  #overlay{
+    position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)
+  }
   .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
   .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
   .choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
-  /* ローディング */
+
+  /* ローディング／ゲームオーバー */
   #loading{position:absolute;inset:56px 0 96px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
-  /* ゲームオーバー */
   #gameover{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
-  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
+  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
 </style>
 </head>
 <body>
@@ -77,7 +82,7 @@
       </div>
     </div>
 
-    <div id="loading"><div class="bubble">画像読み込みに失敗しました。ファイル名と配置を確認してください。</div></div>
+    <div id="loading"><div class="bubble">画像読み込み中…</div></div>
 
     <div id="gameover">
       <div class="panel">
@@ -90,12 +95,12 @@
 
 <script>
 (() => {
-  // ==== PCでもスマホ画角のまま表示 ====
+  /* ===== PCでもスマホ画角のまま表示 ===== */
   const phone=document.getElementById('phone');
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
 
-  // ==== Canvas ====
+  /* ===== Canvas 基本 ===== */
   const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
   ctx.imageSmoothingEnabled=false; const W=390, H=540;
   function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
@@ -103,85 +108,113 @@
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
+  /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
-
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_JP, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_VR, IMG_OR])=>{
 
-    // ===== ピクセルユーティリティ =====
+    /* ==== ピクセルユーティリティ ==== */
     const Px = {
       topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH)return{trimTop:y,contentH:h-y}; } } return{trimTop:0,contentH:h}; },
+        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } } return {trimTop:0,contentH:h}; },
       bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH)return{bottomTrim:h-1-y,h}; } } return{bottomTrim:0,h}; },
+        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
       tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
-        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y; } } }
-        if(maxX<0)return{sx:0,sy:0,sw:w,sh:h}; return{sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
+        if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
       }
     };
 
-    // ===== 背景（トリムなし） =====
-    const BG = (()=>{ const scale=H/IMG_BG.naturalHeight, tileW=IMG_BG.naturalWidth*scale;
-      function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_BG,0,0,IMG_BG.naturalWidth,IMG_BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
-      return {draw};
+    /* ==== 背景 ==== */
+    const BG = (()=> {
+      const scaleY = H / IMG_BG.naturalHeight;
+      const tileW  = IMG_BG.naturalWidth * scaleY;
+      function draw(offsetX){
+        let ox = offsetX % tileW; if (ox>0) ox -= tileW;
+        for(let x=ox; x<W; x+=tileW){
+          ctx.drawImage(IMG_BG, 0, 0, IMG_BG.naturalWidth, IMG_BG.naturalHeight,
+                        Math.floor(x), 0, Math.ceil(tileW), H);
+        }
+      }
+      return { draw };
     })();
 
-    // ===== 地面（上端トリムのみ） =====
-    const GR = (()=>{ const t=Px.topTrim(IMG_GR); const drawH=Math.max(48, Math.min(160, t.contentH));
-      const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=IMG_GR.naturalWidth*scale;
+    /* ==== 地面 ==== */
+    const GR = (()=> {
+      const t=Px.topTrim(IMG_GR);
+      const drawH=Math.max(48, Math.min(160, t.contentH));
+      const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
+      const scaleY = drawH / srcH;
+      const tileW  = IMG_GR.naturalWidth * scaleY;
       function floorY(){ return Math.floor(H - drawH); }
-      function draw(off){ const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } }
-      return {draw, floorY, drawH};
+      function draw(offsetX){
+        const y=floorY(); let ox = offsetX % tileW; if(ox>0)ox-=tileW;
+        for(let x=ox;x<W;x+=tileW){
+          ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH);
+        }
+      }
+      return { draw, floorY, drawH };
     })();
 
-    // ===== プレイヤー =====
-    function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
-      return {x:80,y:GR.floorY(),prevBottom:GR.floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac}; }
+    /* ==== プレイヤー ==== */
+    function makePlayer(img){
+      const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
+      return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
+    }
     let player=null;
 
-    // ===== コーン & ジャンプ台（余白カット・接地） =====
+    /* ==== コーン（余白カット・接地） ==== */
     const cornTrim = Px.tightRect(IMG_CO);
-    const jumpTrim = Px.tightRect(IMG_JP);
-    const obstacles = []; // {x,y,w,h,img,trim,type,cd?:number}
-
     function makeCorn(){
       const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.40); // 1ジャンプで越えやすい高さ
+      const targetH = Math.round(GR.drawH * 0.40); // 1ジャンプで越えやすい
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: W+40, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
-    function makeJumpdai(){
+
+    /* ==== コンテナ（余白カット・接地・2連/3連） ==== */
+    const contTrim = Px.tightRect(IMG_CT);
+    function makeContSet(){
       const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.32); // やや低め
-      const s = targetH / jumpTrim.sh;
-      const w = Math.round(jumpTrim.sw * s), h = Math.round(jumpTrim.sh * s);
-      return { x: W+40, y: fy - h, w, h, img: IMG_JP, trim: jumpTrim, type:'jump', cd:0 };
+      const targetH = Math.round(GR.drawH * 0.60); // 地面厚の60%高さ
+      const s = targetH / contTrim.sh;
+      const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
+      const n = 2 + Math.floor(Math.random()*2); // 2 or 3
+      const gap = 2; // ほぼ繋がる見た目
+      const arr=[];
+      for(let i=0;i<n;i++){
+        arr.push({ x: W+40 + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
+      }
+      return arr;
     }
 
-    // スポーン（コーン／ジャンプ台をランダムに）
-    let nextSpawnDist = 250 + Math.random()*250;
+    /* ==== スポーン ==== */
+    const obstacles=[]; // {x,y,w,h,img,trim,type}
+    let nextSpawnDist = 220 + Math.random()*220;
     function maybeSpawn(totalDist){
       if(totalDist > nextSpawnDist){
-        if(Math.random() < 0.55) obstacles.push(makeCorn()); else obstacles.push(makeJumpdai());
-        nextSpawnDist += 200 + 200*Math.random();
+        // たまにコーン、たまにコンテナセット
+        if(Math.random() < 0.55) obstacles.push(makeCorn());
+        else obstacles.push(...makeContSet());
+        nextSpawnDist += 220 + 220*Math.random();
       }
     }
 
-    // ===== 単発ブースト & 進行 =====
+    /* ==== 進行・単発ブースト ==== */
     const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28; // %/sec
     const KM=0.072;
     let speed=BASE, dist=0, bgOff=0, grOff=0;
     let boostCharge=100, burstActive=false, burstTimer=0;
     let gameOver=false;
 
-    // ===== HUD / 入力 =====
+    /* ==== HUD / 入力 ==== */
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
           elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
     const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
@@ -206,27 +239,27 @@
       if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
     });
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; nextSpawnDist=250+Math.random()*250;
+      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; nextSpawnDist=220+Math.random()*220;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
       gameover.style.display='none';
     };
 
-    // ===== コーンの緩い当たり判定（2段） =====
+    /* ==== コーンの緩い当たり判定（2段） ==== */
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
-      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 }; // 下段：広め
-      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 }; // 上段：細め
+      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 };
+      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 };
       const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
       const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
       return A||B;
     }
 
-    // ===== ループ =====
+    /* ==== ループ ==== */
     let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
-      const dt=Math.min(0.033,(t-prev)/1000); prev=t;
+      const dt = Math.min(0.033, (t-prev)/1000); prev=t;
 
       // ブースト（単発）
       if(!gameOver){
@@ -234,28 +267,25 @@
         else { speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt); }
       }
 
-      // ===== 物理 =====
+      // 物理
       if(player && !gameOver){
-        // 前フレームの足元Yを保存
-        player.prevBottom = player.y;
-
-        // 自由落下
-        player.vy += GRAV*dt; 
+        player.prevBottom = player.y;          // 前フレーム足元
+        player.vy += GRAV*dt;
         player.y  += player.vy*dt;
-
-        // 地面に着地
-        const fy=GR.floorY(); 
-        if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
+        const fy = GR.floorY();
+        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps = 2; }
       }
 
-      // ===== 進行・オブジェクト更新 =====
+      // 進行
       if(!gameOver){
-        dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
+        dist  += speed*dt;
+        bgOff -= speed*0.20*dt;
+        grOff -= speed*1.00*dt;
+
         maybeSpawn(dist);
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
-          if(o.cd){ o.cd=Math.max(0, o.cd - dt); }
           if(o.x + o.w < -40) obstacles.splice(i,1);
         }
       }
@@ -272,11 +302,11 @@
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
 
-      // プレイヤーの見た目座標
+      // プレイヤー
       if(player){
-        const feetPush=Math.floor(player.h*player.feetFrac);
-        const px=Math.floor(player.x);
-        const py=Math.floor(player.y - player.h + feetPush);
+        const feetPush = Math.floor(player.h * player.feetFrac);
+        const px = Math.floor(player.x);
+        const py = Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
         // ===== 当たり判定 =====
@@ -285,23 +315,24 @@
           const prevBottom = player.prevBottom;
 
           for(const o of obstacles){
-            // 横方向の重なり（少し広めに見る）
-            const overlapXWide = (px+player.w > o.x - 20) && (px < o.x + o.w + 20);
+            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!aabb) continue;
 
             if(o.type==='corn'){
-              // AABBでYも重なっていれば緩い2段判定へ
-              const aabbY = (py < o.y+o.h) && (py+player.h > o.y);
-              if(overlapXWide && aabbY && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='jump'){
-              // スイープ着地：下降中 & （前足元 ≤ 天面+8） & （今足元 ≥ 天面）
+              if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
+            }else if(o.type==='contena'){
+              // 上に乗れる：下降中で天面を跨いだら着地。それ以外の重なりは横当たり→ゲームオーバー
               const top = o.y;
               const comingDown = player.vy >= 0;
-              const crossing   = (prevBottom <= top + 8) && (currBottom >= top);
-              if(comingDown && crossing && overlapXWide && (!o.cd || o.cd<=0)){
-                player.y = top;           // 天面にスナップ
-                player.vy = -JUMP*1.2;    // 強制ジャンプ
-                player.jumps = 2;
-                o.cd = 0.2;               // 多重発動防止
+              const crossed = (prevBottom <= top + 2) && (currBottom >= top); // +2の余裕
+              const overlapXWide = (px+player.w > o.x) && (px < o.x+o.w);     // 天面用は普通の幅でOK
+
+              if(comingDown && crossed && overlapXWide){
+                // 天面にスナップ（連結コンテナでも自然に乗れる）
+                player.y = top; player.vy = 0; player.jumps = 2;
+              }else{
+                // 横から当たった扱い
+                gameOver=true; gameover.style.display='grid'; break;
               }
             }
           }
@@ -312,24 +343,25 @@
       requestAnimationFrame(loop);
     }
 
-    // ===== キャラ選択 → スタート =====
-    loading.style.display='none'; overlay.style.display='grid';
+    /* ==== キャラ選択 → スタート ==== */
+    loading.style.display='none';
+    overlay.style.display='grid';
     overlay.addEventListener('click', e=>{
       const c=e.target.closest('.choice'); if(!c) return;
-      const img=(c.dataset.char==='VR' && IMG_VR)?IMG_VR:(IMG_OR||IMG_VR);
-      player=makePlayer(img);
+      const img = (c.dataset.char==='VR' && IMG_VR) ? IMG_VR : (IMG_OR || IMG_VR);
+      player = makePlayer(img);
       overlay.style.display='none';
       start();
     });
 
-    // スクロール抑止（UI以外）
+    /* ==== ページスクロール抑止（UI以外） ==== */
     ['touchstart','touchmove','gesturestart'].forEach(ev=>{
       document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
     });
 
   }).catch(err=>{
     console.error(err);
-    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
+    document.querySelector('#loading .bubble').textContent = '画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
   });
 })();
 </script>
