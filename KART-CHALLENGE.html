@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone small + contena (soft land)</title>
+<title>Runner – cone + contena + jump pad</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -109,9 +109,10 @@
   /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
+    load('sora.png'), load('mob.png'),
+    load('corn.png'), load('contena.png'), load('jumpdai.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_JP, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
@@ -173,14 +174,15 @@
     }
     let player=null;
 
-    /* ==== 障害物：コーン & コンテナ ==== */
+    /* ==== 障害物：コーン / コンテナ / ジャンプ台 ==== */
     const cornTrim = Px.tightRect(IMG_CO);
     const contTrim = Px.tightRect(IMG_CT);
-    const obstacles=[]; // {x,y,w,h,img,trim,type}
+    const jumpTrim = Px.tightRect(IMG_JP);
+    const obstacles=[]; // {x,y,w,h,img,trim,type,cd?}
 
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.32); // ← 小さめ（従来0.40）
+      const targetH = Math.round(GR.drawH * 0.32); // 小さめ
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
@@ -191,17 +193,24 @@
       const s = targetH / contTrim.sh;
       const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
       const n = 2 + Math.floor(Math.random()*2); // 2 or 3
-      const gap = 2; // ほぼ繋がる見た目
+      const gap = 2;
       const arr=[];
       for(let i=0;i<n;i++){
         arr.push({ x: atX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
       }
       return arr;
     }
+    function makeJumpPad(atX){
+      const fy=GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.34); // 低めのジャンプ台
+      const s = targetH / jumpTrim.sh;
+      const w = Math.round(jumpTrim.sw * s), h = Math.round(jumpTrim.sh * s);
+      return { x: atX, y: fy - h, w, h, img: IMG_JP, trim: jumpTrim, type:'jump', cd:0 };
+    }
 
     /* ==== スポーン：重なり禁止 & 最低間隔 ==== */
     let nextAllowedDist = 200;                 // 最初の湧きまでの距離
-    const minGap = 80;                         // 連続障害物の最小間隔（px）
+    const minGap = 90;                         // 連続障害物の最小間隔（px）
     const spawnMargin = 40;                    // 画面右からの出現オフセット
     function rightmostFutureX(){
       let r = W + spawnMargin; // 基本の出現位置
@@ -210,17 +219,27 @@
     }
     function trySpawn(totalDist){
       if(totalDist < nextAllowedDist) return;
-      const isCone = Math.random() < 0.55;
+
+      // 出現タイプ（重なりは禁止）
+      const rnd = Math.random();
+      let type = (rnd < 0.45) ? 'corn' : (rnd < 0.75 ? 'contena' : 'jump');
+
       const startX = Math.max(W + spawnMargin, rightmostFutureX() + minGap);
 
-      if(isCone){
+      if(type==='corn'){
         obstacles.push( makeCorn(startX) );
         nextAllowedDist = totalDist + 160 + Math.random()*160;
-      }else{
+
+      }else if(type==='contena'){
         const set = makeContSet(startX);
         obstacles.push(...set);
         const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
-        nextAllowedDist = totalDist + Math.max(220, setWidth) + 140 + Math.random()*120;
+        nextAllowedDist = totalDist + Math.max(240, setWidth) + 160 + Math.random()*120;
+
+      }else{ // jump
+        const jp = makeJumpPad(startX);
+        obstacles.push(jp);
+        nextAllowedDist = totalDist + 220 + Math.random()*160;
       }
     }
 
@@ -272,9 +291,11 @@
       return A||B;
     }
 
-    /* ==== 上面着地を甘くする調整値 ==== */
-    const LAND_SNAP = 8;   // 上面に吸着できる縦バッファ（px）
-    const H_PAD     = 16;  // 横方向に広げるバッファ（px）
+    /* ==== 着地・ジャンプ台の調整値 ==== */
+    const LAND_SNAP = 8;   // 上面に吸着できる縦バッファ（コンテナ＆ジャンプ台）
+    const H_PAD     = 16;  // 横方向に広げるバッファ
+    const JUMP_PAD_BOOST = 1.25; // ジャンプ台の跳ね上げ倍率
+    const JUMP_PAD_CD = 0.22;    // 多重発動防止（秒）
 
     /* ==== ループ ==== */
     let prev=0, running=false;
@@ -307,6 +328,7 @@
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
+          if(o.cd){ o.cd = Math.max(0, o.cd - dt); }
           if(o.x + o.w < -40) obstacles.splice(i,1);
         }
       }
@@ -335,28 +357,35 @@
           const prevBottom = player.prevBottom;
 
           for(const o of obstacles){
-            // まずは横方向の重なり（上面着地は左右にゆとりを持って判定）
+            // 横方向の重なり（上面着地は左右にゆとりを持って判定）
             const overlapXWide = (px + player.w > o.x - H_PAD) && (px < o.x + o.w + H_PAD);
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!overlapXWide && !aabb) continue;
 
             if(o.type==='corn'){
               if(aabb && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='contena'){
-              const top = o.y;
-              const comingDown = player.vy >= 0;
-              // 「跨いだ」または「少しめり込んだ」場合は“着地優先”
-              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
 
+            }else if(o.type==='contena'){
+              const top = o.y, comingDown = player.vy >= 0;
+              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
               if(comingDown && crossed && overlapXWide){
-                // 天面に吸着して着地（めり込み救済）
-                player.y = top;
-                player.vy = 0;
-                player.jumps = 2;
+                player.y = top; player.vy = 0; player.jumps = 2;
               }else if(aabb){
-                // 上面着地条件を満たしていない重なり＝横/下から衝突
                 gameOver=true; gameover.style.display='grid'; break;
               }
+
+            }else if(o.type==='jump'){
+              const top = o.y, comingDown = player.vy >= 0;
+              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
+              if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
+                // 天面に吸着してから強制ジャンプ（多重発動防止）
+                player.y = top;
+                player.vy = -JUMP * JUMP_PAD_BOOST;
+                player.jumps = 2;
+                o.cd = JUMP_PAD_CD;
+              }
+              // ジャンプ台は横から当たってもゲームオーバーにしない（踏むためのもの）
+              // ただし何もしない場合はAABBでもスルー
             }
           }
         }
