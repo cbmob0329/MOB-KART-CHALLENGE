@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – single-shot boost & item slots</title>
+<title>Runner – アイテム＆単発ブースト</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -24,8 +24,7 @@
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
-    display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:
-      "itemL buttons itemR";
+    display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:"itemL buttons itemR";
     align-items:center;gap:10px;padding:10px 12px;
     background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);
   }
@@ -36,7 +35,10 @@
   .btn:active{transform:translateY(1px)}
   .slotWrap{display:flex;gap:8px;align-items:center;justify-content:center}
   .slot{width:52px;height:52px;border-radius:12px;background:#0f1726;border:1px solid rgba(255,255,255,.08);
-        display:grid;place-items:center;color:#9aa3b2;font-size:11px}
+        display:grid;place-items:center;position:relative;overflow:hidden}
+  .slot img{width:100%;height:100%;object-fit:contain;pointer-events:none}
+  .timer{position:absolute;bottom:2px;right:4px;font-size:12px;color:#fff;text-shadow:0 0 3px #000}
+  .empty{color:#9aa3b2;font-size:11px;display:flex;align-items:center;justify-content:center}
   .muted{opacity:.6;filter:saturate(.2)}
   #overlay{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
   .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
@@ -64,16 +66,14 @@
 
     <footer class="ctrl">
       <div class="slotWrap" style="grid-area:itemL;">
-        <div class="slot" id="slot1">ITEM1</div>
-        <div class="slot" id="slot2">ITEM2</div>
+        <button class="slot" id="slot1"><div class="empty">ITEM1</div></button>
+        <button class="slot" id="slot2"><div class="empty">ITEM2</div></button>
       </div>
       <div class="btns">
         <button class="btn" id="btnJump">ジャンプ</button>
         <button class="btn" id="btnBoost">BOOST!</button>
       </div>
-      <div class="slotWrap" style="grid-area:itemR;">
-        <!-- 右側は今は空（UIバランス用） -->
-      </div>
+      <div class="slotWrap" style="grid-area:itemR;"></div>
     </footer>
 
     <div id="overlay">
@@ -115,9 +115,11 @@
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'), load('contena.png'), load('dokan.png'),
+    load('sora.png'), load('mob.png'),
+    load('corn.png'), load('jumpdai.png'), load('contena.png'), load('dokan.png'),
+    load('tsubasa.png'), load('en.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([BG, GR, CO, JP, CT, DK, VR, OR])=>{
+  ]).then(([BG, GR, CO, JP, CT, DK, TSB, EN, VR, OR])=>{
     // ===== pixel utils =====
     const Px = {
       topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
@@ -150,89 +152,184 @@
 
     // ===== Player =====
     function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
-      return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac}; }
+      return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, jumpMax:2, img, feetFrac}; }
 
     // ===== Obstacles =====
     const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT), trimDk=Px.tightRect(DK);
-
-    function makeCorn(){ // 地面厚の 40%（1ジャンプで越えやすく）
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.40);
+    function makeCorn(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.40);
       const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'};
-    }
-    function makeJump(){
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
+      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'}; }
+    function makeJump(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
       const s=targetH/trimJump.sh, w=Math.round(trimJump.sw*s), h=Math.round(trimJump.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'};
-    }
-    function makeContSet(){
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
+      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'}; }
+    function makeContSet(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
       const s=targetH/trimCont.sh, w=Math.round(trimCont.sw*s), h=Math.round(trimCont.sh*s);
       const n=2 + Math.floor(Math.random()*2); const set=[];
       for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
-      return set;
-    }
-    function makeDokan(){ // 土管：やや小さく 65%
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.65);
+      return set; }
+    function makeDokan(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.65);
       const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'};
+      return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'}; }
+
+    // ===== Items on field =====
+    const trimTsb=Px.tightRect(TSB), trimEn=Px.tightRect(EN);
+    function makeTsubasa(){ // 空中にふわふわ
+      const baseY = GR_MOD.floorY() - 150;
+      const targetH = Math.round(48); // 視認しやすい程度
+      const s = targetH / trimTsb.sh;
+      const w = Math.round(trimTsb.sw*s), h = Math.round(trimTsb.sh*s);
+      return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb, type:'item_tsubasa', floatT:Math.random()*Math.PI*2};
+    }
+    function makeEngineOn(topObj){ // 土管の天面に設置
+      const targetH = Math.round(48);
+      const s = targetH / trimEn.sh;
+      const w = Math.round(trimEn.sw*s), h = Math.round(trimEn.sh*s);
+      const x = Math.round(topObj.x + topObj.w/2 - w/2);
+      const y = Math.round(topObj.y - h - 2);
+      return {x, y, w, h, img:EN, trim:trimEn, type:'item_engine'};
     }
 
     // ===== Game State =====
-    const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9; // 単発ブースト設定
-    const CHARGE_RATE=28; // %/sec の充電速度
-    const KM=0.072;
-
-    let speed=BASE, dist=0, bgOff=0, grOff=0;
+    const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28, KM=0.072;
+    let speed=BASE, dist=0, bgOff=0, grOff=0, meters=0, lastItemCheck=0;
     let player=null, gameOver=false;
 
-    // 単発ブースト用の状態
-    let boostCharge=100;           // 0..100
-    let burstActive=false;         // 発動中？
-    let burstTimer=0;              // 残り秒数
+    // 単発ブースト
+    let boostCharge=100, burstActive=false, burstTimer=0;
 
-    const obs=[];
+    const obs=[];        // 障害物（corn/jump/contena/dokan）
+    const items=[];      // フィールド上のアイテム（tsubasa/en）
+    let pendingEngine=false; // 「次の土管の上にエンジンを置く」予約
 
-    function spawn(){
+    // ===== Spawns =====
+    function spawnObstacle(){
       const r=Math.random();
       if(r<0.35) obs.push(makeCorn());
       else if(r<0.60) obs.push(makeJump());
       else if(r<0.80) obs.push(...makeContSet());
-      else obs.push(makeDokan());
-    }
-
-    // ===== HUD & Input =====
-    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump');
-    const elBoostPct=document.getElementById('boostPct');
-    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
-
-    function updateHUD(){
-      elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`;
-      elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
-      elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
-      elBoostPct.textContent=`${Math.round(boostCharge)}%`;
-      // ボタン状態
-      if(boostCharge>=100 && !burstActive){
-        btnBoost.textContent='BOOST!';
-        btnBoost.classList.remove('muted');
-      }else{
-        btnBoost.textContent='充電中';
-        btnBoost.classList.add('muted');
+      else {
+        const d = makeDokan(); obs.push(d);
+        if(pendingEngine){ // 保留中のエンジンがあればこの土管へ
+          items.push(makeEngineOn(d));
+          pendingEngine=false;
+        }else if(Math.random()<0.15){ // 稀に土管出現時にも置く
+          items.push(makeEngineOn(d));
+        }
       }
     }
 
-    btnJump.onpointerdown=e=>{e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); }};
-    // 単発ブースト：満タン時のみ発動、即消費→一定時間だけ超加速
+    // 50mごとに10%でアイテム出現判定
+    function periodicItemCheck(){
+      const m = Math.floor(dist*0.02); // 既存HUDと同じ換算でm化
+      meters = m;
+      if(meters - lastItemCheck >= 50){
+        lastItemCheck = meters;
+        if(Math.random()<0.10){
+          // 50%で翼、50%でエンジン。ただしエンジンは土管必須→なければ保留、翼は即出す
+          if(Math.random()<0.5){
+            items.push(makeTsubasa());
+          }else{
+            // 画面上 or 右側に新規生成される土管に乗せたい → 保留フラグON
+            // すでに画面内の土管があれば、そのうち一つに今すぐ載せる
+            const dokans = obs.filter(o=>o.type==='dokan');
+            if(dokans.length){
+              const d = dokans[Math.floor(Math.random()*dokans.length)];
+              // 既にその上にアイテムが無い場合のみ
+              if(!items.some(it=>it.type==='item_engine' && Math.abs((it.x+it.w/2)-(d.x+d.w/2))<4)) {
+                items.push(makeEngineOn(d));
+              }
+            }else{
+              pendingEngine = true; // 次の土管に載せる
+            }
+          }
+        }
+      }
+    }
+
+    // ===== HUD / Input =====
+    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump');
+    const elBoostPct=document.getElementById('boostPct');
+    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
+    const slotEls=[document.getElementById('slot1'), document.getElementById('slot2')];
+
+    // スロット状態
+    const slots=[null,null]; // {type:'tsubasa'|'engine', img:Image, timer:number(active中) }
+    let wingsActive=false, wingsTimer=0;
+
+    function updateHUD(){
+      elDist.textContent=`距離 ${meters} m`;
+      elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
+      elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
+      elBoostPct.textContent=`${Math.round(boostCharge)}%`;
+      if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); }
+      else { btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
+      updateSlotsUI();
+    }
+
+    function updateSlotsUI(){
+      slots.forEach((s,idx)=>{
+        const el=slotEls[idx];
+        el.innerHTML='';
+        if(!s){
+          const div=document.createElement('div'); div.className='empty'; div.textContent=idx===0?'ITEM1':'ITEM2';
+          el.appendChild(div);
+          el.classList.remove('muted');
+          return;
+        }
+        const img=document.createElement('img');
+        img.src = (s.type==='tsubasa') ? 'tsubasa.png' : 'en.png';
+        el.appendChild(img);
+        if(s.type==='tsubasa' && s.timer>0){
+          const t=document.createElement('div'); t.className='timer'; t.textContent = Math.ceil(s.timer).toString();
+          el.appendChild(t);
+          el.classList.add('muted'); // 発動中は見た目を少し淡く
+        }else{
+          el.classList.remove('muted');
+        }
+      });
+    }
+
+    btnJump.onpointerdown=e=>{
+      e.preventDefault();
+      if(player && !gameOver && player.jumps>0){
+        player.vy=-JUMP; player.jumps--; updateHUD();
+      }
+    };
+
+    // 単発ブースト
     btnBoost.onclick=e=>{
       e.preventDefault();
       if(gameOver) return;
       if(!burstActive && boostCharge>=100){
-        burstActive=true;
-        burstTimer=BURST_DUR;
-        boostCharge=0;
-        updateHUD();
+        burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD();
       }
     };
+
+    // スロット押下で発動
+    slotEls.forEach((el,idx)=>{
+      el.addEventListener('click', ()=>{
+        if(gameOver) return;
+        const s=slots[idx];
+        if(!s) return;
+        if(s.type==='tsubasa'){
+          // すでに翼発動中なら無視（上書きはしない仕様）
+          if(wingsActive) return;
+          wingsActive=true; wingsTimer=5.0;
+          if(player){ player.jumpMax=4; player.jumps = Math.max(player.jumps, 4); } // その場で拡張＆回復
+          // スロットは「発動中の表示」を維持（タイマー表示するため、消さない）
+          s.timer = wingsTimer;
+          updateHUD();
+        }else if(s.type==='engine'){
+          // 即時大ジャンプ＆ジャンプ回復。消費してスロット空に
+          if(player){
+            player.vy = -JUMP*1.8;
+            player.jumps = player.jumpMax; // 現在の上限まで回復（翼中なら4まで）
+          }
+          slots[idx]=null;
+          updateHUD();
+        }
+      });
+    });
 
     addEventListener('keydown',e=>{
       if(e.code==='Space'||e.code==='ArrowUp'){
@@ -243,14 +340,17 @@
           burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD();
         }
       }
+      if(e.code==='Digit1'){ slotEls[0].click(); }
+      if(e.code==='Digit2'){ slotEls[1].click(); }
     });
 
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obs.length=0;
-      if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2; }
-      // ブーストも初期化（次も気持ちよく始められるよう満充電）
+      gameOver=false; dist=0; meters=0; lastItemCheck=0; speed=BASE; bgOff=grOff=0; obs.length=0; items.length=0; pendingEngine=false;
+      if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2; player.jumpMax=2; }
+      // ブーストとバフ初期化
       boostCharge=100; burstActive=false; burstTimer=0;
-      gameover.style.display='none';
+      wingsActive=false; wingsTimer=0; slots[0]=null; slots[1]=null;
+      gameover.style.display='none'; updateHUD();
     };
 
     // ===== Cone collision helper (緩め2段) =====
@@ -271,43 +371,64 @@
 
       // ブースト（単発）
       if(burstActive){
-        speed=BOOST;
-        burstTimer-=dt;
-        if(burstTimer<=0){ burstActive=false; }
+        speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; }
       }else{
-        speed=BASE;
-        // 充電（満タンまで）
-        boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt);
+        speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt);
+      }
+
+      // バフ：つばさ
+      if(wingsActive){
+        wingsTimer -= dt;
+        // スロット側の表示タイマーも減らす
+        for(const s of slots){ if(s && s.type==='tsubasa' && s.timer>0){ s.timer = Math.max(0, s.timer - dt); } }
+        if(wingsTimer<=0){
+          wingsActive=false;
+          if(player){ player.jumpMax=2; player.jumps=Math.min(player.jumps,2); }
+          // つばさは効果終了でスロットから消える（発動したスロットを探してnullに）
+          for(let i=0;i<2;i++){ if(slots[i] && slots[i].type==='tsubasa'){ slots[i]=null; } }
+        }
       }
 
       // 物理
       if(player && !gameOver){
-        player.vy += 1500*dt; player.y += player.vy*dt;
-        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
+        player.vy += GRAV*dt; player.y += player.vy*dt;
+        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; } // 接地で回復
       }
 
       // 進行
       if(!gameOver){
         dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
-        if(obs.length===0 || obs[obs.length-1].x < W-180){
-          // 連続出現が寂しい時はここでランダム幅を追加してOK
-          const r=Math.random();
-          if(r<0.35) obs.push(makeCorn());
-          else if(r<0.60) obs.push(makeJump());
-          else if(r<0.80) obs.push(...makeContSet());
-          else obs.push(makeDokan());
-        }
+        if(obs.length===0 || obs[obs.length-1].x < W-180) spawnObstacle();
         for(let i=obs.length-1;i>=0;i--){ obs[i].x -= speed*dt; if(obs[i].x + obs[i].w < -40) obs.splice(i,1); }
+
+        // アイテムの周期判定
+        periodicItemCheck();
+
+        // アイテム移動（ふわふわ演出）
+        for(const it of items){
+          if(it.type==='item_tsubasa'){
+            it.floatT += dt*2.0;
+            it.y = it.yBase + Math.sin(it.floatT)*6;
+          }
+          it.x -= speed*dt; // スクロールに合わせて左へ
+        }
+        for(let i=items.length-1;i>=0;i--){ if(items[i].x + items[i].w < -40) items.splice(i,1); }
       }
 
       // 描画
       ctx.clearRect(0,0,W,H);
-      // 背景と地面は別モジュールで安全描画
-      (function drawBG(){ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale; let ox=bgOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } })();
-      (function drawGround(){ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH)); const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale; const y=Math.floor(H - drawH); let ox=grOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(GR,0,srcY,GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } })();
+      BG_MOD.draw(bgOff);
+      GR_MOD.draw(grOff);
 
       // 障害物
-      obs.forEach(o=>{ ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h); });
+      obs.forEach(o=>{
+        ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
+      });
+
+      // アイテム
+      items.forEach(it=>{
+        ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h);
+      });
 
       // プレイヤー
       if(player){
@@ -318,17 +439,17 @@
 
         // 衝突
         if(!gameOver){
+          // 障害物衝突
           for(const o of obs){
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!aabb) continue;
-
             if(o.type==='jump'){                 // ジャンプ台：踏むと跳ねる
-              player.vy = -540*1.2;
+              player.vy = -JUMP*1.2;
             }else if(o.type==='contena' || o.type==='dokan'){ // 天面に乗れる／横はアウト
               const comingDown = player.vy >= -20;
               const wasAbove   = (player.y - player.h*0.6) < o.y;
               if(comingDown && wasAbove){
-                player.y = o.y; player.vy = 0; player.jumps = 2;
+                player.y = o.y; player.vy = 0; player.jumps = player.jumpMax;
               }else{
                 endGame(); break;
               }
@@ -336,11 +457,29 @@
               if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; }
             }
           }
+
+          // アイテム取得
+          for(let i=items.length-1;i>=0;i--){
+            const it=items[i];
+            const hit = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
+            if(!hit) continue;
+            // 空きスロット探索
+            const idx = slots[0]? (slots[1]? -1 : 1) : 0;
+            if(idx>=0){
+              if(it.type==='item_tsubasa'){
+                slots[idx]={type:'tsubasa', timer:0};
+              }else if(it.type==='item_engine'){
+                slots[idx]={type:'engine', timer:0};
+              }
+              items.splice(i,1);
+              updateHUD();
+            }
+          }
         }
       }
 
       updateHUD();
-      requestAnimationFrame(loop);
+      if(!gameOver) requestAnimationFrame(loop);
     }
 
     function endGame(){ if(gameOver) return; gameOver=true; gameover.style.display='grid'; }
