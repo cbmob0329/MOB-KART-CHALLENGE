@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + contena (soft top land)</title>
+<title>Runner – cone small + contena (soft land)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -108,7 +108,6 @@
 
   /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
-
   Promise.all([
     load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
@@ -181,7 +180,7 @@
 
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.40); // 1段ジャンプで越えやすい
+      const targetH = Math.round(GR.drawH * 0.32); // ← 小さめ（従来0.40）
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
