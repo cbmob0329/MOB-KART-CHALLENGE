@@ -70,7 +70,6 @@
 
 <script>
 (()=>{
-// ====== 基本 ======
 const DPR = Math.max(1, window.devicePixelRatio || 1);
 const canvas = document.getElementById('cv');
 const ctx = canvas.getContext('2d');
@@ -91,12 +90,12 @@ function resize(){
   canvas.width = W; canvas.height = H;
   canvas.style.width = vw+"px"; canvas.style.height = vh+"px";
   groundY = H*0.86;
-  baseY = H*0.25; // 上寄り固定
+  baseY = H*0.25;
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
 
-// ====== 画像ロード ======
+// 画像ロード
 function loadImgSafe(src, timeoutMs=4000){
   return new Promise((resolve)=>{
     const im = new Image(); let done=false;
@@ -110,7 +109,6 @@ function loadImgSafe(src, timeoutMs=4000){
 const files = ['work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png'];
 const assets = {};
 let started = false;
-
 (async ()=>{
   let done=0;
   for(const f of files){
@@ -124,263 +122,100 @@ let started = false;
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
-// ====== 入力（X追従／タップ投下） ======
+// 入力
 const input = { touching:false, id:null, lx:0, t0:0, moved:false };
-const TAP_TIME = 220;
-const TAP_MOVE = 12 * DPR;
-function viewToCanvas(x,y){ return { x: x*DPR, y: y*DPR }; }
-
-canvas.addEventListener('touchstart', (e)=>{
-  const t = e.changedTouches[0];
-  input.touching = true; input.id = t.identifier; input.moved=false; input.t0 = performance.now();
-  const p = viewToCanvas(t.clientX, t.clientY);
-  input.lx = p.x;
-}, {passive:false});
-canvas.addEventListener('touchmove', (e)=>{
-  for(const t of e.changedTouches){
-    if(t.identifier===input.id){
-      const p = viewToCanvas(t.clientX, t.clientY);
-      if(Math.abs(p.x - input.lx) > TAP_MOVE) input.moved = true;
-      input.lx = p.x;
-      e.preventDefault(); break;
-    }
-  }
-}, {passive:false});
-canvas.addEventListener('touchend', (e)=>{
+const TAP_TIME = 220, TAP_MOVE = 12*DPR;
+function viewToCanvas(x,y){ return { x:x*DPR, y:y*DPR }; }
+canvas.addEventListener('touchstart', e=>{
+  const t=e.changedTouches[0];
+  input.touching=true; input.id=t.identifier; input.moved=false; input.t0=performance.now();
+  input.lx=viewToCanvas(t.clientX,t.clientY).x;
+},{passive:false});
+canvas.addEventListener('touchmove', e=>{
+  for(const t of e.changedTouches){ if(t.identifier===input.id){
+    const p=viewToCanvas(t.clientX,t.clientY);
+    if(Math.abs(p.x-input.lx)>TAP_MOVE) input.moved=true;
+    input.lx=p.x; e.preventDefault(); break;
+  }}
+},{passive:false});
+canvas.addEventListener('touchend', e=>{
   if(!input.touching) return;
-  const dt = performance.now() - input.t0;
-  if(!input.moved && dt <= TAP_TIME) tryDrop();
+  const dt=performance.now()-input.t0;
+  if(!input.moved && dt<=TAP_TIME) tryDrop();
   input.touching=false; input.id=null;
-}, {passive:false});
-canvas.addEventListener('touchcancel', ()=>{ input.touching=false; input.id=null; });
+},{passive:false});
 
-// ====== ユーティリティ ======
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-function aabb(x,y,w,h, x2,y2,w2,h2){ return !(x+w < x2 || x2+w2 < x || y+h < y2 || y2+h2 < y); }
-function lerp(a,b,t){ return a+(b-a)*t; }
-function rand(a,b){ return a + Math.random()*(b-a); }
-
-// ====== 状態 ======
-const world = { timeLeft:30.0, score:0, running:false };
-const player = { x: W*0.22, y: baseY, w:84*DPR, h:84*DPR, stunned:0, blinkT:0, lockDrop:0, moveEaseX:0.12 };
-const fireball = { active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null };
+// 状態
+const world={timeLeft:30.0,score:0,running:false};
+const player={x:W*0.22,y:baseY,w:84*DPR,h:84*DPR,stunned:0,blinkT:0,lockDrop:0,moveEaseX:0.12};
+const fireball={active:false,x:0,y:0,vy:0,r:18*DPR};
 
 function makeCarrier(kindIndex){
-  const speed = rand(0.10,0.16)*DPR;
-  const dir = Math.random() < 0.5 ? -1 : 1;
-  const startX = dir>0 ? -80*DPR : W + 80*DPR;
-  return {
-    kind: kindIndex, x: startX, y: groundY-20*DPR, w:72*DPR, h:72*DPR,
-    vx: speed*dir, baseSpeed:speed, hopT: Math.random()*Math.PI*2,
-    hasBin: true, bin: {w:56*DPR, h:56*DPR, explode:0, exploding:false},
-    state:'patrol',
-    // 行動パターン（ダッシュは廃止。Pause/Slowのみ）
-    beh:'patrol', behT: rand(2.5,4.5),
-    pauseLeft:0, slowLeft:0, edgePause:0
-  };
+  const speed=(0.10+Math.random()*0.06)*DPR;
+  const dir=Math.random()<0.5?-1:1;
+  const startX=dir>0?-80*DPR:W+80*DPR;
+  return{kind:kindIndex,x:startX,y:groundY-20*DPR,w:72*DPR,h:72*DPR,
+    vx:speed*dir,baseSpeed:speed,hopT:Math.random()*6,
+    hasBin:true,bin:{w:56*DPR,h:56*DPR,explode:0,exploding:false},
+    state:'patrol',beh:'patrol',behT:Math.random()*2+2.5,
+    pauseLeft:0,slowLeft:0,edgePause:0};
 }
-// 各色2体ずつ（合計6体固定）
-const carriers = [
-  makeCarrier(1), makeCarrier(1),
-  makeCarrier(2), makeCarrier(2),
-  makeCarrier(3), makeCarrier(3)
-];
+const carriers=[makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3)];
 
-// ====== 開始・ループ ======
+// ゲームループ
 let last=performance.now();
-function startGame(){ if(started) return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
-function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; if(world.running) update(dt); draw(); requestAnimationFrame(loop); }
+function startGame(){ if(started)return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
+function loop(t){const dt=Math.min(0.05,(t-last)/1000);last=t;if(world.running)update(dt);draw();requestAnimationFrame(loop);}
 
-// ====== 更新 ======
 function update(dt){
-  // タイマーとUI
-  world.timeLeft-=dt; if(world.timeLeft<=0){ world.timeLeft=0; endGame(); }
+  world.timeLeft-=dt;if(world.timeLeft<=0){world.timeLeft=0;endGame();}
   timeEl.textContent=world.timeLeft.toFixed(1); scoreEl.textContent=world.score;
-  hint.textContent = (player.lockDrop>0) ? `投下ロック中… ${Math.max(0,player.lockDrop).toFixed(1)}s` :
-    'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
-  if(player.lockDrop>0) player.lockDrop-=dt;
-
-  // プレイヤー移動（Xのみ）
-  if(input.touching){
-    const tx=clamp(input.lx-player.w/2,20*DPR,W-20*DPR-player.w);
-    player.x=lerp(player.x,tx,player.moveEaseX);
-  }
+  if(input.touching){const tx=Math.max(20*DPR,Math.min(W-20*DPR-player.w,input.lx-player.w/2));player.x+= (tx-player.x)*player.moveEaseX;}
   player.y=baseY;
-  if(player.stunned>0){ player.stunned-=dt; player.blinkT+=dt*8; }
-
-  // 火の玉
-  if(fireball.active){
-    fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.40*DPR);
-    fireball.y+=fireball.vy*dt*1000;
-    // ゴミ箱命中
-    for(const c of carriers){
-      if(c.hasBin && !c.bin.exploding){
-        const bx=c.x+(c.w-c.bin.w)/2;
-        const by=(c.y-c.h)-c.bin.h-6*DPR; // 頭上
-        if(aabb(fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2,bx,by,c.bin.w,c.bin.h)){
-          c.bin.exploding=true; c.bin.explode=0;
-          fireball.active=false; world.score++;
-        }
+  if(fireball.active){fireball.vy+=0.0080*DPR;fireball.vy=Math.min(fireball.vy,2.4*DPR);fireball.y+=fireball.vy*dt*1000;
+    for(const c of carriers){if(c.hasBin&&!c.bin.exploding){
+      const bx=c.x+(c.w-c.bin.w)/2,by=(c.y-c.h)-c.bin.h-6*DPR;
+      if(!(fireball.x-fireball.r+fireball.r*2<bx||bx+c.bin.w<fireball.x-fireball.r||fireball.y-fireball.r+fireball.r*2<by||by+c.bin.h<fireball.y-fireball.r)){
+        c.bin.exploding=true;c.bin.explode=0;fireball.active=false;world.score++;
       }
-    }
-    // 地面到達 → ミスペナルティ（2秒ロック＋赤チカ）
-    if(fireball.active && fireball.y>groundY){
-      fireball.active=false; player.lockDrop=2.0; player.stunned=2.0; player.blinkT=0;
-    }
+    }}
+    if(fireball.y>groundY){fireball.active=false;player.lockDrop=2.0;player.stunned=2.0;player.blinkT=0;}
   }
-
-  // キャリア挙動（Pause/Slow＋端フェイント）＋破裂/補給
   for(const c of carriers){
-    // ピョンピョン
-    c.hopT += dt*8;
-    const hop = Math.abs(Math.sin(c.hopT))*8*DPR;
-
-    // 破裂→消滅→補給
-    if(c.bin.exploding){
-      c.bin.explode += dt*1.8;
-      if(c.bin.explode>=1){
-        c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
-      }
-    }
-
+    c.hopT+=dt*8;const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
+    if(c.bin.exploding){c.bin.explode+=dt*1.8;if(c.bin.explode>=1){c.bin.exploding=false;c.hasBin=false;c.state='fetch';}}
     if(c.state==='fetch'){
-      // 右端へ補給（少し遅め）
-      const speed=Math.abs(c.baseSpeed)*1.4*DPR;
-      c.x += speed * dt * 1000;
-      if(c.x - c.w > W + 40*DPR){
-        // 補給して復帰（左向き）
-        c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
-        c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
-        c.hasBin = true; c.state = 'patrol';
-        c.beh='patrol'; c.behT=rand(2.5,4.5); c.pauseLeft=0; c.slowLeft=0; c.edgePause=0;
+      const speed=Math.abs(c.baseSpeed)*1.0*DPR; // ★ここを1.0に
+      c.x+=speed*dt*1000;
+      if(c.x-c.w>W+40*DPR){c.x=W+120*DPR;c.vx=-Math.abs(c.baseSpeed);c.bin={w:56*DPR,h:56*DPR,explode:0,exploding:false};c.hasBin=true;c.state='patrol';}
+    }else{
+      c.behT-=dt;if(c.behT<=0&&!c.bin.exploding){
+        if(Math.random()<0.5){c.beh='pause';c.pauseLeft=2.0;}else{c.beh='slow';c.slowLeft=1.2;c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5;}
+        c.behT=Math.random()*3+3;
       }
-    }else{ // === patrol ===
-      // 端でのフェイント停止（画面外に出ない）
-      if(c.edgePause>0){
-        c.edgePause -= dt; // 停止中は動かない
-        if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; } // 停止後に反転
-      }else{
-        // ランダム行動トリガ：Pause/Slowのみ
-        c.behT -= dt;
-        if(c.behT<=0 && !c.bin.exploding){
-          if(Math.random()<0.5){
-            // Pause: 2秒停止
-            c.beh='pause'; c.pauseLeft=2.0;
-          }else{
-            // Slow: 1.2秒だけ速度50%
-            c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5;
-          }
-          c.behT = rand(3.0, 6.0);
-        }
-
-        // 行動ごとの動き
-        if(c.beh==='pause'){
-          c.pauseLeft -= dt;
-          // 停止中は動かさない
-          if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed); }
-        }else{
-          // patrol / slow の移動
-          c.x += c.vx * dt * 1000;
-        }
-
-        // slow 終了で速度復帰
-        if(c.beh==='slow'){
-          c.slowLeft -= dt;
-          if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
-        }
-
-        // 端処理：停止→反転（画面外に出さない）
-        if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
-        if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
-      }
+      if(c.beh==='pause'){c.pauseLeft-=dt;if(c.pauseLeft<=0){c.beh='patrol';c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed);}}
+      else{c.x+=c.vx*dt*1000;}
+      if(c.beh==='slow'){c.slowLeft-=dt;if(c.slowLeft<=0){c.beh='patrol';c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed);}}
+      if(c.x<-60*DPR){c.x=-60*DPR;c.vx=Math.abs(c.vx);}
+      if(c.x+c.w>W+60*DPR){c.x=W+60*DPR-c.w;c.vx=-Math.abs(c.vx);}
     }
-    c.y = groundY - 20*DPR - hop;
+    c.y=groundY-20*DPR-hop;
   }
 }
+function tryDrop(){if(player.lockDrop>0||fireball.active)return;fireball.active=true;fireball.x=player.x+player.w/2;fireball.y=player.y+player.h;fireball.vy=0.06*DPR;}
 
-function tryDrop(){
-  if(player.lockDrop>0 || fireball.active) return;
-  fireball.active=true; fireball.x=player.x+player.w/2; fireball.y=player.y+player.h; fireball.vy=0.06*DPR;
+function draw(){ctx.clearRect(0,0,W,H);
+  if(assets['work.png']){const img=assets['work.png'];const scale=H/img.height;const w=img.width*scale;ctx.drawImage(img,0,0,w,H);if(w<W){ctx.fillStyle="#111826";ctx.fillRect(w,0,W-w,H);}}
+  else{ctx.fillStyle="#1a2230";ctx.fillRect(0,0,W,H);}
+  for(const c of carriers){const sx=c.x,sy=c.y-c.h;const im=assets[c.kind+'.png'];if(im)ctx.drawImage(im,sx,sy,c.w,c.h);else{ctx.fillStyle="#ccc";ctx.fillRect(sx,sy,c.w,c.h);}
+    if(c.hasBin){const bx=c.x+(c.w-c.bin.w)/2,by=sy-c.bin.h;if(c.bin.exploding){const t=Math.min(1,c.bin.explode);if(assets['gomi.png']){ctx.save();ctx.globalAlpha=1-t;ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);ctx.restore();}ctx.fillStyle=`rgba(255,60,80,${1-t})`;ctx.fillRect(bx,by,c.bin.w,c.bin.h);}else{if(assets['gomi.png'])ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);else{ctx.fillStyle="#999";ctx.fillRect(bx,by,c.bin.w,c.bin.h);}}}}
+  if(fireball.active){if(assets['tama.png'])ctx.drawImage(assets['tama.png'],fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2);else{ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2);ctx.fill();}}
+  if(assets['viran.png'])ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);else{ctx.fillStyle="#6cf";ctx.fillRect(player.x,player.y,player.w,player.h);}
 }
-
-// ====== 描画 ======
-function draw(){
-  ctx.clearRect(0,0,W,H);
-
-  // 背景（固定）
-  if(assets['work.png']){
-    const img=assets['work.png']; const scale=(H/img.height); const w=img.width*scale;
-    ctx.drawImage(img,0,0,w,H); if(w<W){ ctx.fillStyle="#111826"; ctx.fillRect(w,0,W-w,H); }
-  }else{ ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H); }
-
-  // キャリアと頭上ゴミ箱
-  for(const c of carriers){
-    const sx=c.x, sy=c.y-c.h;
-    const im=assets[c.kind+'.png'];
-    if(im) ctx.drawImage(im,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
-
-    if(c.hasBin){
-      const bx=c.x+(c.w-c.bin.w)/2;
-      const by=sy - c.bin.h; // 頭の“上”
-      if(c.bin.exploding){
-        // 赤い破裂（フェード＋スパイク）
-        const t=Math.min(1,c.bin.explode);
-        if(assets['gomi.png']){ ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore(); }
-        ctx.save();
-        ctx.globalCompositeOperation='lighter';
-        ctx.fillStyle=`rgba(255,60,80,${0.65*(1-t)})`;
-        ctx.beginPath();
-        const cx=bx+c.bin.w/2, cy=by+c.bin.h/2;
-        const spikes=16, inner=10*DPR*(1+t*0.5), outer=28*DPR*(1+t*1.4);
-        for(let i=0;i<spikes*2;i++){
-          const ang=(Math.PI*i)/spikes + t*5;
-          const r=(i%2===0)?outer:inner;
-          const px=cx+Math.cos(ang)*r, py=cy+Math.sin(ang)*r;
-          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
-        }
-        ctx.closePath(); ctx.fill();
-        ctx.restore();
-      }else{
-        if(assets['gomi.png']) ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);
-        else { ctx.fillStyle="#999"; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
-      }
-    }
-  }
-
-  // 火の玉
-  if(fireball.active){
-    if(assets['tama.png']) ctx.drawImage(assets['tama.png'],fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2);
-    else { ctx.fillStyle="#ffdd66"; ctx.beginPath(); ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2); ctx.fill(); }
-  }
-
-  // プレイヤー（赤チカチカ）
-  const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
-  if(blinking){ ctx.globalAlpha=0.45; }
-  if(assets['viran.png']) ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);
-  else { ctx.fillStyle="#6cf"; ctx.fillRect(player.x,player.y,player.w,player.h); }
-  if(blinking){
-    ctx.globalAlpha=1; ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x,player.y,player.w,player.h);
-  }
-}
-
-// ====== 終了/リトライ ======
-function endGame(){ world.running=false; document.getElementById('finalScore').textContent=world.score; modal.style.display='flex'; }
-function resetGame(){
-  world.timeLeft=30.0; world.score=0; world.running=true;
-  player.stunned=0; player.lockDrop=0; player.blinkT=0;
-  fireball.active=false; fireball.seeking=false; fireball.target=null;
-  // 6体固定で再生成（行動パラメータも初期化）
-  carriers.length=0;
-  carriers.push( makeCarrier(1), makeCarrier(1), makeCarrier(2), makeCarrier(2), makeCarrier(3), makeCarrier(3) );
-  modal.style.display='none';
-}
-retryBtn.addEventListener('click', resetGame);
-shareBtn.addEventListener('click', async ()=>{
-  const text = `Osoji-Viran｜スコア ${world.score}（30秒）`;
-  try{ if(navigator.share) await navigator.share({text, url: location.href});
-       else await navigator.clipboard.writeText(text);
-       alert('結果を共有/コピーしました！'); }catch{}
-});
+function endGame(){world.running=false;document.getElementById('finalScore').textContent=world.score;modal.style.display='flex';}
+function resetGame(){world.timeLeft=30.0;world.score=0;world.running=true;player.stunned=0;player.lockDrop=0;fireball.active=false;modal.style.display='none';}
+retryBtn.addEventListener('click',resetGame);
+shareBtn.addEventListener('click',async()=>{const text=`Osoji-Viran｜スコア ${world.score}（30秒）`;try{if(navigator.share)await navigator.share({text,url:location.href});else await navigator.clipboard.writeText(text);alert('結果を共有/コピーしました！');}catch{}});
 })();
 </script>
 </body>
