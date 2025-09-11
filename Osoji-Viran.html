@@ -108,7 +108,6 @@ function loadImgSafe(src, timeoutMs=4000){
 }
 const files = [
   'work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png',
-  // 吹き出し素材
   'nera.png','otosi.png','koti.png','imada.png','isoge.png','totte.png'
 ];
 const assets = {};
@@ -154,10 +153,12 @@ const world={timeLeft:30.0,score:0,running:false};
 const player={x:W*0.22,y:baseY,w:84*DPR,h:84*DPR,stunned:0,blinkT:0,lockDrop:0,moveEaseX:0.12};
 const fireball={active:false,x:0,y:0,vy:0,r:18*DPR};
 
-// 吹き出し管理用
+// 吹き出し管理
 const RANDOM_BALLOONS = ['nera.png','otosi.png','koti.png'];
 const FETCH_BALLOONS  = ['isoge.png','totte.png'];
 const PAUSE_BALLOON   = 'imada.png';
+
+function rand(a,b){ return a + Math.random()*(b-a); }
 
 function makeCarrier(kindIndex){
   const speed=(0.10+Math.random()*0.06)*DPR;
@@ -167,14 +168,12 @@ function makeCarrier(kindIndex){
     kind:kindIndex,x:startX,y:groundY-20*DPR,w:72*DPR,h:72*DPR,
     vx:speed*dir,baseSpeed:speed,hopT:Math.random()*6,
     hasBin:true,bin:{w:56*DPR,h:56*DPR,explode:0,exploding:false},
-    state:'patrol',beh:'patrol',behT:Math.random()*2+2.5,
+    state:'patrol',beh:'patrol',behT:rand(2.5,4.5),
     pauseLeft:0,slowLeft:0,edgePause:0,
     bubble:{name:null,time:0,cd:rand(3.5,6.5),fetchCd:null}
   };
 }
-function rand(a,b){ return a + Math.random()*(b-a); }
-
-// 各色2体ずつ（6体固定）
+// 6体固定
 const carriers=[makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3)];
 
 // ループ
@@ -237,13 +236,18 @@ function update(dt){
     if(c.bin.exploding){
       c.bin.explode += dt*1.8;
       if(c.bin.explode>=1){
+        // ★ ここで bin が「消えた瞬間」→ fetch に遷移
         c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
-        // fetchに入ったら、最初の吹き出しタイミングを短めに
-        c.bubble.fetchCd = rand(0.6, 1.2);
+
+        // ★ 即時に fetch 吹き出し表示（isoge / totte）
+        const pick = FETCH_BALLOONS[(Math.random()<0.5)?0:1];
+        c.bubble.name = pick;
+        c.bubble.time = 1.2;
+        c.bubble.fetchCd = rand(2.0, 3.2); // 次の fetch 吹き出しまでのCD
       }
     }
 
-    // 吹き出しタイマー更新（共通）
+    // 吹き出しタイマー更新
     if(c.bubble.time>0) c.bubble.time = Math.max(0, c.bubble.time - dt);
     if(c.bubble.cd>0)   c.bubble.cd   = Math.max(0, c.bubble.cd   - dt);
     if(c.bubble.fetchCd!==null) c.bubble.fetchCd = Math.max(0, c.bubble.fetchCd - dt);
@@ -253,7 +257,7 @@ function update(dt){
       const speed=Math.abs(c.baseSpeed)*1.0*DPR;
       c.x += speed * dt * 1000;
 
-      // fetch中の吹き出し：isoge/totte を2.0〜3.2秒ごと
+      // fetch中の定期吹き出し
       if(c.bubble.fetchCd!==null && c.bubble.time<=0 && c.bubble.fetchCd<=0){
         c.bubble.name = FETCH_BALLOONS[(Math.random()<0.5)?0:1];
         c.bubble.time = 1.2;
@@ -270,7 +274,6 @@ function update(dt){
         c.bubble.fetchCd=null; // fetch専用タイマ解除
       }
     }else{ // patrol
-      // 端フェイント（消えないよう停止→反転）
       if(c.edgePause>0){
         c.edgePause -= dt;
         if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; }
@@ -284,16 +287,16 @@ function update(dt){
         }
 
         if(c.beh==='pause'){
-          // 停止中は移動しない & 吹き出し「imada」常時表示
           c.pauseLeft -= dt;
+          // 停止中は imada を常時（延命方式）
           if(c.pauseLeft>0){
-            c.bubble.name = PAUSE_BALLOON;
-            c.bubble.time = 0.2; // 毎フレーム延命して表示を維持
+            c.bubble.name = 'imada.png';
+            c.bubble.time = 0.2;
           }else{
             c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed);
           }
         }else{
-          c.x += c.vx * dt * 1000; // patrol/slow の移動
+          c.x += c.vx * dt * 1000;
         }
 
         if(c.beh==='slow'){
@@ -301,13 +304,13 @@ function update(dt){
           if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
         }
 
-        // ランダム吹き出し（パトロール中）：3.5〜6.5秒ごとに1.2秒
+        // ランダム吹き出し（パトロール中）
         if(c.bubble.time<=0 && c.bubble.cd<=0){
           const pick = RANDOM_BALLOONS[Math.floor(Math.random()*RANDOM_BALLOONS.length)];
           c.bubble.name = pick; c.bubble.time = 1.2; c.bubble.cd = rand(3.5,6.5);
         }
 
-        // 端処理：停止→反転（画面外に出さない）
+        // 端で停止→反転（外に出さない）
         if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
         if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
       }
@@ -331,30 +334,19 @@ function draw(){
     ctx.drawImage(img,0,0,w,H); if(w<W){ ctx.fillStyle="#111826"; ctx.fillRect(w,0,W-w,H); }
   }else{ ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H); }
 
-  // キャラ＆吹き出し＆頭上ゴミ箱
+  // 各キャラを描画（順序：キャラ → ゴミ箱 → 吹き出し（前面））
   for(const c of carriers){
     const sx=c.x, sy=c.y-c.h;
+
+    // 1) キャラ本体
     const im=assets[c.kind+'.png'];
     if(im) ctx.drawImage(im,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
 
-    // 吹き出し描画（追従）
-    if(c.bubble.name && c.bubble.time>0){
-      const bimg = assets[c.bubble.name];
-      const bw = 96*DPR; // 吹き出し表示幅（固定）
-      const bh = bimg ? (bw * (bimg.height / bimg.width)) : 60*DPR;
-      let bx = sx + c.w*0.5 - bw*0.5;
-      let by = sy - bh - 10*DPR;
-      bx = clamp(bx, 4*DPR, W - bw - 4*DPR); // 画面外に出ない
-      if(bimg){ ctx.drawImage(bimg, bx, by, bw, bh); }
-      else{ ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(bx,by,bw,bh); }
-    }
-
-    // ゴミ箱（頭上）
+    // 2) ゴミ箱（頭上）
     if(c.hasBin){
       const bx=c.x+(c.w-c.bin.w)/2;
       const by=sy - c.bin.h;
       if(c.bin.exploding){
-        // 赤スパイク爆発＋フェード
         const t=Math.min(1,c.bin.explode);
         if(assets['gomi.png']){
           ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore();
@@ -378,6 +370,24 @@ function draw(){
         else { ctx.fillStyle="#999"; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
       }
     }
+
+    // 3) 吹き出し（小さめ、頭の“横”／前面）
+    if(c.bubble.name && c.bubble.time>0){
+      const bimg = assets[c.bubble.name];
+      const bw = 72*DPR;                                  // ★小さめ
+      const bh = bimg ? (bw * (bimg.height / bimg.width)) : 50*DPR;
+      const margin = 8*DPR;
+      // 基本は右側。はみ出すなら左側へ。
+      let bx = sx + c.w + margin;
+      if(bx + bw > W - 4*DPR){ bx = sx - bw - margin; }   // 左へ回す
+      // 縦位置：頭の上1/4あたり（やや上）
+      let by = sy + c.h*0.25 - bh/2;
+      // 画面内にクランプ
+      bx = clamp(bx, 4*DPR, W - bw - 4*DPR);
+      by = clamp(by, 4*DPR, groundY - bh - 4*DPR);
+      if(bimg){ ctx.drawImage(bimg, bx, by, bw, bh); }
+      else { ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(bx,by,bw,bh); }
+    }
   }
 
   // 火の玉
@@ -386,7 +396,7 @@ function draw(){
     else { ctx.fillStyle="#ffdd66"; ctx.beginPath(); ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2); ctx.fill(); }
   }
 
-  // プレイヤー（赤チカチカ演出）
+  // プレイヤー（赤チカチカ）
   const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
   if(blinking){ ctx.globalAlpha=0.45; }
   if(assets['viran.png']) ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);
