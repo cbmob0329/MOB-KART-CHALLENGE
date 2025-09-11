@@ -169,9 +169,15 @@ function makeCarrier(kindIndex){
   const speed = rand(0.10,0.16)*DPR;
   const dir = Math.random() < 0.5 ? -1 : 1;
   const startX = dir>0 ? -80*DPR : W + 80*DPR;
-  return { kind: kindIndex, x: startX, y: groundY-20*DPR, w:72*DPR, h:72*DPR,
+  return {
+    kind: kindIndex, x: startX, y: groundY-20*DPR, w:72*DPR, h:72*DPR,
     vx: speed*dir, baseSpeed:speed, hopT: Math.random()*Math.PI*2,
-    hasBin: true, bin: {w:56*DPR, h:56*DPR, explode:0, exploding:false}, state:'patrol' };
+    hasBin: true, bin: {w:56*DPR, h:56*DPR, explode:0, exploding:false},
+    state:'patrol',
+    // 行動パターン用
+    beh:'patrol', behT: rand(2.5, 4.5),  // 次の行動を起こすまでのカウントダウン
+    pauseLeft:0, dashLeft:0, edgePause:0
+  };
 }
 // 各色2体ずつ（合計6体固定）
 const carriers = [
@@ -206,53 +212,82 @@ function update(dt){
   if(fireball.active){
     fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.40*DPR);
     fireball.y+=fireball.vy*dt*1000;
-
     // ゴミ箱命中
     for(const c of carriers){
       if(c.hasBin && !c.bin.exploding){
         const bx=c.x+(c.w-c.bin.w)/2;
-        const by=(c.y-c.h)-c.bin.h-6*DPR; // 頭の上に置いた箱
+        const by=(c.y-c.h)-c.bin.h-6*DPR;
         if(aabb(fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2,bx,by,c.bin.w,c.bin.h)){
           c.bin.exploding=true; c.bin.explode=0;
           fireball.active=false; world.score++;
         }
       }
     }
-    // 地面まで落ちたら消滅（※ペナルティ挙動を入れるならここで分岐）
-    if(fireball.active && fireball.y>groundY){ fireball.active=false; player.lockDrop=2.0; player.stunned=2.0; player.blinkT=0; }
+    // 地面到達 → ミスペナルティ（2秒ロック＋赤チカ）
+    if(fireball.active && fireball.y>groundY){
+      fireball.active=false; player.lockDrop=2.0; player.stunned=2.0; player.blinkT=0;
+    }
   }
 
-  // キャリア挙動＋爆発→消滅→補給（ここが今回の修正ポイント）
+  // キャリア挙動（行動パターン含む）＋破裂/補給
   for(const c of carriers){
     // ピョンピョン
-    c.hopT+=dt*8; const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
-    // 爆発アニメを進める
+    c.hopT += dt*8;
+    const hop = Math.abs(Math.sin(c.hopT))*8*DPR;
+
+    // 破裂→消滅→補給
     if(c.bin.exploding){
-      c.bin.explode += dt*1.8; // 0→1で完了
+      c.bin.explode += dt*1.8;
       if(c.bin.explode>=1){
-        c.bin.exploding=false;
-        c.hasBin=false;        // ← 消滅
-        c.state='fetch';       // ← 右端へ補給へ
+        c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
       }
     }
 
     if(c.state==='fetch'){
-      // 右へ“少し遅め”にダッシュで補給
+      // 右端へ補給（少し遅め）
       const speed=Math.abs(c.baseSpeed)*1.4*DPR;
       c.x += speed * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
-        // 画面外で補給→再出撃（左向き）
-        c.x = W + 120*DPR;
-        c.vx = -Math.abs(c.baseSpeed);
+        // 補給して復帰（左向き）
+        c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
         c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
-        c.hasBin = true;
-        c.state = 'patrol';
+        c.hasBin = true; c.state = 'patrol';
+        c.beh='patrol'; c.behT=rand(2.5,4.5); c.pauseLeft=0; c.dashLeft=0; c.edgePause=0;
       }
-    }else{
-      // 左右往復
-      c.x += c.vx * dt * 1000;
-      if(c.x < -60*DPR){ c.x = -60*DPR; c.vx = Math.abs(c.vx); }
-      if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.vx = -Math.abs(c.vx); }
+    }else{ // === patrol ===
+      // 端でのフェイント停止（画面外に消えない安全弁）
+      if(c.edgePause>0){
+        c.edgePause -= dt; // 停止中は動かない
+        if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; } // 停止後に反転
+      }else{
+        // ランダム行動トリガ
+        c.behT -= dt;
+        if(c.behT<=0 && !c.bin.exploding){
+          // 50% Pause(2s) / 50% Dash(0.8s)
+          if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
+          else{ c.beh='dash'; c.dashLeft=0.8; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed) * 2.3; }
+          c.behT = rand(3.0, 6.0);
+        }
+
+        // 行動ごとの動き
+        if(c.beh==='pause'){
+          c.pauseLeft -= dt;
+          // 停止中は x を動かさない
+          if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed); }
+        }else{
+          // patrol / dash 共通の移動
+          c.x += c.vx * dt * 1000;
+        }
+
+        // 端処理（停止→反転）: 画面外に出ない
+        if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
+        if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
+        // dash終了の復帰
+        if(c.beh==='dash'){
+          c.dashLeft -= dt;
+          if(c.dashLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed); }
+        }
+      }
     }
     c.y = groundY - 20*DPR - hop;
   }
@@ -283,7 +318,7 @@ function draw(){
       const bx=c.x+(c.w-c.bin.w)/2;
       const by=sy - c.bin.h; // 頭の“上”
       if(c.bin.exploding){
-        // 赤い破裂（フェード）
+        // 赤い破裂（フェード＋スパイク）
         const t=Math.min(1,c.bin.explode);
         if(assets['gomi.png']){ ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore(); }
         ctx.save();
@@ -329,7 +364,7 @@ function resetGame(){
   world.timeLeft=30.0; world.score=0; world.running=true;
   player.stunned=0; player.lockDrop=0; player.blinkT=0;
   fireball.active=false; fireball.seeking=false; fireball.target=null;
-  // 再生成して6体固定を維持
+  // 6体固定で再生成（行動パラメータも初期化）
   carriers.length=0;
   carriers.push( makeCarrier(1), makeCarrier(1), makeCarrier(2), makeCarrier(2), makeCarrier(3), makeCarrier(3) );
   modal.style.display='none';
