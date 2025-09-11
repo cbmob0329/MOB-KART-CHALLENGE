@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + jumpdai</title>
+<title>Runner – cone + jumpdai (sweep fix)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -47,7 +47,7 @@
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
   /* ゲームオーバー */
   #gameover{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
-  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
+  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
 </style>
 </head>
 <body>
@@ -142,7 +142,7 @@
 
     // ===== プレイヤー =====
     function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
-      return {x:80,y:GR.floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac}; }
+      return {x:80,y:GR.floorY(),prevBottom:GR.floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac}; }
     let player=null;
 
     // ===== コーン & ジャンプ台（余白カット・接地） =====
@@ -207,7 +207,7 @@
     });
     document.getElementById('retryBtn').onclick=()=>{
       gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; nextSpawnDist=250+Math.random()*250;
-      if(player){ player.y=GR.floorY(); player.vy=0; player.jumps=2; }
+      if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
       gameover.style.display='none';
     };
@@ -234,25 +234,33 @@
         else { speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt); }
       }
 
-      // 物理
+      // ===== 物理 =====
       if(player && !gameOver){
-        player.vy += GRAV*dt; player.y += player.vy*dt;
-        const fy=GR.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
+        // 1) 前フレームの足元を保存
+        player.prevBottom = player.y;
+
+        // 2) 自由落下
+        player.vy += GRAV*dt; 
+        player.y  += player.vy*dt;
+
+        // 3) 地面に着地
+        const fy=GR.floorY(); 
+        if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
       }
 
-      // 進行
+      // ===== 進行・オブジェクト更新 =====
       if(!gameOver){
         dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
         maybeSpawn(dist);
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
-          if(o.cd){ o.cd=Math.max(0, o.cd - dt); } // ジャンプ台のクールダウン
+          if(o.cd){ o.cd=Math.max(0, o.cd - dt); }
           if(o.x + o.w < -40) obstacles.splice(i,1);
         }
       }
 
-      // 描画
+      // ===== 描画 =====
       ctx.clearRect(0,0,W,H);
       // 背景
       (function(){ const scale=H/IMG_BG.naturalHeight, tileW=IMG_BG.naturalWidth*scale; let ox=bgOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_BG,0,0,IMG_BG.naturalWidth,IMG_BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } })();
@@ -264,29 +272,34 @@
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
 
-      // プレイヤー
+      // プレイヤーの見た目座標
       if(player){
         const feetPush=Math.floor(player.h*player.feetFrac);
         const px=Math.floor(player.x);
         const py=Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
-        // 当たり判定
+        // ===== 当たり判定 =====
         if(!gameOver){
+          const currBottom = player.y;          // 物理上の足元（下辺Y）
+          const prevBottom = player.prevBottom; // 前フレームの足元
+
           for(const o of obstacles){
-            // まずAABBで早期判定
-            const aabb=(px<o.x+o.w && px+player.w>o.x && py<o.y+o.h && py+player.h>o.y);
-            if(!aabb) continue;
+            // 横方向の重なり（AABBのX軸）
+            const overlapX = (px < o.x+o.w) && (px+player.w > o.x);
+            if(!overlapX) continue;
 
             if(o.type==='corn'){
-              if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
+              // AABBで一旦早期判定 → 緩い2段判定
+              const aabbY = (py < o.y+o.h) && (py+player.h > o.y);
+              if(aabbY && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
             }else if(o.type==='jump'){
-              // 上から踏んだときだけバウンド、横はスルー（ゲームオーバーなし）
-              const comingDown = player.vy >= -20;
-              const wasAbove   = (player.y - player.h*0.6) < o.y;
-              if(comingDown && wasAbove && (!o.cd || o.cd<=0)){
-                player.y = o.y; player.vy = -JUMP*1.2; player.jumps = 2;
-                o.cd = 0.2; // 多重発動防止
+              // スイープ着地判定：下降中 & （前足元 ≤ 台面）&（今足元 ≥ 台面）
+              const top = o.y;
+              const comingDown = player.vy >= 0;
+              const crossing   = (prevBottom <= top) && (currBottom >= top);
+              if(comingDown && crossing && (!o.cd || o.cd<=0)){
+                player.y = top; player.vy = -JUMP*1.2; player.jumps = 2; o.cd = 0.2;
               }
             }
           }
