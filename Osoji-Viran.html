@@ -91,7 +91,7 @@ function resize(){
   canvas.width = W; canvas.height = H;
   canvas.style.width = vw+"px"; canvas.style.height = vh+"px";
   groundY = H*0.86;
-  baseY = H*0.25;  // プレイヤーは上寄り固定
+  baseY = H*0.25; // 上寄り固定
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
@@ -107,10 +107,7 @@ function loadImgSafe(src, timeoutMs=4000){
     im.src = src + '?_=' + Date.now();
   });
 }
-const files = [
-  'work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png',
-  'isoge.png','totte.png'
-];
+const files = ['work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png','isoge.png','totte.png'];
 const assets = {};
 let started = false;
 (async ()=>{
@@ -123,11 +120,10 @@ let started = false;
       if(done===files.length) startGame();
     });
   }
-  // 万一画像が欠けても3秒で開始
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
-// ===== 入力（左右ドラッグ／タップ投下）=====
+// ===== 入力 =====
 const input = { touching:false, id:null, lx:0, t0:0, moved:false };
 const TAP_TIME = 220, TAP_MOVE = 12*DPR;
 function viewToCanvas(x,y){ return { x:x*DPR, y:y*DPR }; }
@@ -162,18 +158,23 @@ const world={timeLeft:30.0, score:0, running:false};
 const player={x:W*0.22, y:baseY, w:84*DPR, h:84*DPR, stunned:0, blinkT:0, lockDrop:0, moveEaseX:0.12};
 const fireball={active:false, x:0,y:0, vy:0, r:18*DPR};
 
+// 画面内マージン（“常に見える”ため）
+const MARGIN = 8*DPR;
+
 function makeCarrier(kindIndex){
   const speed=(0.10+Math.random()*0.06)*DPR;
   const dir=Math.random()<0.5?-1:1;
-  const startX=dir>0?-80*DPR:W+80*DPR;
+  // ★初期位置は“ほぼ画面内”から開始（端に寄せる）
+  const startX = dir>0 ? (MARGIN) : (W - MARGIN - 72*DPR);
   return{
     kind:kindIndex, x:startX, y:groundY-20*DPR, w:72*DPR, h:72*DPR,
     vx:speed*dir, baseSpeed:speed, hopT:Math.random()*6,
     hasBin:true, bin:{w:56*DPR, h:56*DPR, explode:0, exploding:false},
     state:'patrol',
     beh:'patrol', behT:rand(2.5,4.5),
-    pauseLeft:0, slowLeft:0, edgePause:0,
-    // 吹き出し（fetchのみ使用）
+    pauseLeft:0, slowLeft:0,
+    edgePause:0,  // 端の小停止
+    // 吹き出し（fetchのみ）
     bubble:{name:null, time:0, fetchCd:null}
   };
 }
@@ -197,7 +198,7 @@ function update(dt){
 
   // プレイヤー移動（Xのみ）
   if(input.touching){
-    const tx=clamp(input.lx-player.w/2,20*DPR,W-20*DPR-player.w);
+    const tx=clamp(input.lx-player.w/2, MARGIN, W - MARGIN - player.w);
     player.x += (tx-player.x)*player.moveEaseX;
   }
   player.y=baseY;
@@ -218,7 +219,7 @@ function update(dt){
         }
       }
     }
-    // 地面に到達 → ペナルティ
+    // 地面 → ペナルティ
     if(fireball.active && fireball.y>groundY){
       fireball.active=false; player.stunned=2.0; player.blinkT=0; player.lockDrop=2.0;
     }
@@ -229,18 +230,20 @@ function update(dt){
     // ぴょん
     c.hopT+=dt*8; const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
 
-    // 破裂進行（爆発1→消滅→fetch遷移）
+    // 破裂進行
     if(c.bin.exploding){
       c.bin.explode += dt*1.8;
       if(c.bin.explode>=1){
-        c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
-        // ★ 取ってくる「瞬間」に吹き出し表示
+        // ゴミ箱消滅 → fetchへ
+        c.bin.exploding=false; c.hasBin=false; c.state='fetch';
+        c.beh='patrol'; c.edgePause=0;
+        // ★このキャラだけ即吹き出し
         const pick = (Math.random()<0.5)? 'isoge.png':'totte.png';
         c.bubble.name = pick; c.bubble.time = 1.1; c.bubble.fetchCd = rand(2.0,3.0);
       }
     }
 
-    // 吹き出しタイマー（fetchのみ使用）
+    // 吹き出しタイマー（fetchのみ）
     if(c.bubble.time>0) c.bubble.time=Math.max(0,c.bubble.time-dt);
     if(c.bubble.fetchCd!==null) c.bubble.fetchCd=Math.max(0,c.bubble.fetchCd-dt);
 
@@ -249,15 +252,15 @@ function update(dt){
       const speed=Math.abs(c.baseSpeed)*1.0*DPR;
       c.x += speed * dt * 1000;
 
-      // fetch中は2.0〜3.0秒ごとに再表示
+      // fetch中の定期吹き出し
       if(c.bubble.fetchCd!==null && c.bubble.time<=0 && c.bubble.fetchCd<=0){
         c.bubble.name = (Math.random()<0.5)? 'isoge.png':'totte.png';
         c.bubble.time = 1.1;
         c.bubble.fetchCd = rand(2.0,3.0);
       }
 
+      // 右外で補給 → 復帰（左へ）
       if(c.x - c.w > W + 40*DPR){
-        // 右外で補給 → 復帰（左へ）
         c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
         c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
         c.hasBin=true; c.state='patrol';
@@ -266,7 +269,7 @@ function update(dt){
         c.bubble.fetchCd=null; // fetch専用解放
       }
     }else{ // === patrol ===
-      // ランダム行動（Pause/Slow）
+      // 行動（Pause/Slow）
       c.behT -= dt;
       if(c.behT<=0 && !c.bin.exploding){
         if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
@@ -274,25 +277,28 @@ function update(dt){
         c.behT = rand(3.0,6.0);
       }
 
-      if(c.beh==='pause'){
-        // 停止
+      if(c.edgePause>0){
+        // 端停止中：動かない
+        c.edgePause -= dt;
+        if(c.edgePause<=0){ c.vx = -c.vx; } // 停止後に反転
+      }else if(c.beh==='pause'){
         c.pauseLeft -= dt;
         if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
       }else{
-        c.x += c.vx * dt * 1000; // patrol/slow 共通
+        c.x += c.vx * dt * 1000; // patrol/slow の移動
       }
 
-      // slow終了で速度戻す
       if(c.beh==='slow'){
         c.slowLeft -= dt;
         if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
       }
 
-      // 端で停止→反転（画面外に出さない）
-      if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause=0.30; }
-      if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause=0.30; }
-      if(c.edgePause>0){ c.edgePause -= dt; if(c.edgePause<=0){ c.vx=-c.vx; } }
+      // ★画面内クランプ（常に見える）
+      const minX = MARGIN, maxX = W - MARGIN - c.w;
+      if(c.x < minX){ c.x = minX; c.edgePause = 0.30; c.vx = 0; }
+      if(c.x > maxX){ c.x = maxX; c.edgePause = 0.30; c.vx = 0; }
     }
+
     c.y = groundY - 20*DPR - hop;
   }
 }
@@ -350,15 +356,15 @@ function draw(){
       }
     }
 
-    // 3) 吹き出し（fetch時のみ）— 小型・頭横に密着・前面
+    // 3) 吹き出し（fetchだけ、発したキャラに密着）
     if(c.bubble.name && c.bubble.time>0){
       const bimg=assets[c.bubble.name];
       const bw=56*DPR;
       const bh=bimg ? (bw*(bimg.height/bimg.width)) : 40*DPR;
       const margin=2*DPR;
-      let bx = sx + c.w + margin;
-      if(bx + bw > W - 2*DPR){ bx = sx - bw - margin; } // 右に出せない時は左側
-      let by = sy + c.h*0.35 - bh/2; // 頭の横
+      let bx = sx + c.w + margin;                 // 右側優先
+      if(bx + bw > W - 2*DPR){ bx = sx - bw - margin; } // はみ出す時は左
+      let by = sy + c.h*0.35 - bh/2;              // 頭の“横”
       // 画面内クランプ
       bx = clamp(bx, 2*DPR, W - bw - 2*DPR);
       by = clamp(by, 2*DPR, groundY - bh - 2*DPR);
