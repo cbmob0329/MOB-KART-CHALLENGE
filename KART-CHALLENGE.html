@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – stable ground metrics</title>
+<title>Runner – cone + contena + trampoline</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -14,7 +14,6 @@
     background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
     transform-origin:center center;
   }
-  /* HUD（固定） */
   header.hud{
     position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
@@ -22,12 +21,8 @@
     font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-
-  /* プレイ領域（HUD/ボタンと分離） */
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-
-  /* 操作ボタン（固定） */
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
     display:flex;gap:12px;align-items:center;justify-content:center;padding:10px 12px;
@@ -38,15 +33,11 @@
     background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
   .btn:active{transform:translateY(1px)}
   .muted{opacity:.6;filter:saturate(.2)}
-
-  /* キャラ選択 */
   #overlay{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
   .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
   .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
   .choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
-
-  /* ローディング／ゲームオーバー */
   #loading{position:absolute;inset:56px 0 96px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
   #gameover{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
@@ -110,9 +101,9 @@
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
     load('sora.png'), load('mob.png'),
-    load('corn.png'), load('contena.png'), load('jumpdai.png'),
+    load('corn.png'), load('contena.png'), load('tora.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_JP, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_TR, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
@@ -136,7 +127,7 @@
       }
     };
 
-    /* ==== 背景：一度確定したタイル幅でのみ描画 ==== */
+    /* ==== 背景（固定寸法） ==== */
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
@@ -150,15 +141,15 @@
       return { draw };
     })();
 
-    /* ==== 地面：数値を固定して共有（ここが今回の修正ポイント） ==== */
+    /* ==== 地面（固定寸法を共有） ==== */
     const GR = (()=> {
       const t=Px.topTrim(IMG_GR);
-      const drawH=Math.max(48, Math.min(160, t.contentH));      // ← 確定
+      const drawH=Math.max(48, Math.min(160, t.contentH));
       const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
       const scaleY = drawH / srcH;
-      const tileW  = IMG_GR.naturalWidth * scaleY;              // ← 確定
-      const y      = Math.floor(H - drawH);                     // ← 接地Yを整数で固定
-      function floorY(){ return y; }                            // ← 以後ずっと同じ値
+      const tileW  = IMG_GR.naturalWidth * scaleY;
+      const y      = Math.floor(H - drawH);
+      function floorY(){ return y; }
       function draw(offsetX){
         let ox = offsetX % tileW; if(ox>0) ox -= tileW;
         for(let x=ox;x<W;x+=tileW){
@@ -171,20 +162,16 @@
 
     /* ==== プレイヤー ==== */
     function makePlayer(img){
-      if(!img){ // どちらの画像も無い場合のフェイルセーフ
-        const dummy=document.createElement('canvas'); dummy.width=dummy.height=1;
-        const g=dummy.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1);
-        img=dummy;
-      }
+      if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
       const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
       return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
     }
     let player=null;
 
-    /* ==== 障害物：コーン / コンテナ / ジャンプ台 ==== */
+    /* ==== 障害物 ==== */
     const cornTrim = Px.tightRect(IMG_CO);
     const contTrim = Px.tightRect(IMG_CT);
-    const jumpTrim = Px.tightRect(IMG_JP);
+    const trampTrim= Px.tightRect(IMG_TR);
     const obstacles=[]; // {x,y,w,h,img,trim,type,cd?}
 
     function makeCorn(atX){
@@ -207,12 +194,12 @@
       }
       return arr;
     }
-    function makeJumpPad(atX){
+    function makeTrampoline(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.34);
-      const s = targetH / jumpTrim.sh;
-      const w = Math.round(jumpTrim.sw * s), h = Math.round(jumpTrim.sh * s);
-      return { x: atX, y: fy - h, w, h, img: IMG_JP, trim: jumpTrim, type:'jump', cd:0 };
+      const targetH = Math.round(GR.drawH * 0.40); // 少し高め・踏みやすい
+      const s = targetH / trampTrim.sh;
+      const w = Math.round(trampTrim.sw * s), h = Math.round(trampTrim.sh * s);
+      return { x: atX, y: fy - h, w, h, img: IMG_TR, trim: trampTrim, type:'tramp', cd:0 };
     }
 
     /* ==== スポーン：重なり禁止 & 最低間隔 ==== */
@@ -226,21 +213,25 @@
     }
     function trySpawn(totalDist){
       if(totalDist < nextAllowedDist) return;
-      const rnd = Math.random();
-      let type = (rnd < 0.45) ? 'corn' : (rnd < 0.75 ? 'contena' : 'jump');
+
+      // corn : contena : tramp ≒ 45% : 35% : 20%
+      const r = Math.random();
+      let kind = r < 0.45 ? 'corn' : (r < 0.80 ? 'contena' : 'tramp');
+
       const startX = Math.max(W + spawnMargin, rightmostFutureX() + minGap);
 
-      if(type==='corn'){
+      if(kind==='corn'){
         obstacles.push( makeCorn(startX) );
         nextAllowedDist = totalDist + 160 + Math.random()*160;
-      }else if(type==='contena'){
+
+      }else if(kind==='contena'){
         const set = makeContSet(startX);
         obstacles.push(...set);
         const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
         nextAllowedDist = totalDist + Math.max(240, setWidth) + 160 + Math.random()*120;
-      }else{
-        const jp = makeJumpPad(startX);
-        obstacles.push(jp);
+
+      }else{ // tramp
+        obstacles.push( makeTrampoline(startX) );
         nextAllowedDist = totalDist + 220 + Math.random()*160;
       }
     }
@@ -283,7 +274,7 @@
       gameover.style.display='none';
     };
 
-    /* ==== コーンの緩い当たり判定（2段） ==== */
+    /* ==== コーン（緩い2段） ==== */
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
       const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 };
@@ -293,13 +284,13 @@
       return A||B;
     }
 
-    /* ==== 着地・ジャンプ台の調整値 ==== */
-    const LAND_SNAP = 8;   // コンテナ/ジャンプ台の上面吸着
-    const H_PAD     = 16;  // 横方向バッファ
-    const JUMP_PAD_BOOST = 1.25;
-    const JUMP_PAD_CD = 0.22;
+    /* ==== 着地・トランポリンの調整値 ==== */
+    const LAND_SNAP = 10;      // 上面吸着の縦許容量（大きいほど乗りやすい）
+    const H_PAD     = 16;      // 横方向許容量
+    const TRAMP_BOOST = 1.35;  // 反発の強さ（JUMP倍率）
+    const TRAMP_CD    = 0.25;  // 連続発動防止
 
-    /* ==== メインループ ==== */
+    /* ==== ループ ==== */
     let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
@@ -335,24 +326,22 @@
         }
       }
 
-      // ===== 描画（固定値で描く） =====
+      // ===== 描画 =====
       ctx.clearRect(0,0,W,H);
       BG.draw(bgOff);
       GR.draw(grOff);
 
-      // 障害物
       obstacles.forEach(o=>{
-        ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
+        ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,
+                      Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
 
-      // プレイヤー
       if(player){
         const feetPush = Math.floor(player.h * player.feetFrac);
         const px = Math.floor(player.x);
         const py = Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
-        // 当たり判定
         if(!gameOver){
           const currBottom = player.y;
           const prevBottom = player.prevBottom;
@@ -374,15 +363,17 @@
                 gameOver=true; gameover.style.display='grid'; break;
               }
 
-            }else if(o.type==='jump'){
+            }else if(o.type==='tramp'){
               const top = o.y, comingDown = player.vy >= 0;
               const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
               if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
+                // 吸着→強反発
                 player.y = top;
-                player.vy = -JUMP * JUMP_PAD_BOOST;
+                player.vy = -JUMP * TRAMP_BOOST;
                 player.jumps = 2;
-                o.cd = JUMP_PAD_CD;
+                o.cd = TRAMP_CD;
               }
+              // 横からはスルー（ゲームオーバーにしない）
             }
           }
         }
