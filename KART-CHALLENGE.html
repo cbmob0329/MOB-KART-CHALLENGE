@@ -2,8 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=cover, viewport-fit=cover, user-scalable=no" />
-<title>Runner – Villain Event</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<title>Runner – Villain tuned</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -248,36 +248,27 @@
     /* === Villain & Fireballs === */
     const viTrim = Px.tightRect(IMG_VI);
     const tmTrim = Px.tightRect(IMG_TM);
-    let villain = null; // {phase:'enter'|'attack'|'exit', x,y,w,h, vy, targetY, timer, dropsLeft, dropCd}
+    let villain = null; // {phase,x,y,w,h, vy,targetY,timer,dropsLeft,dropCd}
     const fireballs = []; // {x,y,w,h,vx,vy}
 
-    const LOGO = {state:'idle', t:0}; // 'fadein'|'burst'
-    function triggerLogo(){
-      LOGO.state='fadein'; LOGO.t=0;
-    }
+    const LOGO = {state:'idle', t:0};
+    function triggerLogo(){ LOGO.state='fadein'; LOGO.t=0; }
     function drawLogo(dt){
       if(LOGO.state==='idle') return;
       LOGO.t += dt;
       let a=0, s=1;
       if(LOGO.state==='fadein'){
-        // 0→1.0s : 0→1
-        const t=Math.min(1, LOGO.t/1.0);
-        a = t;
-        s = 1.0;
+        const t=Math.min(1, LOGO.t/1.0); a=t; s=1.0;
         if(LOGO.t>=1.0){ LOGO.state='burst'; LOGO.t=0; }
       }else if(LOGO.state==='burst'){
-        // 0→0.4s : scale up & fade
-        const t=Math.min(1, LOGO.t/0.4);
-        a = 1 - t;
-        s = 1.0 + 0.6*t;
+        const t=Math.min(1, LOGO.t/0.4); a=1-t; s=1+0.6*t;
         if(LOGO.t>=0.4){ LOGO.state='idle'; LOGO.t=0; }
       }
       const iw = Math.min(IMG_LOGO.naturalWidth, 260);
       const scale = (iw/IMG_LOGO.naturalWidth)*s;
       const w = IMG_LOGO.naturalWidth*scale;
       const h = IMG_LOGO.naturalHeight*scale;
-      ctx.save();
-      ctx.globalAlpha = a;
+      ctx.save(); ctx.globalAlpha = a;
       ctx.drawImage(IMG_LOGO, Math.floor((W-w)/2), Math.floor((H-h)/2 - 40), Math.floor(w), Math.floor(h));
       ctx.restore();
     }
@@ -296,31 +287,36 @@
         dropCd: 0
       };
       triggerLogo();
+      firstVillainOccurred = true;
     }
     function endVillain(){ villain=null; }
 
+    // 進行方向に落とす火の玉（“ホーミングなし”・サイズ大きめ）
     function spawnFireball(){
       if(!villain) return;
-      const s = (32 / tmTrim.sh);
+      const targetH = 48; // ← 少し大きく
+      const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
-      // 初速度：プレイヤー方向（世界は左流れなので自前vxを持つ）
-      const px = player.x + player.w*0.5, py = player.y - player.h*0.5;
-      const dx = (villain.x) - px;
-      const dy = (villain.y + villain.h*0.8) - py;
-      const len = Math.max(1, Math.hypot(dx,dy));
-      const speedH = 90 + Math.random()*60;     // 横方向ベース
-      const vx = -speedH * (dx/Math.abs(dx||1)); // 左向き（プレイヤー側へ）
-      const vy = 120 + (dy/len)*40;             // 下降寄り
+
+      // プレイヤーの進行方向（前方）に落とす：xはプレイヤーの少し先に生成
+      const ahead = 80 + Math.random()*80; // 80〜160px 前方
+      const dropX = (player.x + ahead);
+
+      const vx = -40;             // 世界に対して少し左へ流れる程度
+      const vy = 180 + Math.random()*60; // 落下速度
+
       fireballs.push({
-        x: villain.x - w/2, y: villain.y + villain.h*0.6,
+        x: dropX - w/2, y: villain.y + villain.h*0.6,
         w, h, vx, vy
       });
     }
 
-    /* === spawning distances === */
-    let nextAllowedDist = 200;   // obstacle
-    let nextItemDist    = 650;   // item rare
-    let nextVillainM    = 150 + Math.random()*50; // meters to next villain (150-200)
+    /* === spawn distances / pacing === */
+    let nextAllowedDist = 260;        // 障害物：初期は長め（序盤を緩く）
+    let nextItemDist    = 650;        // アイテム（レア）
+    const startVillainGapM = 150 + Math.random()*50; // 初回ヴィラン 150-200m
+    let nextVillainM    = startVillainGapM;
+    let firstVillainOccurred = false;
 
     const minGap = 90;
     const spawnMargin = 40;
@@ -344,11 +340,18 @@
       if(totalDist >= nextAllowedDist){
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
 
-        if(villainActive){
+        if(!firstVillainOccurred){
+          // 序盤：コーン/ゴミ箱のみ & 出現間隔をさらに長く（体感をスカスカに）
+          const kind = (Math.random()<0.6)?'corn':'gomi';
+          obstacles.push(kind==='corn' ? makeCorn(startX) : makeGomi(startX));
+          nextAllowedDist = totalDist + 320 + Math.random()*240; // 320〜560
+
+        }else if(villainActive){
           // 襲来中はコーン/ゴミ箱のみ・頻度少
           const kind = (Math.random()<0.5)?'corn':'gomi';
           obstacles.push(kind==='corn'? makeCorn(startX) : makeGomi(startX));
           nextAllowedDist = totalDist + 260 + Math.random()*200;
+
         }else{
           // 通常
           const r = Math.random();
@@ -370,7 +373,7 @@
         }
       }
 
-      // --- Items (rare) ---
+      // --- Items (rare) ※ 襲来中は出さない
       if(totalDist >= nextItemDist && !villain){
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
         if(Math.random() < 0.55){ items.push( makeTsubasa(startX) ); }
@@ -446,17 +449,18 @@
     });
     document.getElementById('retryBtn').onclick=()=>{
       gameOver=false; dist=0; bgOff=grOff=0; obstacles.length=0; items.length=0; fireballs.length=0; villain=null;
-      nextAllowedDist=200; nextItemDist=650; nextVillainM=150+Math.random()*50; LOGO.state='idle'; LOGO.t=0;
+      nextAllowedDist=260; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
     };
 
     /* === collisions === */
+    // コーンの当たり判定をさらに緩和（上部はかなり小さく）
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
-      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 };
-      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 };
+      const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 }; // 下部のみ広め
+      const upper={ x:cone.x + baseW*0.34, y:cone.y + baseH*0.06, w:baseW*0.32, h:baseH*0.22 }; // ごく小さく
       const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
       const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
       return A||B;
@@ -518,8 +522,7 @@
 
         // villain logic
         if(villain){
-          const minLead = 140; // プレイヤーより前方を維持
-          // 横位置：世界スクロールに合わせつつ、抜かれない
+          const minLead = 140; // 前方維持
           villain.x -= speed*dt;
           const desired = player.x + minLead;
           if(villain.x < desired) villain.x = desired;
@@ -529,16 +532,15 @@
             villain.y += villain.vy*dt;
             if(villain.y >= villain.targetY){ villain.y = villain.targetY; villain.phase='attack'; villain.timer=0; villain.dropCd=0; }
           }else if(villain.phase==='attack'){
-            // ふわふわ
             villain.timer += dt;
             villain.y = villain.targetY + Math.sin(villain.timer*1.3)*6;
-            // 投下
             villain.dropCd -= dt;
             if(villain.dropCd<=0 && villain.dropsLeft>0){
               spawnFireball();
               villain.dropsLeft--;
               villain.dropCd = 1.0 + Math.random(); // 1-2秒
             }
+            // すべて投下し、画面に火の玉が無ければ帰還
             if(villain.dropsLeft<=0 && fireballs.length===0){
               villain.phase='exit'; villain.vy = -50;
             }
@@ -548,15 +550,11 @@
           }
         }
 
-        // fireballs scroll + move
+        // fireballs move（ホーミングなし／“前方に落ちてくる”）
         for(let i=fireballs.length-1;i>=0;i--){
           const f=fireballs[i];
-          f.x += (f.vx - speed)*dt; // 世界は左へ、玉は自前速度加算
+          f.x += (f.vx - speed)*dt; // 世界は左へ、玉はわずかに左へ
           f.y += f.vy*dt;
-          // ゆるくプレイヤーへ補正
-          const targetX = player.x + player.w*0.4;
-          f.vx += ((targetX - f.x)*0.2)*dt; // 軽い追尾
-          f.vx = Math.max(-240, Math.min(f.vx, 0)); // 右へ行き過ぎない・左向き維持
           if(f.x + f.w < -60 || f.y > H+80) fireballs.splice(i,1);
         }
       }
@@ -620,21 +618,21 @@
           // obstacle collisions
           const currBottom = player.y, prevBottom = player.prevBottom;
           for(const o of obstacles){
-            const overlapXWide = (px + player.w > o.x - H_PAD) && (px < o.x + o.w + H_PAD);
+            const overlapXWide = (px + player.w > o.x - 16) && (px < o.x + o.w + 16);
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!overlapXWide && !aabb) continue;
             if(o.type==='corn'){
               if(aabb && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
             }else if(o.type==='contena'){
               const top = o.y, comingDown = player.vy >= 0;
-              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
+              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
               if(comingDown && crossed && overlapXWide){ player.y = top; player.vy = 0; player.jumps = player.maxJumps; }
               else if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
             }else if(o.type==='tramp'){
               const top = o.y, comingDown = player.vy >= 0;
-              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
+              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
               if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
-                player.y = top; player.vy = -JUMP * TRAMP_BOOST; player.jumps = player.maxJumps; o.cd = TRAMP_CD;
+                player.y = top; player.vy = -JUMP * 1.35; player.jumps = player.maxJumps; o.cd = 0.25;
               }
             }else if(o.type==='gomi'){
               if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
@@ -649,9 +647,7 @@
         }
       }
 
-      // logo FX on top
       drawLogo(dt);
-
       updateHUD();
       requestAnimationFrame(loop);
     }
