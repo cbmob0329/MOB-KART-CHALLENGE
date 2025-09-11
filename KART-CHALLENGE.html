@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – アイテム＆単発ブースト</title>
+<title>Runner – アイテム＆単発ブースト（再スタート修正）</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -175,7 +175,7 @@
     const trimTsb=Px.tightRect(TSB), trimEn=Px.tightRect(EN);
     function makeTsubasa(){ // 空中にふわふわ
       const baseY = GR_MOD.floorY() - 150;
-      const targetH = Math.round(48); // 視認しやすい程度
+      const targetH = Math.round(48);
       const s = targetH / trimTsb.sh;
       const w = Math.round(trimTsb.sw*s), h = Math.round(trimTsb.sh*s);
       return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb, type:'item_tsubasa', floatT:Math.random()*Math.PI*2};
@@ -197,9 +197,9 @@
     // 単発ブースト
     let boostCharge=100, burstActive=false, burstTimer=0;
 
-    const obs=[];        // 障害物（corn/jump/contena/dokan）
-    const items=[];      // フィールド上のアイテム（tsubasa/en）
-    let pendingEngine=false; // 「次の土管の上にエンジンを置く」予約
+    const obs=[];        // 障害物
+    const items=[];      // フィールド上のアイテム
+    let pendingEngine=false; // 次の土管にエンジンを載せる予約
 
     // ===== Spawns =====
     function spawnObstacle(){
@@ -209,37 +209,29 @@
       else if(r<0.80) obs.push(...makeContSet());
       else {
         const d = makeDokan(); obs.push(d);
-        if(pendingEngine){ // 保留中のエンジンがあればこの土管へ
-          items.push(makeEngineOn(d));
-          pendingEngine=false;
-        }else if(Math.random()<0.15){ // 稀に土管出現時にも置く
-          items.push(makeEngineOn(d));
-        }
+        if(pendingEngine){ items.push(makeEngineOn(d)); pendingEngine=false; }
+        else if(Math.random()<0.15){ items.push(makeEngineOn(d)); }
       }
     }
 
-    // 50mごとに10%でアイテム出現判定
+    // 50mごとに20%でアイテム出現判定（★修正）
     function periodicItemCheck(){
-      const m = Math.floor(dist*0.02); // 既存HUDと同じ換算でm化
+      const m = Math.floor(dist*0.02); // m換算
       meters = m;
       if(meters - lastItemCheck >= 50){
         lastItemCheck = meters;
-        if(Math.random()<0.10){
-          // 50%で翼、50%でエンジン。ただしエンジンは土管必須→なければ保留、翼は即出す
+        if(Math.random()<0.20){ // ← 0.10 → 0.20
           if(Math.random()<0.5){
             items.push(makeTsubasa());
           }else{
-            // 画面上 or 右側に新規生成される土管に乗せたい → 保留フラグON
-            // すでに画面内の土管があれば、そのうち一つに今すぐ載せる
             const dokans = obs.filter(o=>o.type==='dokan');
             if(dokans.length){
               const d = dokans[Math.floor(Math.random()*dokans.length)];
-              // 既にその上にアイテムが無い場合のみ
-              if(!items.some(it=>it.type==='item_engine' && Math.abs((it.x+it.w/2)-(d.x+d.w/2))<4)) {
+              if(!items.some(it=>it.type==='item_engine' && Math.abs((it.x+it.w/2)-(d.x+d.w/2))<4)){
                 items.push(makeEngineOn(d));
               }
             }else{
-              pendingEngine = true; // 次の土管に載せる
+              pendingEngine = true;
             }
           }
         }
@@ -253,7 +245,7 @@
     const slotEls=[document.getElementById('slot1'), document.getElementById('slot2')];
 
     // スロット状態
-    const slots=[null,null]; // {type:'tsubasa'|'engine', img:Image, timer:number(active中) }
+    const slots=[null,null]; // {type:'tsubasa'|'engine', timer:number }
     let wingsActive=false, wingsTimer=0;
 
     function updateHUD(){
@@ -282,7 +274,7 @@
         if(s.type==='tsubasa' && s.timer>0){
           const t=document.createElement('div'); t.className='timer'; t.textContent = Math.ceil(s.timer).toString();
           el.appendChild(t);
-          el.classList.add('muted'); // 発動中は見た目を少し淡く
+          el.classList.add('muted'); // 発動中は淡く
         }else{
           el.classList.remove('muted');
         }
@@ -312,21 +304,17 @@
         const s=slots[idx];
         if(!s) return;
         if(s.type==='tsubasa'){
-          // すでに翼発動中なら無視（上書きはしない仕様）
-          if(wingsActive) return;
+          if(wingsActive) return; // 既に発動中は無視
           wingsActive=true; wingsTimer=5.0;
-          if(player){ player.jumpMax=4; player.jumps = Math.max(player.jumps, 4); } // その場で拡張＆回復
-          // スロットは「発動中の表示」を維持（タイマー表示するため、消さない）
-          s.timer = wingsTimer;
+          if(player){ player.jumpMax=4; player.jumps = Math.max(player.jumps, 4); }
+          s.timer = wingsTimer; // スロットに残り時間表示
           updateHUD();
         }else if(s.type==='engine'){
-          // 即時大ジャンプ＆ジャンプ回復。消費してスロット空に
           if(player){
             player.vy = -JUMP*1.8;
-            player.jumps = player.jumpMax; // 現在の上限まで回復（翼中なら4まで）
+            player.jumps = player.jumpMax; // （翼中なら4まで）
           }
-          slots[idx]=null;
-          updateHUD();
+          slots[idx]=null; updateHUD();
         }
       });
     });
@@ -335,7 +323,7 @@
       if(e.code==='Space'||e.code==='ArrowUp'){
         if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); }
       }
-      if(e.code==='KeyB'){ // キーボードでも単発発動
+      if(e.code==='KeyB'){
         if(!burstActive && boostCharge>=100 && !gameOver){
           burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD();
         }
@@ -345,12 +333,13 @@
     });
 
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; meters=0; lastItemCheck=0; speed=BASE; bgOff=grOff=0; obs.length=0; items.length=0; pendingEngine=false;
+      gameOver=false; dist=0; meters=0; lastItemCheck=0; speed=BASE; bgOff=grOff=0;
+      obs.length=0; items.length=0; pendingEngine=false;
       if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2; player.jumpMax=2; }
-      // ブーストとバフ初期化
       boostCharge=100; burstActive=false; burstTimer=0;
       wingsActive=false; wingsTimer=0; slots[0]=null; slots[1]=null;
       gameover.style.display='none'; updateHUD();
+      // ループは常時回っているので、ここでの再起動は不要
     };
 
     // ===== Cone collision helper (緩め2段) =====
@@ -379,12 +368,10 @@
       // バフ：つばさ
       if(wingsActive){
         wingsTimer -= dt;
-        // スロット側の表示タイマーも減らす
         for(const s of slots){ if(s && s.type==='tsubasa' && s.timer>0){ s.timer = Math.max(0, s.timer - dt); } }
         if(wingsTimer<=0){
           wingsActive=false;
           if(player){ player.jumpMax=2; player.jumps=Math.min(player.jumps,2); }
-          // つばさは効果終了でスロットから消える（発動したスロットを探してnullに）
           for(let i=0;i<2;i++){ if(slots[i] && slots[i].type==='tsubasa'){ slots[i]=null; } }
         }
       }
@@ -392,7 +379,7 @@
       // 物理
       if(player && !gameOver){
         player.vy += GRAV*dt; player.y += player.vy*dt;
-        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; } // 接地で回復
+        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; }
       }
 
       // 進行
@@ -401,16 +388,12 @@
         if(obs.length===0 || obs[obs.length-1].x < W-180) spawnObstacle();
         for(let i=obs.length-1;i>=0;i--){ obs[i].x -= speed*dt; if(obs[i].x + obs[i].w < -40) obs.splice(i,1); }
 
-        // アイテムの周期判定
-        periodicItemCheck();
+        periodicItemCheck(); // ★ 50mごとの20%判定
 
-        // アイテム移動（ふわふわ演出）
+        // アイテム移動（ふわふわ演出/スクロール）
         for(const it of items){
-          if(it.type==='item_tsubasa'){
-            it.floatT += dt*2.0;
-            it.y = it.yBase + Math.sin(it.floatT)*6;
-          }
-          it.x -= speed*dt; // スクロールに合わせて左へ
+          if(it.type==='item_tsubasa'){ it.floatT += dt*2.0; it.y = it.yBase + Math.sin(it.floatT)*6; }
+          it.x -= speed*dt;
         }
         for(let i=items.length-1;i>=0;i--){ if(items[i].x + items[i].w < -40) items.splice(i,1); }
       }
@@ -420,40 +403,28 @@
       BG_MOD.draw(bgOff);
       GR_MOD.draw(grOff);
 
-      // 障害物
-      obs.forEach(o=>{
-        ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
-      });
+      obs.forEach(o=>{ ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h); });
+      items.forEach(it=>{ ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h); });
 
-      // アイテム
-      items.forEach(it=>{
-        ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h);
-      });
-
-      // プレイヤー
       if(player){
         const feetPush=Math.floor(player.h*player.feetFrac);
         const px=Math.floor(player.x);
         const py=Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
-        // 衝突
         if(!gameOver){
           // 障害物衝突
           for(const o of obs){
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!aabb) continue;
-            if(o.type==='jump'){                 // ジャンプ台：踏むと跳ねる
-              player.vy = -JUMP*1.2;
-            }else if(o.type==='contena' || o.type==='dokan'){ // 天面に乗れる／横はアウト
+
+            if(o.type==='jump'){ player.vy = -JUMP*1.2; }
+            else if(o.type==='contena' || o.type==='dokan'){
               const comingDown = player.vy >= -20;
               const wasAbove   = (player.y - player.h*0.6) < o.y;
-              if(comingDown && wasAbove){
-                player.y = o.y; player.vy = 0; player.jumps = player.jumpMax;
-              }else{
-                endGame(); break;
-              }
-            }else if(o.type==='corn'){          // コーン：緩い2段判定
+              if(comingDown && wasAbove){ player.y = o.y; player.vy = 0; player.jumps = player.jumpMax; }
+              else { endGame(); break; }
+            }else if(o.type==='corn'){
               if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; }
             }
           }
@@ -463,26 +434,22 @@
             const it=items[i];
             const hit = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
             if(!hit) continue;
-            // 空きスロット探索
             const idx = slots[0]? (slots[1]? -1 : 1) : 0;
             if(idx>=0){
-              if(it.type==='item_tsubasa'){
-                slots[idx]={type:'tsubasa', timer:0};
-              }else if(it.type==='item_engine'){
-                slots[idx]={type:'engine', timer:0};
-              }
-              items.splice(i,1);
-              updateHUD();
+              if(it.type==='item_tsubasa'){ slots[idx]={type:'tsubasa', timer:0}; }
+              else if(it.type==='item_engine'){ slots[idx]={type:'engine', timer:0}; }
+              items.splice(i,1); updateHUD();
             }
           }
         }
       }
 
       updateHUD();
-      if(!gameOver) requestAnimationFrame(loop);
+      // ★ 常に次フレームを要求（ゲームオーバーでも止めない → リスタート可）
+      requestAnimationFrame(loop);
     }
 
-    function endGame(){ if(gameOver) return; gameOver=true; gameover.style.display='grid'; }
+    function endGame(){ if(gameOver) return; gameOver=true; gameover.style.display='none'; gameover.style.display='grid'; }
 
     // start flow
     loading.style.display='none'; overlay.style.display='grid';
