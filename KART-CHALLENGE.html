@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone relax & dokan</title>
+<title>Runner – cones/dokan tuned</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -128,8 +128,8 @@
     // ===== Obstacles =====
     const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT), trimDk=Px.tightRect(DK);
 
-    function makeCorn(){ // 少し小さく：地面厚の 45%
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.45);
+    function makeCorn(){ // さらに小さく：地面厚の 40%（1ジャンプで越えやすく）
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.40);
       const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
       return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'};
     }
@@ -145,8 +145,8 @@
       for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
       return set;
     }
-    function makeDokan(){ // 土管：上に乗れる／横はアウト
-      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.80);
+    function makeDokan(){ // 土管：やや小さく 65%
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.65);
       const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
       return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'};
     }
@@ -156,7 +156,6 @@
     let speed=BASE, boosting=false, boost=60, dist=0, bgOff=0, grOff=0;
     let player=null, gameOver=false;
     const obs=[];
-
     function spawn(){
       const r=Math.random();
       if(r<0.35) obs.push(makeCorn());
@@ -176,9 +175,9 @@
     addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=false; }});
     document.getElementById('retryBtn').onclick=()=>{ gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obs.length=0; if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2; } gameover.style.display='none'; };
 
-    // ===== Cone collision helper (ゆるい当たり判定) =====
+    // ===== Cone collision helper (ゆるめの2段判定) =====
     function hitConeRelax(px,py,pw,ph, cone){
-      // 2段ヒットボックス：下段=高さ65%・幅100%、上段=高さ30%・幅40%（中心寄せ）
+      // 下段=高さ65%・幅100%、上段=高さ30%・幅40%（中心寄せ）
       const baseH = cone.h, baseW = cone.w;
       const lower = { x: cone.x, y: cone.y + baseH*0.35, w: baseW, h: baseH*0.65 };
       const upper = { x: cone.x + baseW*0.30, y: cone.y + baseH*0.05, w: baseW*0.40, h: baseH*0.30 };
@@ -220,11 +219,10 @@
 
         if(!gameOver){
           for(const o of obs){
-            // AABB hit?
-            const hit = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
-            if(!hit) continue;
+            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!aabb) continue;
 
-            if(o.type==='jump'){                        // ジャンプ台：踏むと跳ねる
+            if(o.type==='jump'){                 // ジャンプ台：踏むと跳ねる
               player.vy = -JUMP*1.2;
             }else if(o.type==='contena' || o.type==='dokan'){ // 天面に乗れる／横はアウト
               const comingDown = player.vy >= -20;
@@ -234,7 +232,7 @@
               }else{
                 endGame(); break;
               }
-            }else if(o.type==='corn'){                  // コーン：ゆるい当たり
+            }else if(o.type==='corn'){          // コーン：緩い判定でゲームオーバー
               if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; }
             }
           }
