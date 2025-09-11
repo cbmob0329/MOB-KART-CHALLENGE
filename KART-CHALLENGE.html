@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + contena (no jump pad)</title>
+<title>Runner – cone + contena + dokan (no overlap)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -14,7 +14,7 @@
     background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
     transform-origin:center center;
   }
-  /* HUD（Canvasの外） */
+  /* HUD（固定） */
   header.hud{
     position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
@@ -22,12 +22,10 @@
     font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-
-  /* プレイ領域（HUD/ボタンと分離） */
+  /* プレイ領域 */
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-
-  /* 操作ボタン（Canvasの外） */
+  /* 操作（固定） */
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
     display:flex;gap:12px;align-items:center;justify-content:center;padding:10px 12px;
@@ -38,16 +36,12 @@
     background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
   .btn:active{transform:translateY(1px)}
   .muted{opacity:.6;filter:saturate(.2)}
-
   /* キャラ選択 */
-  #overlay{
-    position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)
-  }
+  #overlay{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
   .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
   .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
   .choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
-
   /* ローディング／ゲームオーバー */
   #loading{position:absolute;inset:56px 0 96px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
@@ -111,9 +105,9 @@
   /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'), load('dokan.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_DK, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
@@ -135,14 +129,13 @@
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
-      function draw(offsetX){
-        let ox = offsetX % tileW; if (ox>0) ox -= tileW;
-        for(let x=ox; x<W; x+=tileW){
-          ctx.drawImage(IMG_BG, 0, 0, IMG_BG.naturalWidth, IMG_BG.naturalHeight,
-                        Math.floor(x), 0, Math.ceil(tileW), H);
+      function draw(off){
+        let ox=off%tileW; if(ox>0)ox-=tileW;
+        for(let x=ox;x<W;x+=tileW){
+          ctx.drawImage(IMG_BG,0,0,IMG_BG.naturalWidth,IMG_BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H);
         }
       }
-      return { draw };
+      return {draw};
     })();
 
     /* ==== 地面 ==== */
@@ -153,8 +146,8 @@
       const scaleY = drawH / srcH;
       const tileW  = IMG_GR.naturalWidth * scaleY;
       function floorY(){ return Math.floor(H - drawH); }
-      function draw(offsetX){
-        const y=floorY(); let ox = offsetX % tileW; if(ox>0)ox-=tileW;
+      function draw(off){
+        const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW;
         for(let x=ox;x<W;x+=tileW){
           ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH);
         }
@@ -169,41 +162,47 @@
     }
     let player=null;
 
-    /* ==== コーン（余白カット・接地） ==== */
+    /* ==== 障害物（余白カット・接地） ==== */
     const cornTrim = Px.tightRect(IMG_CO);
-    function makeCorn(){
-      const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.40); // 1ジャンプで越えやすい
-      const s = targetH / cornTrim.sh;
-      const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
-      return { x: W+40, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
-    }
-
-    /* ==== コンテナ（余白カット・接地・2連/3連） ==== */
     const contTrim = Px.tightRect(IMG_CT);
-    function makeContSet(){
-      const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.60); // 地面厚の60%高さ
-      const s = targetH / contTrim.sh;
-      const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
-      const n = 2 + Math.floor(Math.random()*2); // 2 or 3
-      const gap = 2; // ほぼ繋がる見た目
-      const arr=[];
-      for(let i=0;i<n;i++){
-        arr.push({ x: W+40 + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
-      }
+    const dkanTrim = Px.tightRect(IMG_DK);
+
+    function makeCornAt(x0){
+      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.40);
+      const s=targetH/cornTrim.sh, w=Math.round(cornTrim.sw*s), h=Math.round(cornTrim.sh*s);
+      return [{ x:x0, y:fy-h, w, h, img:IMG_CO, trim:cornTrim, type:'corn' }];
+    }
+    function makeContSetAt(x0){
+      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.60);
+      const s=targetH/contTrim.sh, w=Math.round(contTrim.sw*s), h=Math.round(contTrim.sh*s);
+      const n=2 + Math.floor(Math.random()*2); const gap=2; const arr=[];
+      for(let i=0;i<n;i++) arr.push({ x:x0 + i*(w+gap), y:fy-h, w, h, img:IMG_CT, trim:contTrim, type:'contena' });
       return arr;
     }
+    function makeDokanAt(x0){
+      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.65);
+      const s=targetH/dkanTrim.sh, w=Math.round(dkanTrim.sw*s), h=Math.round(dkanTrim.sh*s);
+      return [{ x:x0, y:fy-h, w, h, img:IMG_DK, trim:dkanTrim, type:'dokan' }];
+    }
 
-    /* ==== スポーン ==== */
-    const obstacles=[]; // {x,y,w,h,img,trim,type}
-    let nextSpawnDist = 220 + Math.random()*220;
-    function maybeSpawn(totalDist){
-      if(totalDist > nextSpawnDist){
-        // たまにコーン、たまにコンテナセット
-        if(Math.random() < 0.55) obstacles.push(makeCorn());
-        else obstacles.push(...makeContSet());
-        nextSpawnDist += 220 + 220*Math.random();
+    /* ==== ノンオーバーラップ・スポーンカーソル ==== */
+    const obstacles=[];
+    let spawnCursorX = W + 80; // 次のオブジェクト開始位置の予約カーソル
+    function trySpawn(){
+      // 画面右端に近づいたら（カーソルが一定未満なら）新規生成し、カーソルを先へ進める
+      while(spawnCursorX < W + 80){
+        const choice = Math.random();
+        let pack;
+        if(choice < 0.45)      pack = makeCornAt(Math.max(spawnCursorX, W+40));
+        else if(choice < 0.80) pack = makeContSetAt(Math.max(spawnCursorX, W+40));
+        else                   pack = makeDokanAt(Math.max(spawnCursorX, W+40));
+
+        // 追加
+        for(const o of pack) obstacles.push(o);
+        // このパックの末尾Xを計算して、次の予約位置を進める（最小ギャップを確保）
+        const last = pack[pack.length-1];
+        const minGap = 36 + Math.random()*64; // 36〜100px の余白
+        spawnCursorX = last.x + last.w + minGap;
       }
     }
 
@@ -239,7 +238,9 @@
       if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
     });
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; nextSpawnDist=220+Math.random()*220;
+      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0;
+      obstacles.length=0;
+      spawnCursorX = W + 80;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
       gameover.style.display='none';
@@ -282,7 +283,10 @@
         bgOff -= speed*0.20*dt;
         grOff -= speed*1.00*dt;
 
-        maybeSpawn(dist);
+        // 予約カーソルと既存オブジェクトを同じ速度で左へ
+        spawnCursorX -= speed*dt;
+        trySpawn();
+
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
@@ -315,23 +319,21 @@
           const prevBottom = player.prevBottom;
 
           for(const o of obstacles){
+            // まずAABB（横＆縦）
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!aabb) continue;
 
             if(o.type==='corn'){
               if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='contena'){
-              // 上に乗れる：下降中で天面を跨いだら着地。それ以外の重なりは横当たり→ゲームオーバー
+            }else if(o.type==='contena' || o.type==='dokan'){
+              // 上に乗れる。下降中で天面跨ぎなら着地、それ以外は横当たり→ゲームオーバー
               const top = o.y;
               const comingDown = player.vy >= 0;
-              const crossed = (prevBottom <= top + 2) && (currBottom >= top); // +2の余裕
-              const overlapXWide = (px+player.w > o.x) && (px < o.x+o.w);     // 天面用は普通の幅でOK
-
-              if(comingDown && crossed && overlapXWide){
-                // 天面にスナップ（連結コンテナでも自然に乗れる）
+              const crossed = (prevBottom <= top + 2) && (currBottom >= top);
+              const overlapX = (px+player.w > o.x) && (px < o.x+o.w);
+              if(comingDown && crossed && overlapX){
                 player.y = top; player.vy = 0; player.jumps = 2;
               }else{
-                // 横から当たった扱い
                 gameOver=true; gameover.style.display='grid'; break;
               }
             }
