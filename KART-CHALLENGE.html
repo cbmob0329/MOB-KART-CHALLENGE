@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – 開始直後にアイテム出現（安定版）</title>
+<title>Runner – 開始直後アイテム & 安定版（構文修正）</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -129,23 +129,44 @@
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
-  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+  // ===== ローダ（タイムアウト & プレースホルダ） =====
+  function makePlaceholder(w=4,h=4,fill='#0000'){
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    const g=c.getContext('2d'); g.fillStyle=fill; g.fillRect(0,0,w,h);
+    const img=new Image(); img.src=c.toDataURL(); return img;
+  }
+  function loadSafe(src, timeoutMs=7000){
+    return new Promise((resolve)=>{
+      const img=new Image();
+      let done=false;
+      const to=setTimeout(()=>{
+        if(done) return; done=true;
+        console.warn('Image load timeout:', src);
+        resolve(makePlaceholder());
+      }, timeoutMs);
+      img.onload=()=>{ if(done) return; done=true; clearTimeout(to); resolve(img); };
+      img.onerror=()=>{ if(done) return; done=true; clearTimeout(to);
+        console.warn('Image load error:', src); resolve(makePlaceholder());
+      };
+      img.src=src;
+    });
+  }
 
   Promise.all([
-    load('sora.png'), load('mob.png'),
-    load('corn.png'), load('jumpdai.png'), load('contena.png'), load('dokan.png'),
-    load('tsubasa.png'), load('en.png'),
-    load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
+    loadSafe('sora.png'), loadSafe('mob.png'),
+    loadSafe('corn.png'), loadSafe('jumpdai.png'), loadSafe('contena.png'), loadSafe('dokan.png'),
+    loadSafe('tsubasa.png'), loadSafe('en.png'),
+    loadSafe('VR.png'), loadSafe('orange.png'),
   ]).then(([BG, GR, CO, JP, CT, DK, TSB, EN, VR, OR])=>{
     // ===== pixel utils =====
     const Px = {
-      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+      topTrim(img){ const w=img.naturalWidth||4,h=img.naturalHeight||4,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } } return {trimTop:0,contentH:h}; },
-      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+      bottomTrim(img){ const w=img.naturalWidth||4,h=img.naturalHeight||4,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
-      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
+      tightRect(img){ const w=img.naturalWidth||4,h=img.naturalHeight||4,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
         for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
@@ -153,55 +174,58 @@
     };
 
     // ===== 背景（sora.png） =====
-    const BG_MOD = (()=>{ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale;
-      function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
+    const BG_MOD = (()=>{ const scale=H/(BG.naturalHeight||H), tileW=(BG.naturalWidth||W)*scale;
+      function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){
+        ctx.drawImage(BG,0,0,BG.naturalWidth||W,BG.naturalHeight||H,Math.floor(x),0,Math.ceil(tileW),H); } }
       return {draw};
     })();
 
     // ===== 地面（mob.png） =====
-    const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH));
-      const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale;
+    const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(64, Math.min(160, t.contentH||64));
+      const srcY=t.trimTop||0, srcH=(GR.naturalHeight||64) - (t.trimTop||0);
+      const scale=drawH/srcH; const tileW=(GR.naturalWidth||64)*scale;
       function floorY(){ return Math.floor(H - drawH); }
       function draw(off){ const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW;
-        for(let x=ox;x<W;x+=tileW){ ctx.drawImage(GR,0,srcY,GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } }
+        for(let x=ox;x<W;x+=tileW){
+          ctx.drawImage(GR,0,srcY,GR.naturalWidth||64,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } }
       return {floorY, draw, drawH};
     })();
 
     // ===== プレイヤー =====
-    function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
+    function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
       return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, jumpMax:2, img, feetFrac}; }
 
     // ===== 障害物 =====
     const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT), trimDk=Px.tightRect(DK);
     function makeCorn(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.40);
-      const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
+      const s=targetH/(trimCorn.sh||targetH), w=Math.round((trimCorn.sw||targetH)*s), h=Math.round((trimCorn.sh||targetH)*s);
       return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'}; }
     function makeJump(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
-      const s=targetH/trimJump.sh, w=Math.round(trimJump.sw*s), h=Math.round(trimJump.sh*s);
+      const s=targetH/(trimJump.sh||targetH), w=Math.round((trimJump.sw||targetH)*s), h=Math.round((trimJump.sh||targetH)*s);
       return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'}; }
     function makeContSet(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
-      const s=targetH/trimCont.sh, w=Math.round(trimCont.sw*s), h=Math.round(trimCont.sh*s);
+      const s=targetH/(trimCont.sh||targetH), w=Math.round((trimCont.sw||targetH)*s), h=Math.round((trimCont.sh||targetH)*s);
       const n=2 + Math.floor(Math.random()*2); const set=[];
       for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
       return set; }
     function makeDokan(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.65);
-      const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
+      const s=targetH/(trimDk.sh||targetH), w=Math.round((trimDk.sw||targetH)*s), h=Math.round((trimDk.sh||targetH)*s);
       return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'}; }
 
     // ===== フィールドアイテム（armed:false で未表示は取得不可） =====
     const trimTsb=Px.tightRect(TSB), trimEn=Px.tightRect(EN);
     function makeTsubasa(){
       const baseY = GR_MOD.floorY() - 150;
-      const targetH = Math.round(48);
-      const s = targetH / trimTsb.sh;
-      const w = Math.round(trimTsb.sw*s), h = Math.round(trimTsb.sh*s);
+      const targetH = 48;
+      const s = targetH/(trimTsb.sh||targetH);
+      const w = Math.round((trimTsb.sw||targetH)*s), h = Math.round((trimTsb.sh||targetH)*s);
       return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb,
               type:'item_tsubasa', floatT:Math.random()*Math.PI*2, armed:false};
     }
     function makeEngineOn(topObj){
-      const targetH = Math.round(48);
-      const s = targetH / trimEn.sh;
-      const w = Math.round(trimEn.sw*s), h = Math.round(trimEn.sh*s);
+      const targetH = 48;
+      const s = targetH/(trimEn.sh||targetH);
+      const w = Math.round((trimEn.sw||targetH)*s), h = Math.round((trimEn.sh||targetH)*s);
       const x = Math.round(topObj.x + topObj.w/2 - w/2);
       const y = Math.round(topObj.y - h - 2);
       return {x, y, w, h, img:EN, trim:trimEn, type:'item_engine', armed:false};
@@ -215,9 +239,8 @@
     // 単発ブースト
     let boostCharge=100, burstActive=false, burstTimer=0;
 
-    const obs=[];        // 障害物
-    const items=[];      // フィールド上のアイテム
-    let pendingEngine=false; // 次の土管へエンジンを置く予約
+    const obs=[], items=[];
+    let pendingEngine=false;
 
     // ===== スロット/バフ =====
     const slotEls=[document.getElementById('slot1'), document.getElementById('slot2')];
@@ -261,26 +284,16 @@
       }
     }
 
-    // ★★★ 開始直後に画面内へアイテムを1つ生成する ★★★
+    // ★ 開始直後に画面内へアイテムを1つ生成
     function spawnInitialPickup(){
       const roll = Math.random();
       if(roll < 0.5){
-        // つばさ：画面内の中段に出す
         const it = makeTsubasa();
-        it.x = 260;                 // 画面内に即表示
-        it.yBase = GR_MOD.floorY() - 160;
-        it.y = it.yBase;
-        it.armed = false;           // 1フレーム表示後に有効化
+        it.x = 260; it.yBase = GR_MOD.floorY() - 160; it.y = it.yBase; it.armed = false;
         items.push(it);
       }else{
-        // エンジン：画面内に土管も同時生成し、その上に置く
-        // 土管を画面中央やや右に並べる
-        const d = makeDokan();
-        d.x = 240;                  // 画面内
-        obs.push(d);
-        const it = makeEngineOn(d);
-        it.armed = false;           // 1フレーム表示後に有効化
-        items.push(it);
+        const d = makeDokan(); d.x = 240; obs.push(d);
+        const it = makeEngineOn(d); it.armed = false; items.push(it);
       }
     }
 
@@ -350,7 +363,7 @@
 
     // ===== リセット =====
     function resetGame(){
-      gameOver=false; dist=0; meters=0; lastItemCheck=0; speed=BASE; bgOff=grOff=0;
+      gameOver=false; dist=0; meters=0; lastItemCheck=0; speed=BASE; bgOff=0; grOff=0;
       obs.length=0; items.length=0; pendingEngine=false;
       boostCharge=100; burstActive=false; burstTimer=0;
       wingsActive=false; wingsTimer=0; slots[0]=null; slots[1]=null;
@@ -370,7 +383,7 @@
     }
 
     // ===== ループ =====
-    let prev=0, running=false, bgOff=0, grOff=0;
+    let prev=0, running=false; // ← ここでは bgOff/grOff を「再宣言しない」！
     function start(){ if(running) return; running=true; prev=performance.now(); layoutLocked=true; updateHUD(); spawnInitialPickup(); requestAnimationFrame(loop); }
     function loop(t){
       const dt=Math.min(0.033,(t-prev)/1000); prev=t;
@@ -393,7 +406,7 @@
       // 物理（上方向クランプ）
       if(player && !gameOver){
         player.vy += GRAV*dt; player.y += player.vy*dt;
-        if (player.y < -H*0.3) player.y = -H*0.3; // 画面外に消えない
+        if (player.y < -H*0.3) player.y = -H*0.3;
         const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; }
       }
 
@@ -460,7 +473,7 @@
       }
 
       updateHUD();
-      requestAnimationFrame(loop); // 常時ループ
+      requestAnimationFrame(loop);
     }
 
     function endGame(){ if(gameOver) return; gameOver=true; layoutLocked=false; gameover.style.display='grid'; }
@@ -480,9 +493,14 @@
       document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
     });
 
+    // 準備OK
+  }).then(()=>{
+    // 読み込み完了表示切替
+    document.getElementById('loading').style.display='none';
   }).catch(err=>{
     console.error(err);
-    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
+    const b=document.querySelector('#loading .bubble');
+    if(b) b.textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
   });
 })();
 </script>
