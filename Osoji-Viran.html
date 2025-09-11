@@ -174,9 +174,9 @@ function makeCarrier(kindIndex){
     vx: speed*dir, baseSpeed:speed, hopT: Math.random()*Math.PI*2,
     hasBin: true, bin: {w:56*DPR, h:56*DPR, explode:0, exploding:false},
     state:'patrol',
-    // 行動パターン用
-    beh:'patrol', behT: rand(2.5, 4.5),  // 次の行動を起こすまでのカウントダウン
-    pauseLeft:0, dashLeft:0, edgePause:0
+    // 行動パターン（ダッシュは廃止。Pause/Slowのみ）
+    beh:'patrol', behT: rand(2.5,4.5),
+    pauseLeft:0, slowLeft:0, edgePause:0
   };
 }
 // 各色2体ずつ（合計6体固定）
@@ -216,7 +216,7 @@ function update(dt){
     for(const c of carriers){
       if(c.hasBin && !c.bin.exploding){
         const bx=c.x+(c.w-c.bin.w)/2;
-        const by=(c.y-c.h)-c.bin.h-6*DPR;
+        const by=(c.y-c.h)-c.bin.h-6*DPR; // 頭上
         if(aabb(fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2,bx,by,c.bin.w,c.bin.h)){
           c.bin.exploding=true; c.bin.explode=0;
           fireball.active=false; world.score++;
@@ -229,7 +229,7 @@ function update(dt){
     }
   }
 
-  // キャリア挙動（行動パターン含む）＋破裂/補給
+  // キャリア挙動（Pause/Slow＋端フェイント）＋破裂/補給
   for(const c of carriers){
     // ピョンピョン
     c.hopT += dt*8;
@@ -252,41 +252,46 @@ function update(dt){
         c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
         c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
         c.hasBin = true; c.state = 'patrol';
-        c.beh='patrol'; c.behT=rand(2.5,4.5); c.pauseLeft=0; c.dashLeft=0; c.edgePause=0;
+        c.beh='patrol'; c.behT=rand(2.5,4.5); c.pauseLeft=0; c.slowLeft=0; c.edgePause=0;
       }
     }else{ // === patrol ===
-      // 端でのフェイント停止（画面外に消えない安全弁）
+      // 端でのフェイント停止（画面外に出ない）
       if(c.edgePause>0){
         c.edgePause -= dt; // 停止中は動かない
         if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; } // 停止後に反転
       }else{
-        // ランダム行動トリガ
+        // ランダム行動トリガ：Pause/Slowのみ
         c.behT -= dt;
         if(c.behT<=0 && !c.bin.exploding){
-          // 50% Pause(2s) / 50% Dash(0.8s)
-          if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
-          else{ c.beh='dash'; c.dashLeft=0.8; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed) * 2.3; }
+          if(Math.random()<0.5){
+            // Pause: 2秒停止
+            c.beh='pause'; c.pauseLeft=2.0;
+          }else{
+            // Slow: 1.2秒だけ速度50%
+            c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5;
+          }
           c.behT = rand(3.0, 6.0);
         }
 
         // 行動ごとの動き
         if(c.beh==='pause'){
           c.pauseLeft -= dt;
-          // 停止中は x を動かさない
+          // 停止中は動かさない
           if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed); }
         }else{
-          // patrol / dash 共通の移動
+          // patrol / slow の移動
           c.x += c.vx * dt * 1000;
         }
 
-        // 端処理（停止→反転）: 画面外に出ない
+        // slow 終了で速度復帰
+        if(c.beh==='slow'){
+          c.slowLeft -= dt;
+          if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
+        }
+
+        // 端処理：停止→反転（画面外に出さない）
         if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
         if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
-        // dash終了の復帰
-        if(c.beh==='dash'){
-          c.dashLeft -= dt;
-          if(c.dashLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx) * Math.abs(c.baseSpeed); }
-        }
       }
     }
     c.y = groundY - 20*DPR - hop;
