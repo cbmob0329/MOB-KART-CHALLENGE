@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – 安定版</title>
+<title>Runner – 安定版（未表示アイテム無効 & 50%出現）</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -188,14 +188,15 @@
       const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
       return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'}; }
 
-    // ===== フィールドアイテム =====
+    // ===== フィールドアイテム（armed:false で未表示は取得不可） =====
     const trimTsb=Px.tightRect(TSB), trimEn=Px.tightRect(EN);
     function makeTsubasa(){ // 空中にふわふわ
       const baseY = GR_MOD.floorY() - 150;
       const targetH = Math.round(48);
       const s = targetH / trimTsb.sh;
       const w = Math.round(trimTsb.sw*s), h = Math.round(trimTsb.sh*s);
-      return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb, type:'item_tsubasa', floatT:Math.random()*Math.PI*2};
+      return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb,
+              type:'item_tsubasa', floatT:Math.random()*Math.PI*2, armed:false};
     }
     function makeEngineOn(topObj){ // 土管の天面に設置
       const targetH = Math.round(48);
@@ -203,7 +204,7 @@
       const w = Math.round(trimEn.sw*s), h = Math.round(trimEn.sh*s);
       const x = Math.round(topObj.x + topObj.w/2 - w/2);
       const y = Math.round(topObj.y - h - 2);
-      return {x, y, w, h, img:EN, trim:trimEn, type:'item_engine'};
+      return {x, y, w, h, img:EN, trim:trimEn, type:'item_engine', armed:false};
     }
 
     // ===== 進行・物理 =====
@@ -236,13 +237,13 @@
       }
     }
 
-    // 50mごとに20%でアイテム出現判定
+    // 50mごとに **50%** でアイテム出現判定
     function periodicItemCheck(){
       if(gameOver) return;
       const m = Math.floor(dist*0.02); meters=m;
       if(meters - lastItemCheck >= 50){
         lastItemCheck = meters;
-        if(Math.random()<0.20){
+        if(Math.random()<0.50){ // ★ 0.50 に変更
           if(Math.random()<0.5){
             items.push(makeTsubasa());
           }else{
@@ -381,7 +382,15 @@
 
         periodicItemCheck();
 
-        for(const it of items){ if(it.type==='item_tsubasa'){ it.floatT += dt*2.0; it.y = it.yBase + Math.sin(it.floatT)*6; } it.x -= speed*dt; }
+        // アイテム移動＆可視化判定（見えるまで armed=false）
+        for(const it of items){
+          if(it.type==='item_tsubasa'){ it.floatT += dt*2.0; it.y = it.yBase + Math.sin(it.floatT)*6; }
+          it.x -= speed*dt;
+          if(!it.armed){
+            const vis = it.x + it.w > 0 && it.x < W && it.y + it.h > 0 && it.y < H;
+            if(vis) it.armed = true; // ★画面に出てから有効化
+          }
+        }
         for(let i=items.length-1;i>=0;i--){ if(items[i].x + items[i].w < -40) items.splice(i,1); }
       }
 
@@ -411,9 +420,10 @@
               else { endGame(); break; }
             }else if(o.type==='corn'){ if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; } }
           }
-          // アイテム取得
+          // アイテム取得（armed のみ）
           for(let i=items.length-1;i>=0;i--){
             const it=items[i];
+            if(!it.armed) continue; // ★未表示は拾えない
             const hit = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
             if(!hit) continue;
             const idx = slots[0]? (slots[1]? -1 : 1) : 0;
