@@ -160,62 +160,210 @@ function makeCarrier(kindIndex){
     state:'patrol',beh:'patrol',behT:Math.random()*2+2.5,
     pauseLeft:0,slowLeft:0,edgePause:0};
 }
+// 各色2体ずつ（6体固定）
 const carriers=[makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3)];
 
-// ゲームループ
+// ループ
 let last=performance.now();
 function startGame(){ if(started)return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
 function loop(t){const dt=Math.min(0.05,(t-last)/1000);last=t;if(world.running)update(dt);draw();requestAnimationFrame(loop);}
 
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
+
 function update(dt){
+  // タイマー
   world.timeLeft-=dt;if(world.timeLeft<=0){world.timeLeft=0;endGame();}
   timeEl.textContent=world.timeLeft.toFixed(1); scoreEl.textContent=world.score;
-  if(input.touching){const tx=Math.max(20*DPR,Math.min(W-20*DPR-player.w,input.lx-player.w/2));player.x+= (tx-player.x)*player.moveEaseX;}
-  player.y=baseY;
-  if(fireball.active){fireball.vy+=0.0080*DPR;fireball.vy=Math.min(fireball.vy,2.4*DPR);fireball.y+=fireball.vy*dt*1000;
-    for(const c of carriers){if(c.hasBin&&!c.bin.exploding){
-      const bx=c.x+(c.w-c.bin.w)/2,by=(c.y-c.h)-c.bin.h-6*DPR;
-      if(!(fireball.x-fireball.r+fireball.r*2<bx||bx+c.bin.w<fireball.x-fireball.r||fireball.y-fireball.r+fireball.r*2<by||by+c.bin.h<fireball.y-fireball.r)){
-        c.bin.exploding=true;c.bin.explode=0;fireball.active=false;world.score++;
-      }
-    }}
-    if(fireball.y>groundY){fireball.active=false;player.lockDrop=2.0;player.stunned=2.0;player.blinkT=0;}
-  }
-  for(const c of carriers){
-    c.hopT+=dt*8;const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
-    if(c.bin.exploding){c.bin.explode+=dt*1.8;if(c.bin.explode>=1){c.bin.exploding=false;c.hasBin=false;c.state='fetch';}}
-    if(c.state==='fetch'){
-      const speed=Math.abs(c.baseSpeed)*1.0*DPR; // ★ここを1.0に
-      c.x+=speed*dt*1000;
-      if(c.x-c.w>W+40*DPR){c.x=W+120*DPR;c.vx=-Math.abs(c.baseSpeed);c.bin={w:56*DPR,h:56*DPR,explode:0,exploding:false};c.hasBin=true;c.state='patrol';}
-    }else{
-      c.behT-=dt;if(c.behT<=0&&!c.bin.exploding){
-        if(Math.random()<0.5){c.beh='pause';c.pauseLeft=2.0;}else{c.beh='slow';c.slowLeft=1.2;c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5;}
-        c.behT=Math.random()*3+3;
-      }
-      if(c.beh==='pause'){c.pauseLeft-=dt;if(c.pauseLeft<=0){c.beh='patrol';c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed);}}
-      else{c.x+=c.vx*dt*1000;}
-      if(c.beh==='slow'){c.slowLeft-=dt;if(c.slowLeft<=0){c.beh='patrol';c.vx=Math.sign(c.vx)*Math.abs(c.baseSpeed);}}
-      if(c.x<-60*DPR){c.x=-60*DPR;c.vx=Math.abs(c.vx);}
-      if(c.x+c.w>W+60*DPR){c.x=W+60*DPR-c.w;c.vx=-Math.abs(c.vx);}
-    }
-    c.y=groundY-20*DPR-hop;
-  }
-}
-function tryDrop(){if(player.lockDrop>0||fireball.active)return;fireball.active=true;fireball.x=player.x+player.w/2;fireball.y=player.y+player.h;fireball.vy=0.06*DPR;}
 
-function draw(){ctx.clearRect(0,0,W,H);
-  if(assets['work.png']){const img=assets['work.png'];const scale=H/img.height;const w=img.width*scale;ctx.drawImage(img,0,0,w,H);if(w<W){ctx.fillStyle="#111826";ctx.fillRect(w,0,W-w,H);}}
-  else{ctx.fillStyle="#1a2230";ctx.fillRect(0,0,W,H);}
-  for(const c of carriers){const sx=c.x,sy=c.y-c.h;const im=assets[c.kind+'.png'];if(im)ctx.drawImage(im,sx,sy,c.w,c.h);else{ctx.fillStyle="#ccc";ctx.fillRect(sx,sy,c.w,c.h);}
-    if(c.hasBin){const bx=c.x+(c.w-c.bin.w)/2,by=sy-c.bin.h;if(c.bin.exploding){const t=Math.min(1,c.bin.explode);if(assets['gomi.png']){ctx.save();ctx.globalAlpha=1-t;ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);ctx.restore();}ctx.fillStyle=`rgba(255,60,80,${1-t})`;ctx.fillRect(bx,by,c.bin.w,c.bin.h);}else{if(assets['gomi.png'])ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);else{ctx.fillStyle="#999";ctx.fillRect(bx,by,c.bin.w,c.bin.h);}}}}
-  if(fireball.active){if(assets['tama.png'])ctx.drawImage(assets['tama.png'],fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2);else{ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2);ctx.fill();}}
-  if(assets['viran.png'])ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);else{ctx.fillStyle="#6cf";ctx.fillRect(player.x,player.y,player.w,player.h);}
+  // ロック（確実に減らす・0未満にしない）
+  if(player.lockDrop>0){ player.lockDrop = Math.max(0, player.lockDrop - dt); }
+  hint.textContent = (player.lockDrop>0)
+    ? `投下ロック中… ${player.lockDrop.toFixed(1)}s`
+    : 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
+
+  // プレイヤーX追従
+  if(input.touching){
+    const tx=clamp(input.lx-player.w/2,20*DPR,W-20*DPR-player.w);
+    player.x += (tx-player.x)*player.moveEaseX;
+  }
+  player.y=baseY;
+
+  // ペナルティ赤チカチカ管理
+  if(player.stunned>0){ player.stunned = Math.max(0, player.stunned - dt); player.blinkT += dt*8; }
+
+  // 火の玉
+  if(fireball.active){
+    fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.4*DPR);
+    fireball.y+=fireball.vy*dt*1000;
+
+    // ゴミ箱命中
+    for(const c of carriers){
+      if(c.hasBin && !c.bin.exploding){
+        const bx=c.x+(c.w-c.bin.w)/2;
+        const by=(c.y-c.h)-c.bin.h-6*DPR; // 頭上
+        const hit = !(fireball.x-fireball.r+fireball.r*2<bx || bx+c.bin.w<fireball.x-fireball.r ||
+                      fireball.y-fireball.r+fireball.r*2<by || by+c.bin.h<fireball.y-fireball.r);
+        if(hit){
+          c.bin.exploding=true; c.bin.explode=0;
+          fireball.active=false; world.score++;
+        }
+      }
+    }
+    // 地面に落ちた → ペナルティ発動（赤チカ＋2秒ロック）＆玉消し
+    if(fireball.active && fireball.y>groundY){
+      fireball.active=false;
+      player.stunned=2.0; player.blinkT=0;
+      player.lockDrop=2.0;
+    }
+  }
+
+  // 運搬キャラ（Pause/Slow + 端フェイント）＆破裂→補給→復帰
+  for(const c of carriers){
+    // ぴょん
+    c.hopT+=dt*8; const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
+
+    // 破裂進行
+    if(c.bin.exploding){
+      c.bin.explode += dt*1.8; // 0→1
+      if(c.bin.explode>=1){
+        c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
+      }
+    }
+
+    if(c.state==='fetch'){
+      // 補給へ（普通の速さ）
+      const speed=Math.abs(c.baseSpeed)*1.0*DPR;
+      c.x += speed * dt * 1000;
+      if(c.x - c.w > W + 40*DPR){
+        // 右外で補給→復帰（左へ）
+        c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
+        c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
+        c.hasBin = true; c.state = 'patrol';
+        c.beh='patrol'; c.behT=Math.random()*2+2.5; c.pauseLeft=0; c.slowLeft=0; c.edgePause=0;
+      }
+    }else{
+      // 端フェイント（消えない安全弁）
+      if(c.edgePause>0){
+        c.edgePause -= dt;
+        if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; }
+      }else{
+        // ランダム行動：Pause/Slow
+        c.behT -= dt;
+        if(c.behT<=0 && !c.bin.exploding){
+          if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
+          else{ c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5; }
+          c.behT = Math.random()*3+3;
+        }
+
+        if(c.beh==='pause'){
+          c.pauseLeft -= dt;
+          if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
+        }else{
+          c.x += c.vx * dt * 1000; // patrol/slow の移動
+        }
+
+        if(c.beh==='slow'){
+          c.slowLeft -= dt;
+          if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
+        }
+
+        // 端で停止→反転（画面外に出さない）
+        if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
+        if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
+      }
+    }
+    c.y = groundY - 20*DPR - hop;
+  }
 }
-function endGame(){world.running=false;document.getElementById('finalScore').textContent=world.score;modal.style.display='flex';}
-function resetGame(){world.timeLeft=30.0;world.score=0;world.running=true;player.stunned=0;player.lockDrop=0;fireball.active=false;modal.style.display='none';}
-retryBtn.addEventListener('click',resetGame);
-shareBtn.addEventListener('click',async()=>{const text=`Osoji-Viran｜スコア ${world.score}（30秒）`;try{if(navigator.share)await navigator.share({text,url:location.href});else await navigator.clipboard.writeText(text);alert('結果を共有/コピーしました！');}catch{}});
+
+function tryDrop(){
+  if(player.lockDrop>0 || fireball.active) return;
+  fireball.active=true; fireball.x=player.x+player.w/2; fireball.y=player.y+player.h; fireball.vy=0.06*DPR;
+}
+
+// 描画
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  // 背景
+  if(assets['work.png']){
+    const img=assets['work.png']; const scale=(H/img.height); const w=img.width*scale;
+    ctx.drawImage(img,0,0,w,H); if(w<W){ ctx.fillStyle="#111826"; ctx.fillRect(w,0,W-w,H); }
+  }else{ ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H); }
+
+  // キャラ＆頭上ゴミ箱
+  for(const c of carriers){
+    const sx=c.x, sy=c.y-c.h;
+    const im=assets[c.kind+'.png'];
+    if(im) ctx.drawImage(im,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
+
+    if(c.hasBin){
+      const bx=c.x+(c.w-c.bin.w)/2;
+      const by=sy - c.bin.h; // 頭の“上”
+
+      if(c.bin.exploding){
+        // ★ 赤いスパイク爆発＋フェード（復活）
+        const t=Math.min(1,c.bin.explode);
+        if(assets['gomi.png']){
+          ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore();
+        }else{
+          ctx.fillStyle=`rgba(200,200,200,${1-t})`; ctx.fillRect(bx,by,c.bin.w,c.bin.h);
+        }
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        ctx.fillStyle=`rgba(255,60,80,${0.65*(1-t)})`;
+        ctx.beginPath();
+        const cx=bx+c.bin.w/2, cy=by+c.bin.h/2;
+        const spikes=18, inner=10*DPR*(1+t*0.6), outer=28*DPR*(1+t*1.5);
+        for(let i=0;i<spikes*2;i++){
+          const ang=(Math.PI*i)/spikes + t*5.6;
+          const r=(i%2===0)?outer:inner;
+          const px=cx+Math.cos(ang)*r, py=cy+Math.sin(ang)*r;
+          if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }else{
+        if(assets['gomi.png']) ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h);
+        else { ctx.fillStyle="#999"; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
+      }
+    }
+  }
+
+  // 火の玉
+  if(fireball.active){
+    if(assets['tama.png']) ctx.drawImage(assets['tama.png'],fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2);
+    else { ctx.fillStyle="#ffdd66"; ctx.beginPath(); ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2); ctx.fill(); }
+  }
+
+  // プレイヤー（赤チカチカ演出）
+  const blinking = player.stunned>0 && Math.floor(player.blinkT)%2===0;
+  if(blinking){ ctx.globalAlpha=0.45; }
+  if(assets['viran.png']) ctx.drawImage(assets['viran.png'],player.x,player.y,player.w,player.h);
+  else { ctx.fillStyle="#6cf"; ctx.fillRect(player.x,player.y,player.w,player.h); }
+  if(blinking){
+    ctx.globalAlpha=1; ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x,player.y,player.w,player.h);
+  }
+}
+
+// 終了/リトライ
+function endGame(){ world.running=false; document.getElementById('finalScore').textContent=world.score; modal.style.display='flex'; }
+function resetGame(){
+  world.timeLeft=30.0; world.score=0; world.running=true;
+  player.stunned=0; player.lockDrop=0; player.blinkT=0;
+  fireball.active=false; fireball.vy=0;
+  // 6体固定で再生成
+  carriers.length=0;
+  carriers.push( makeCarrier(1), makeCarrier(1), makeCarrier(2), makeCarrier(2), makeCarrier(3), makeCarrier(3) );
+  modal.style.display='none';
+}
+retryBtn.addEventListener('click', resetGame);
+shareBtn.addEventListener('click', async ()=>{
+  const text = `Osoji-Viran｜スコア ${world.score}（30秒）`;
+  try{ if(navigator.share) await navigator.share({text, url: location.href});
+       else await navigator.clipboard.writeText(text);
+       alert('結果を共有/コピーしました！'); }catch{}
+});
 })();
 </script>
 </body>
