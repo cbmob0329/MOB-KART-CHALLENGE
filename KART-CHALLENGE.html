@@ -3,24 +3,30 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – container stable</title>
+<title>Runner – cone relax & dokan</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
   #root{position:fixed;inset:0;display:grid;place-items:center}
-  #phone{width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;
-         background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
-         transform-origin:center center}
-  header.hud{position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
+  #phone{
+    width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;
+    background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
+    transform-origin:center center;
+  }
+  header.hud{
+    position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
     background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8)); border-bottom:1px solid rgba(255,255,255,.06);
-    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;}
+    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
+  }
   main.play{position:absolute;left:0;right:0;top:56px;bottom:88px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-  footer.ctrl{position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:88px;z-index:20;
+  footer.ctrl{
+    position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:88px;z-index:20;
     display:flex;gap:14px;align-items:center;justify-content:center;padding:10px;
-    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06)}
-  .btn{-webkit-tap-highlight-color:transparent;user-select:none;touch-action:manipulation;
+    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);
+  }
+  .btn{-webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
     min-width:120px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.1);
     background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
   .btn:active{transform:translateY(1px)}
@@ -82,15 +88,14 @@
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'), load('contena.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'), load('contena.png'), load('dokan.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([BG, GR, CO, JP, CT, VR, OR])=>{
-    // ===== pixel utils (ローカル専用・他モジュールに漏らさない) =====
+  ]).then(([BG, GR, CO, JP, CT, DK, VR, OR])=>{
+    // ===== pixel utils =====
     const Px = {
       topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } }
-        return {trimTop:0,contentH:h}; },
+        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } } return {trimTop:0,contentH:h}; },
       bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
         c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
@@ -101,13 +106,13 @@
         if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1}; }
     };
 
-    // ===== Background module (トリム一切禁止) =====
+    // ===== Background (no trim) =====
     const BG_MOD = (()=>{ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale;
       function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
       return {draw};
     })();
 
-    // ===== Ground module (mob.png 上端トリム専用) =====
+    // ===== Ground (mob.png top trim) =====
     const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH));
       const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale;
       function floorY(){ return Math.floor(H - drawH); }
@@ -121,18 +126,29 @@
       return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac}; }
 
     // ===== Obstacles =====
-    const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT);
-    function makeCorn(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.50);
+    const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT), trimDk=Px.tightRect(DK);
+
+    function makeCorn(){ // 少し小さく：地面厚の 45%
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.45);
       const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'}; }
-    function makeJump(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
+      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'};
+    }
+    function makeJump(){
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
       const s=targetH/trimJump.sh, w=Math.round(trimJump.sw*s), h=Math.round(trimJump.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'}; }
-    function makeContSet(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
+      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'};
+    }
+    function makeContSet(){
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
       const s=targetH/trimCont.sh, w=Math.round(trimCont.sw*s), h=Math.round(trimCont.sh*s);
       const n=2 + Math.floor(Math.random()*2); const set=[];
       for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
       return set;
+    }
+    function makeDokan(){ // 土管：上に乗れる／横はアウト
+      const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.80);
+      const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
+      return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'};
     }
 
     // ===== Game State =====
@@ -141,10 +157,12 @@
     let player=null, gameOver=false;
     const obs=[];
 
-    function spawn(){ const r=Math.random();
-      if(r<0.4) obs.push(makeCorn());
-      else if(r<0.7) obs.push(makeJump());
-      else obs.push(...makeContSet());
+    function spawn(){
+      const r=Math.random();
+      if(r<0.35) obs.push(makeCorn());
+      else if(r<0.60) obs.push(makeJump());
+      else if(r<0.80) obs.push(...makeContSet());
+      else obs.push(makeDokan());
     }
 
     // ===== HUD & Input =====
@@ -156,11 +174,18 @@
     btnBoost.onpointerup=e=>{e.preventDefault(); boosting=false; };
     addEventListener('keydown',e=>{ if(e.code==='Space'||e.code==='ArrowUp'){ if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } } if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=true; }});
     addEventListener('keyup',e=>{ if(e.code==='ShiftLeft'||e.code==='KeyB'){ boosting=false; }});
+    document.getElementById('retryBtn').onclick=()=>{ gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obs.length=0; if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2; } gameover.style.display='none'; };
 
-    document.getElementById('retryBtn').onclick=()=>{ // 簡易リセット
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obs.length=0; player.y=GR_MOD.floorY(); player.vy=0; player.jumps=2;
-      gameover.style.display='none';
-    };
+    // ===== Cone collision helper (ゆるい当たり判定) =====
+    function hitConeRelax(px,py,pw,ph, cone){
+      // 2段ヒットボックス：下段=高さ65%・幅100%、上段=高さ30%・幅40%（中心寄せ）
+      const baseH = cone.h, baseW = cone.w;
+      const lower = { x: cone.x, y: cone.y + baseH*0.35, w: baseW, h: baseH*0.65 };
+      const upper = { x: cone.x + baseW*0.30, y: cone.y + baseH*0.05, w: baseW*0.40, h: baseH*0.30 };
+      const hitA = (px < lower.x+lower.w && px+pw > lower.x && py < lower.y+lower.h && py+ph > lower.y);
+      const hitB = (px < upper.x+upper.w && px+pw > upper.x && py < upper.y+upper.h && py+ph > upper.y);
+      return hitA || hitB;
+    }
 
     // ===== Loop =====
     let prev=0, running=false;
@@ -168,23 +193,20 @@
     function loop(t){
       const dt=Math.min(0.033,(t-prev)/1000); prev=t;
 
-      // speed
       if(!gameOver && boosting && boost>0){ speed=BOOST; boost=Math.max(0,boost-24*dt); } else { speed=BASE; boost=Math.min(100,boost+10*dt); }
 
-      // physics
       if(player && !gameOver){
         player.vy += GRAV*dt; player.y += player.vy*dt;
         const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=2; }
       }
 
-      // progress
       if(!gameOver){
         dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
         if(obs.length===0 || obs[obs.length-1].x < W-180) spawn();
         for(let i=obs.length-1;i>=0;i--){ obs[i].x -= speed*dt; if(obs[i].x + obs[i].w < -40) obs.splice(i,1); }
       }
 
-      // draw
+      // Draw
       ctx.clearRect(0,0,W,H);
       BG_MOD.draw(bgOff);
       GR_MOD.draw(grOff);
@@ -193,27 +215,27 @@
       if(player){
         const feetPush=Math.floor(player.h*player.feetFrac);
         const px=Math.floor(player.x);
-        const py=Math.floor(player.y - player.h + feetPush); // 足を床に一致
+        const py=Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
-        // collisions
         if(!gameOver){
           for(const o of obs){
+            // AABB hit?
             const hit = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!hit) continue;
-            if(o.type==='jump'){ player.vy = -JUMP*1.2; }              // 踏めば跳ねる
-            else if(o.type==='contena'){
-              // 上からなら乗る（天面にスナップ）、横当たりならゲームオーバー
-              const comingDown = player.vy >= -20; // ほぼ下降中
+
+            if(o.type==='jump'){                        // ジャンプ台：踏むと跳ねる
+              player.vy = -JUMP*1.2;
+            }else if(o.type==='contena' || o.type==='dokan'){ // 天面に乗れる／横はアウト
+              const comingDown = player.vy >= -20;
               const wasAbove   = (player.y - player.h*0.6) < o.y;
               if(comingDown && wasAbove){
                 player.y = o.y; player.vy = 0; player.jumps = 2;
               }else{
-                endGame();
-                break;
+                endGame(); break;
               }
-            }else if(o.type==='corn'){ // コーンは即アウト
-              endGame(); break;
+            }else if(o.type==='corn'){                  // コーン：ゆるい当たり
+              if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; }
             }
           }
         }
