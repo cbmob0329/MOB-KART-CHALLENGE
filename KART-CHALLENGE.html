@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – アイテム100%（安定版）</title>
+<title>Runner – 開始直後にアイテム出現（安定版）</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -237,13 +237,13 @@
       }
     }
 
-    // 50mごとに **100%** でアイテム出現判定
+    // 50mごとに 100% でアイテム出現
     function periodicItemCheck(){
       if(gameOver) return;
       const m = Math.floor(dist*0.02); meters=m;
       if(meters - lastItemCheck >= 50){
         lastItemCheck = meters;
-        if(Math.random()<1.00){ // ★ 100%
+        if(Math.random()<1.00){
           if(Math.random()<0.5){
             items.push(makeTsubasa());
           }else{
@@ -258,6 +258,29 @@
             }
           }
         }
+      }
+    }
+
+    // ★★★ 開始直後に画面内へアイテムを1つ生成する ★★★
+    function spawnInitialPickup(){
+      const roll = Math.random();
+      if(roll < 0.5){
+        // つばさ：画面内の中段に出す
+        const it = makeTsubasa();
+        it.x = 260;                 // 画面内に即表示
+        it.yBase = GR_MOD.floorY() - 160;
+        it.y = it.yBase;
+        it.armed = false;           // 1フレーム表示後に有効化
+        items.push(it);
+      }else{
+        // エンジン：画面内に土管も同時生成し、その上に置く
+        // 土管を画面中央やや右に並べる
+        const d = makeDokan();
+        d.x = 240;                  // 画面内
+        obs.push(d);
+        const it = makeEngineOn(d);
+        it.armed = false;           // 1フレーム表示後に有効化
+        items.push(it);
       }
     }
 
@@ -334,7 +357,7 @@
       if(player){ player.y=GR_MOD.floorY(); player.vy=0; player.jumpMax=2; player.jumps=2; }
       gameover.style.display='none'; updateHUD();
     }
-    document.getElementById('retryBtn').onclick=()=>{ resetGame(); layoutLocked=true; };
+    document.getElementById('retryBtn').onclick=()=>{ resetGame(); layoutLocked=true; spawnInitialPickup(); };
 
     // ===== コーンの当たり（緩め） =====
     function hitConeRelax(px,py,pw,ph, cone){
@@ -347,8 +370,8 @@
     }
 
     // ===== ループ =====
-    let prev=0, running=false;
-    function start(){ if(running) return; running=true; prev=performance.now(); layoutLocked=true; updateHUD(); requestAnimationFrame(loop); }
+    let prev=0, running=false, bgOff=0, grOff=0;
+    function start(){ if(running) return; running=true; prev=performance.now(); layoutLocked=true; updateHUD(); spawnInitialPickup(); requestAnimationFrame(loop); }
     function loop(t){
       const dt=Math.min(0.033,(t-prev)/1000); prev=t;
 
@@ -370,7 +393,7 @@
       // 物理（上方向クランプ）
       if(player && !gameOver){
         player.vy += GRAV*dt; player.y += player.vy*dt;
-        if (player.y < -H*0.3) player.y = -H*0.3;
+        if (player.y < -H*0.3) player.y = -H*0.3; // 画面外に消えない
         const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; }
       }
 
@@ -382,7 +405,7 @@
 
         periodicItemCheck();
 
-        // アイテム移動＆可視化判定（見えるまで armed=false）
+        // アイテム移動＆可視化判定
         for(const it of items){
           if(it.type==='item_tsubasa'){ it.floatT += dt*2.0; it.y = it.yBase + Math.sin(it.floatT)*6; }
           it.x -= speed*dt;
@@ -429,7 +452,7 @@
             const idx = slots[0]? (slots[1]? -1 : 1) : 0;
             if(idx>=0){
               if(it.type==='item_tsubasa'){ slots[idx]={type:'tsubasa', timer:0}; }
-              else if(it.type==='item_engine'){ slots[idx]={type:'engine', timer:0}; }
+              else if(it.type==='engine'){ slots[idx]={type:'engine', timer:0}; }
               items.splice(i,1); updateHUD();
             }
           }
@@ -437,7 +460,7 @@
       }
 
       updateHUD();
-      requestAnimationFrame(loop);
+      requestAnimationFrame(loop); // 常時ループ
     }
 
     function endGame(){ if(gameOver) return; gameOver=true; layoutLocked=false; gameover.style.display='grid'; }
