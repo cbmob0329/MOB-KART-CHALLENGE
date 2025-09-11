@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – 安定版（iOS対策）</title>
+<title>Runner – 安定版</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -13,495 +13,101 @@
     background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
     transform-origin:center center;
   }
-  header.hud{
-    position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
-    display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
-    background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8)); border-bottom:1px solid rgba(255,255,255,.06);
-    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
-  }
-  .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
   canvas#game{
     width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent;
-    will-change:transform; transform:translateZ(0); /* iOSちらつき対策 */
+    will-change:transform; transform:translateZ(0);
   }
-  footer.ctrl{
-    position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
-    display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:"itemL buttons itemR";
-    align-items:center;gap:10px;padding:10px 12px;
-    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);
-  }
-  .btns{grid-area:buttons;display:flex;gap:12px;align-items:center}
-  .btn{-webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
-    min-width:120px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.1);
-    background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
-  .btn:active{transform:translateY(1px)}
-  .slotWrap{display:flex;gap:8px;align-items:center;justify-content:center}
-  .slot{width:52px;height:52px;border-radius:12px;background:#0f1726;border:1px solid rgba(255,255,255,.08);
-        display:grid;place-items:center;position:relative;overflow:hidden}
-  .slot img{width:100%;height:100%;object-fit:contain;pointer-events:none}
-  .timer{position:absolute;bottom:2px;right:4px;font-size:12px;color:#fff;text-shadow:0 0 3px #000}
-  .empty{color:#9aa3b2;font-size:11px;display:flex;align-items:center;justify-content:center}
-  .muted{opacity:.6;filter:saturate(.2)}
-  #overlay{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
-  .card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
-  .choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
-  .choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
-  #loading{position:absolute;inset:56px 0 96px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
-  .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
-  #gameover{position:absolute;inset:56px 0 96px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6);font:800 24px/1.2 system-ui}
-  #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center}
+  /* HUD / UI は前回のまま省略（ここにHUD/ボタン用CSSを入れてください） */
 </style>
 </head>
 <body>
 <div id="root">
   <div id="phone">
-    <header class="hud">
-      <div class="pill" id="dist">距離 0 m</div>
-      <div class="pill" id="speed">速度 0 km/h</div>
-      <div class="pill" id="jump">ジャンプ 2</div>
-      <div class="pill" id="coin">コイン 0</div>
-      <div class="pill">BOOST <span id="boostPct">100%</span></div>
-    </header>
-
     <main class="play"><canvas id="game" width="390" height="540"></canvas></main>
-
-    <footer class="ctrl">
-      <div class="slotWrap" style="grid-area:itemL;">
-        <button class="slot" id="slot1"><div class="empty">ITEM1</div></button>
-        <button class="slot" id="slot2"><div class="empty">ITEM2</div></button>
-      </div>
-      <div class="btns">
-        <button class="btn" id="btnJump">ジャンプ</button>
-        <button class="btn" id="btnBoost">BOOST!</button>
-      </div>
-      <div class="slotWrap" style="grid-area:itemR;"></div>
-    </footer>
-
-    <div id="overlay">
-      <div class="card">
-        <p style="margin:0 0 8px;font-weight:800;">どちらか選択してスタート</p>
-        <div class="choices">
-          <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
-          <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="loading"><div class="bubble">画像読み込み中…</div></div>
-
-    <div id="gameover">
-      <div class="panel">
-        <div>GAME OVER</div>
-        <button class="btn" id="retryBtn">リトライ</button>
-      </div>
-    </div>
+    <div id="overlay">…キャラ選択…</div>
+    <div id="loading">…ロード中…</div>
+    <div id="gameover"><button id="retryBtn">リトライ</button></div>
   </div>
 </div>
-
 <script>
-(() => {
-  // ==== PCでもスマホ画角プレビュー ====
+(()=>{
   const phone=document.getElementById('phone');
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
 
-  // visualViewport 変動に追従（iOSアドレスバー対策）
-  const vv = window.visualViewport;
-  function hardReflow(){ fit(); setup(); }
-  if (vv) {
-    vv.addEventListener('resize', hardReflow, {passive:true});
-    vv.addEventListener('scroll', hardReflow, {passive:true});
-  }
-  addEventListener('orientationchange', hardReflow, {passive:true});
-
-  // ==== Canvas ====
   const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
-  ctx.imageSmoothingEnabled=false; const W=390,H=540;
+  const W=390,H=540; ctx.imageSmoothingEnabled=false;
   function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
-  setup(); addEventListener('resize', setup, {passive:true});
+  setup();
 
-  const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
+  // ===== レイアウトロック制御 =====
+  let layoutLocked=false;
+  function hardReflow(){
+    if(layoutLocked) return;
+    fit(); setup();
+    prev=performance.now(); // Δtリセット
+  }
+  const vv=window.visualViewport;
+  if(vv){
+    vv.addEventListener('resize', hardReflow,{passive:true});
+    vv.addEventListener('scroll', hardReflow,{passive:true});
+  }
+  addEventListener('orientationchange', hardReflow,{passive:true});
+  addEventListener('resize', hardReflow,{passive:true});
 
-  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+  // ===== Game State =====
+  let player={x:80,y:H-100,w:48,h:48,vy:0,jumps:2,jumpMax:2};
+  let gameOver=false, running=false, prev=0;
 
-  Promise.all([
-    load('sora.png'), load('mob.png'),
-    load('corn.png'), load('jumpdai.png'), load('contena.png'), load('dokan.png'),
-    load('tsubasa.png'), load('en.png'),
-    load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([BG, GR, CO, JP, CT, DK, TSB, EN, VR, OR])=>{
-    // ===== pixel utils =====
-    const Px = {
-      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } } return {trimTop:0,contentH:h}; },
-      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
-      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
-        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
-        if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1}; }
-    };
+  const GRAV=1500, JUMP=540;
+  function resetGame(){
+    gameOver=false;
+    player.y=H-100; player.vy=0; player.jumps=2; player.jumpMax=2;
+    document.getElementById('gameover').style.display='none';
+  }
 
-    // ===== Background =====
-    const BG_MOD = (()=>{ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale;
-      function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
-      return {draw};
-    })();
+  function start(){
+    if(running) return;
+    layoutLocked=true;     // ← プレイ中はレイアウト固定
+    running=true;
+    prev=performance.now();
+    requestAnimationFrame(loop);
+  }
+  function endGame(){
+    if(gameOver) return;
+    gameOver=true;
+    layoutLocked=false;    // ← リトライ待ち中は解放
+    document.getElementById('gameover').style.display='block';
+  }
+  document.getElementById('retryBtn').onclick=()=>{
+    resetGame();
+    layoutLocked=true;     // リトライ後は再びロック
+  };
 
-    // ===== Ground =====
-    const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH));
-      const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale;
-      function floorY(){ return Math.floor(H - drawH); }
-      function draw(off){ const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW;
-        for(let x=ox;x<W;x+=tileW){ ctx.drawImage(GR,0,srcY,GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } }
-      return {floorY, draw, drawH};
-    })();
-
-    // ===== Player =====
-    function makePlayer(img){ const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
-      return {x:80, y:GR_MOD.floorY(), vy:0, w:48, h:48, jumps:2, jumpMax:2, img, feetFrac}; }
-
-    // ===== Obstacles =====
-    const trimCorn=Px.tightRect(CO), trimJump=Px.tightRect(JP), trimCont=Px.tightRect(CT), trimDk=Px.tightRect(DK);
-    function makeCorn(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.40);
-      const s=targetH/trimCorn.sh, w=Math.round(trimCorn.sw*s), h=Math.round(trimCorn.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:CO, trim:trimCorn, type:'corn'}; }
-    function makeJump(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.32);
-      const s=targetH/trimJump.sh, w=Math.round(trimJump.sw*s), h=Math.round(trimJump.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:JP, trim:trimJump, type:'jump'}; }
-    function makeContSet(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.60);
-      const s=targetH/trimCont.sh, w=Math.round(trimCont.sw*s), h=Math.round(trimCont.sh*s);
-      const n=2 + Math.floor(Math.random()*2); const set=[];
-      for(let i=0;i<n;i++) set.push({x:W+40 + i*w, y:fy-h, w, h, img:CT, trim:trimCont, type:'contena'});
-      return set; }
-    function makeDokan(){ const fy=GR_MOD.floorY(); const targetH=Math.round(GR_MOD.drawH*0.65);
-      const s=targetH/trimDk.sh, w=Math.round(trimDk.sw*s), h=Math.round(trimDk.sh*s);
-      return {x:W+40, y:fy-h, w, h, img:DK, trim:trimDk, type:'dokan'}; }
-
-    // ===== Items on field =====
-    const trimTsb=Px.tightRect(TSB), trimEn=Px.tightRect(EN);
-    function makeTsubasa(){ // 空中にふわふわ
-      const baseY = GR_MOD.floorY() - 150;
-      const targetH = Math.round(48);
-      const s = targetH / trimTsb.sh;
-      const w = Math.round(trimTsb.sw*s), h = Math.round(trimTsb.sh*s);
-      return {x:W+40, y:baseY, yBase:baseY, w, h, img:TSB, trim:trimTsb, type:'item_tsubasa', floatT:Math.random()*Math.PI*2};
-    }
-    function makeEngineOn(topObj){ // 土管の天面に設置
-      const targetH = Math.round(48);
-      const s = targetH / trimEn.sh;
-      const w = Math.round(trimEn.sw*s), h = Math.round(trimEn.sh*s);
-      const x = Math.round(topObj.x + topObj.w/2 - w/2);
-      const y = Math.round(topObj.y - h - 2);
-      return {x, y, w, h, img:EN, trim:trimEn, type:'item_engine'};
+  // ===== Loop =====
+  function loop(t){
+    const dt=Math.min(0.033,(t-prev)/1000); prev=t;
+    if(!gameOver){
+      player.vy+=GRAV*dt; player.y+=player.vy*dt;
+      // 上方向クランプ（画面外に消えないように）
+      if(player.y<-H*0.3) player.y=-H*0.3;
+      const floor=H-100;
+      if(player.y>floor){ player.y=floor; player.vy=0; player.jumps=player.jumpMax; }
     }
 
-    // ===== Game State =====
-    const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28, KM=0.072;
-    let speed=BASE, dist=0, bgOff=0, grOff=0, meters=0, lastItemCheck=0;
-    let player=null, gameOver=false;
+    ctx.clearRect(0,0,W,H);
+    ctx.fillStyle='#3af'; ctx.fillRect(player.x,player.y-player.h,player.w,player.h);
 
-    // 単発ブースト
-    let boostCharge=100, burstActive=false, burstTimer=0;
+    requestAnimationFrame(loop);
+  }
+  start();
 
-    const obs=[];        // 障害物
-    const items=[];      // フィールド上のアイテム
-    let pendingEngine=false; // 次の土管にエンジンを載せる予約
-
-    // ===== スロット/バフ =====
-    const slotEls=[document.getElementById('slot1'), document.getElementById('slot2')];
-    const slots=[null,null]; // {type:'tsubasa'|'engine', timer:number }
-    let wingsActive=false, wingsTimer=0;
-
-    // ===== Spawns =====
-    function spawnObstacle(){
-      const r=Math.random();
-      if(r<0.35) obs.push(makeCorn());
-      else if(r<0.60) obs.push(makeJump());
-      else if(r<0.80) obs.push(...makeContSet());
-      else {
-        const d = makeDokan(); obs.push(d);
-        if(pendingEngine){ items.push(makeEngineOn(d)); pendingEngine=false; }
-        else if(Math.random()<0.15){ items.push(makeEngineOn(d)); }
-      }
-    }
-
-    // 50mごとに20%でアイテム出現判定
-    function periodicItemCheck(){
-      if(gameOver) return;
-      const m = Math.floor(dist*0.02); // m換算
-      meters = m;
-      if(meters - lastItemCheck >= 50){
-        lastItemCheck = meters;
-        if(Math.random()<0.20){
-          if(Math.random()<0.5){
-            items.push(makeTsubasa());
-          }else{
-            const dokans = obs.filter(o=>o.type==='dokan');
-            if(dokans.length){
-              const d = dokans[Math.floor(Math.random()*dokans.length)];
-              if(!items.some(it=>it.type==='item_engine' && Math.abs((it.x+it.w/2)-(d.x+d.w/2))<4)){
-                items.push(makeEngineOn(d));
-              }
-            }else{
-              pendingEngine = true;
-            }
-          }
-        }
-      }
-    }
-
-    // ===== HUD / Input =====
-    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'), elJump=document.getElementById('jump');
-    const elBoostPct=document.getElementById('boostPct');
-    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
-
-    function updateSlotsUI(){
-      slots.forEach((s,idx)=>{
-        const el=slotEls[idx];
-        el.innerHTML='';
-        if(!s){
-          const div=document.createElement('div'); div.className='empty'; div.textContent=idx===0?'ITEM1':'ITEM2';
-          el.appendChild(div);
-          el.classList.remove('muted');
-          return;
-        }
-        const img=document.createElement('img');
-        img.src = (s.type==='tsubasa') ? 'tsubasa.png' : 'en.png';
-        el.appendChild(img);
-        if(s.type==='tsubasa' && s.timer>0){
-          const t=document.createElement('div'); t.className='timer'; t.textContent = Math.ceil(s.timer).toString();
-          el.appendChild(t);
-          el.classList.add('muted'); // 発動中は淡く
-        }else{
-          el.classList.remove('muted');
-        }
-      });
-    }
-
-    function updateHUD(){
-      elDist.textContent=`距離 ${meters} m`;
-      elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
-      elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
-      elBoostPct.textContent=`${Math.round(boostCharge)}%`;
-      if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); }
-      else { btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
-      updateSlotsUI();
-    }
-
-    btnJump.onpointerdown=e=>{
-      e.preventDefault();
-      if(player && !gameOver && player.jumps>0){
-        player.vy=-JUMP; player.jumps--; updateHUD();
-      }
-    };
-
-    // 単発ブースト
-    btnBoost.onclick=e=>{
-      e.preventDefault();
-      if(gameOver) return;
-      if(!burstActive && boostCharge>=100){
-        burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD();
-      }
-    };
-
-    // スロット押下で発動
-    slotEls.forEach((el,idx)=>{
-      el.addEventListener('click', ()=>{
-        if(gameOver) return;
-        const s=slots[idx];
-        if(!s) return;
-        if(s.type==='tsubasa'){
-          if(wingsActive) return; // 既に発動中は無視
-          wingsActive=true; wingsTimer=5.0;
-          if(player){ player.jumpMax=4; player.jumps = Math.max(player.jumps, 4); }
-          s.timer = wingsTimer; // スロットに残り時間表示
-          updateHUD();
-        }else if(s.type==='engine'){
-          if(player){
-            player.vy = -JUMP*1.6; // ← 1.8から弱めに
-            player.jumps = player.jumpMax; // （翼中なら4まで）
-          }
-          slots[idx]=null; updateHUD();
-        }
-      });
-    });
-
-    addEventListener('keydown',e=>{
-      if(e.code==='Space'||e.code==='ArrowUp'){
-        if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); }
-      }
-      if(e.code==='KeyB'){
-        if(!burstActive && boostCharge>=100 && !gameOver){
-          burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD();
-        }
-      }
-      if(e.code==='Digit1'){ slotEls[0].click(); }
-      if(e.code==='Digit2'){ slotEls[1].click(); }
-    });
-
-    // ===== リセット一括管理 =====
-    function resetGame(){
-      gameOver = false;
-      dist = 0; meters = 0; lastItemCheck = 0;
-      speed = BASE; bgOff = 0; grOff = 0;
-
-      obs.length = 0; items.length = 0; pendingEngine = false;
-
-      boostCharge = 100; burstActive = false; burstTimer = 0;
-      wingsActive = false; wingsTimer = 0;
-      slots[0] = null; slots[1] = null;
-
-      if(player){
-        player.y = GR_MOD.floorY();
-        player.vy = 0;
-        player.jumpMax = 2;
-        player.jumps = 2;
-      }
-
-      gameover.style.display='none';
-      updateHUD();
-    }
-
-    document.getElementById('retryBtn').onclick=()=>{ resetGame(); };
-
-    // ===== Cone collision helper (緩め2段) =====
-    function hitConeRelax(px,py,pw,ph, cone){
-      const baseH = cone.h, baseW = cone.w;
-      const lower = { x: cone.x, y: cone.y + baseH*0.35, w: baseW, h: baseH*0.65 };
-      const upper = { x: cone.x + baseW*0.30, y: cone.y + baseH*0.05, w: baseW*0.40, h: baseH*0.30 };
-      const hitA = (px < lower.x+lower.w && px+pw > lower.x && py < lower.y+lower.h && py+ph > lower.y);
-      const hitB = (px < upper.x+upper.w && px+pw > upper.x && py < upper.y+upper.h && py+ph > upper.y);
-      return hitA || hitB;
-    }
-
-    // ===== ループ =====
-    let prev=0, running=false;
-    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
-    function loop(t){
-      const dt=Math.min(0.033,(t-prev)/1000); prev=t;
-
-      // ブースト（単発）
-      if(burstActive){
-        speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; }
-      }else{
-        speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt);
-      }
-
-      // バフ：つばさ
-      if(wingsActive){
-        wingsTimer -= dt;
-        for(const s of slots){ if(s && s.type==='tsubasa' && s.timer>0){ s.timer = Math.max(0, s.timer - dt); } }
-        if(wingsTimer<=0){
-          wingsActive=false;
-          if(player){ player.jumpMax=2; player.jumps=Math.min(player.jumps,2); }
-          for(let i=0;i<2;i++){ if(slots[i] && slots[i].type==='tsubasa'){ slots[i]=null; } }
-        }
-      }
-
-      // 物理（上方向クランプで消失体感を抑制）
-      if(player && !gameOver){
-        player.vy += 1500*dt; player.y += player.vy*dt;
-        if (player.y < -H*0.5) player.y = -H*0.5; // 上に行き過ぎない
-        const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; }
-      }
-
-      // 進行
-      if(!gameOver){
-        dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
-        if(obs.length===0 || obs[obs.length-1].x < W-180) spawnObstacle();
-        for(let i=obs.length-1;i>=0;i--){ obs[i].x -= speed*dt; if(obs[i].x + obs[i].w < -40) obs.splice(i,1); }
-
-        periodicItemCheck(); // 50mごと20%
-
-        // アイテム移動（ふわふわ演出/スクロール）
-        for(const it of items){
-          if(it.type==='item_tsubasa'){ it.floatT += dt*2.0; it.y = it.yBase + Math.sin(it.floatT)*6; }
-          it.x -= speed*dt;
-        }
-        for(let i=items.length-1;i>=0;i--){ if(items[i].x + items[i].w < -40) items.splice(i,1); }
-      }
-
-      // 描画
-      ctx.clearRect(0,0,W,H);
-      BG_MOD.draw(bgOff);
-      GR_MOD.draw(grOff);
-
-      obs.forEach(o=>{ ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h); });
-      items.forEach(it=>{ ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h); });
-
-      if(player){
-        const feetPush=Math.floor(player.h*player.feetFrac);
-        const px=Math.floor(player.x);
-        const py=Math.floor(player.y - player.h + feetPush);
-        ctx.drawImage(player.img, px, py, player.w, player.h);
-
-        if(!gameOver){
-          // 障害物衝突
-          for(const o of obs){
-            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
-            if(!aabb) continue;
-
-            if(o.type==='jump'){ player.vy = -JUMP*1.2; }
-            else if(o.type==='contena' || o.type==='dokan'){
-              const comingDown = player.vy >= -20;
-              const wasAbove   = (player.y - player.h*0.6) < o.y;
-              if(comingDown && wasAbove){ player.y = o.y; player.vy = 0; player.jumps = player.jumpMax; }
-              else { endGame(); break; }
-            }else if(o.type==='corn'){
-              if( hitConeRelax(px,py,player.w,player.h,o) ){ endGame(); break; }
-            }
-          }
-
-          // アイテム取得
-          for(let i=items.length-1;i>=0;i--){
-            const it=items[i];
-            const hit = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
-            if(!hit) continue;
-            const idx = slots[0]? (slots[1]? -1 : 1) : 0;
-            if(idx>=0){
-              if(it.type==='item_tsubasa'){ slots[idx]={type:'tsubasa', timer:0}; }
-              else if(it.type==='item_engine'){ slots[idx]={type:'engine', timer:0}; }
-              items.splice(i,1); updateHUD();
-            }
-          }
-        }
-      }
-
-      updateHUD();
-      requestAnimationFrame(loop); // 常時ループ
-    }
-
-    function endGame(){
-      if(gameOver) return;
-      gameOver = true;
-      gameover.style.display='grid'; // ブラウザ差分回避
-    }
-
-    // start flow
-    loading.style.display='none'; overlay.style.display='grid';
-    overlay.addEventListener('click', e=>{
-      const c=e.target.closest('.choice'); if(!c) return;
-      const img=(c.dataset.char==='VR' && VR) ? VR : (OR || VR);
-      player = makePlayer(img);
-      overlay.style.display='none';
-      start();
-    });
-
-    // prevent page scroll (UI以外)
-    ['touchstart','touchmove','gesturestart'].forEach(ev=>{
-      document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
-    });
-
-  }).catch(err=>{
-    console.error(err);
-    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
-  });
+  // ===== エンジン効果例 =====
+  function useEngine(){
+    player.vy=-JUMP*1.5;   // 弱めに
+    player.jumps=player.jumpMax;
+  }
 })();
 </script>
 </body>
