@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – リトライ安定化＆20%出現</title>
+<title>Runner – 安定版（iOS対策）</title>
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
@@ -21,7 +21,10 @@
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
-  canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+  canvas#game{
+    width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent;
+    will-change:transform; transform:translateZ(0); /* iOSちらつき対策 */
+  }
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
     display:grid;grid-template-columns:1fr auto 1fr;grid-template-areas:"itemL buttons itemR";
@@ -104,6 +107,15 @@
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
 
+  // visualViewport 変動に追従（iOSアドレスバー対策）
+  const vv = window.visualViewport;
+  function hardReflow(){ fit(); setup(); }
+  if (vv) {
+    vv.addEventListener('resize', hardReflow, {passive:true});
+    vv.addEventListener('scroll', hardReflow, {passive:true});
+  }
+  addEventListener('orientationchange', hardReflow, {passive:true});
+
   // ==== Canvas ====
   const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
   ctx.imageSmoothingEnabled=false; const W=390,H=540;
@@ -135,13 +147,13 @@
         if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1}; }
     };
 
-    // ===== Background (no trim) =====
+    // ===== Background =====
     const BG_MOD = (()=>{ const scale=H/BG.naturalHeight, tileW=BG.naturalWidth*scale;
       function draw(off){ let ox=off%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(BG,0,0,BG.naturalWidth,BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H); } }
       return {draw};
     })();
 
-    // ===== Ground (mob.png top trim) =====
+    // ===== Ground =====
     const GR_MOD = (()=>{ const t=Px.topTrim(GR); const drawH=Math.max(48, Math.min(160, t.contentH));
       const srcY=t.trimTop, srcH=GR.naturalHeight - t.trimTop; const scale=drawH/srcH; const tileW=GR.naturalWidth*scale;
       function floorY(){ return Math.floor(H - drawH); }
@@ -219,7 +231,7 @@
       }
     }
 
-    // 50mごとに20%でアイテム出現判定（gameOver中は停止）
+    // 50mごとに20%でアイテム出現判定
     function periodicItemCheck(){
       if(gameOver) return;
       const m = Math.floor(dist*0.02); // m換算
@@ -312,7 +324,7 @@
           updateHUD();
         }else if(s.type==='engine'){
           if(player){
-            player.vy = -JUMP*1.8;
+            player.vy = -JUMP*1.6; // ← 1.8から弱めに
             player.jumps = player.jumpMax; // （翼中なら4まで）
           }
           slots[idx]=null; updateHUD();
@@ -333,27 +345,18 @@
       if(e.code==='Digit2'){ slotEls[1].click(); }
     });
 
-    // ===== リセットを一括管理 =====
+    // ===== リセット一括管理 =====
     function resetGame(){
-      // ゲーム状態
       gameOver = false;
       dist = 0; meters = 0; lastItemCheck = 0;
       speed = BASE; bgOff = 0; grOff = 0;
 
-      // スポーン系
-      obs.length = 0;
-      items.length = 0;
-      pendingEngine = false;
+      obs.length = 0; items.length = 0; pendingEngine = false;
 
-      // ブースト・バフ
-      boostCharge = 100;
-      burstActive = false; burstTimer = 0;
+      boostCharge = 100; burstActive = false; burstTimer = 0;
       wingsActive = false; wingsTimer = 0;
-
-      // スロット
       slots[0] = null; slots[1] = null;
 
-      // プレイヤー
       if(player){
         player.y = GR_MOD.floorY();
         player.vy = 0;
@@ -361,7 +364,6 @@
         player.jumps = 2;
       }
 
-      // UI
       gameover.style.display='none';
       updateHUD();
     }
@@ -402,9 +404,10 @@
         }
       }
 
-      // 物理
+      // 物理（上方向クランプで消失体感を抑制）
       if(player && !gameOver){
-        player.vy += GRAV*dt; player.y += player.vy*dt;
+        player.vy += 1500*dt; player.y += player.vy*dt;
+        if (player.y < -H*0.5) player.y = -H*0.5; // 上に行き過ぎない
         const fy=GR_MOD.floorY(); if(player.y>fy){ player.y=fy; player.vy=0; player.jumps=player.jumpMax; }
       }
 
@@ -470,17 +473,14 @@
         }
       }
 
-      // HUDは最後に
       updateHUD();
-
-      // 常時ループ（ゲームオーバーでも止めない）
-      requestAnimationFrame(loop);
+      requestAnimationFrame(loop); // 常時ループ
     }
 
     function endGame(){
       if(gameOver) return;
       gameOver = true;
-      gameover.style.display='grid'; // 一発で可視化
+      gameover.style.display='grid'; // ブラウザ差分回避
     }
 
     // start flow
