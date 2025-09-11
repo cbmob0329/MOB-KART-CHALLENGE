@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone only</title>
+<title>Runner – cone + jumpdai</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -106,9 +106,9 @@
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'), load('jumpdai.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_JP, IMG_VR, IMG_OR])=>{
 
     // ===== ピクセルユーティリティ =====
     const Px = {
@@ -145,9 +145,11 @@
       return {x:80,y:GR.floorY(),vy:0,w:48,h:48,jumps:2,img,feetFrac}; }
     let player=null;
 
-    // ===== コーン（余白カット・小さめ・接地） =====
+    // ===== コーン & ジャンプ台（余白カット・接地） =====
     const cornTrim = Px.tightRect(IMG_CO);
-    const obstacles = []; // {x,y,w,h,img,trim,type:'corn'}
+    const jumpTrim = Px.tightRect(IMG_JP);
+    const obstacles = []; // {x,y,w,h,img,trim,type,cd?:number}
+
     function makeCorn(){
       const fy = GR.floorY();
       const targetH = Math.round(GR.drawH * 0.40); // 1ジャンプで越えやすい高さ
@@ -155,11 +157,19 @@
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: W+40, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
-    // スポーン（等間隔すぎない程度）
+    function makeJumpdai(){
+      const fy = GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.32); // やや低め
+      const s = targetH / jumpTrim.sh;
+      const w = Math.round(jumpTrim.sw * s), h = Math.round(jumpTrim.sh * s);
+      return { x: W+40, y: fy - h, w, h, img: IMG_JP, trim: jumpTrim, type:'jump', cd:0 };
+    }
+
+    // スポーン（コーン／ジャンプ台をランダムに）
     let nextSpawnDist = 250 + Math.random()*250;
     function maybeSpawn(totalDist){
       if(totalDist > nextSpawnDist){
-        obstacles.push(makeCorn());
+        if(Math.random() < 0.55) obstacles.push(makeCorn()); else obstacles.push(makeJumpdai());
         nextSpawnDist += 200 + 200*Math.random();
       }
     }
@@ -234,7 +244,12 @@
       if(!gameOver){
         dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
         maybeSpawn(dist);
-        for(let i=obstacles.length-1;i>=0;i--){ const o=obstacles[i]; o.x -= speed*dt; if(o.x + o.w < -40) obstacles.splice(i,1); }
+        for(let i=obstacles.length-1;i>=0;i--){
+          const o=obstacles[i];
+          o.x -= speed*dt;
+          if(o.cd){ o.cd=Math.max(0, o.cd - dt); } // ジャンプ台のクールダウン
+          if(o.x + o.w < -40) obstacles.splice(i,1);
+        }
       }
 
       // 描画
@@ -244,7 +259,7 @@
       // 地面
       (function(){ const t=Px.topTrim(IMG_GR); const drawH=Math.max(48, Math.min(160, t.contentH)); const srcY=t.trimTop, srcH=IMG_GR.naturalHeight-t.trimTop; const scale=drawH/srcH; const tileW=IMG_GR.naturalWidth*scale; const y=Math.floor(H-drawH); let ox=grOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } })();
 
-      // コーン
+      // 障害物
       obstacles.forEach(o=>{
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
@@ -262,7 +277,18 @@
             // まずAABBで早期判定
             const aabb=(px<o.x+o.w && px+player.w>o.x && py<o.y+o.h && py+player.h>o.y);
             if(!aabb) continue;
-            if(hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
+
+            if(o.type==='corn'){
+              if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
+            }else if(o.type==='jump'){
+              // 上から踏んだときだけバウンド、横はスルー（ゲームオーバーなし）
+              const comingDown = player.vy >= -20;
+              const wasAbove   = (player.y - player.h*0.6) < o.y;
+              if(comingDown && wasAbove && (!o.cd || o.cd<=0)){
+                player.y = o.y; player.vy = -JUMP*1.2; player.jumps = 2;
+                o.cd = 0.2; // 多重発動防止
+              }
+            }
           }
         }
       }
