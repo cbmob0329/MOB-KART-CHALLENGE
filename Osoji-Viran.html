@@ -84,8 +84,7 @@ const hint = document.getElementById('hint');
 
 let W=0,H=0, groundY=0, baseY=0;
 function resize(){
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
   W = vw * DPR; H = vh * DPR;
   canvas.width = W; canvas.height = H;
   canvas.style.width = vw+"px"; canvas.style.height = vh+"px";
@@ -96,11 +95,103 @@ window.addEventListener('resize', resize, {passive:true});
 resize();
 
 // ====== ゲーム状態 ======
-const world = { timeLeft:30.0, score:0, running:false }; // ← 30秒に変更
+const world = { timeLeft:30.0, score:0, running:false }; // ★30秒に変更
 
-// 以下は前のコードと同じ（省略）
-// プレイヤー, キャリア, 火の玉, 入力処理, update(), draw(), endGame() など
-// （ここはご使用中の直前バージョンと同じでOKです。world.timeLeft だけ変更済み）
+// ====== プレイヤー ======
+const player = {
+  x: W*0.22, y: baseY, w:84*DPR, h:84*DPR,
+  stunned: 0, blinkT:0,
+  lockDrop: 0,
+  moveEaseX: 0.12,
+  _bob: 0
+};
+
+// ====== 火の玉 ======
+const fireball = { active:false, x:0,y:0, vx:0,vy:0, r:18*DPR, seeking:false, target:null };
+
+// ====== キャリア ======
+function makeCarrier(kindIndex){
+  const speed = (0.10+Math.random()*0.06)*DPR;
+  const dir = Math.random()<0.5?-1:1;
+  const startX = dir>0 ? -80*DPR : W+80*DPR;
+  return {kind:kindIndex,x:startX,y:groundY-20*DPR,w:72*DPR,h:72*DPR,
+    vx:speed*dir,baseSpeed:speed,hopT:Math.random()*6,
+    hasBin:true,bin:{w:56*DPR,h:56*DPR,explode:0,exploding:false},state:'patrol'};
+}
+const carriers=[makeCarrier(1),makeCarrier(2),makeCarrier(3)];
+
+// ====== 入力処理 ======
+const input={touching:false,id:null,lx:0};
+canvas.addEventListener('touchstart',e=>{
+  const t=e.changedTouches[0]; input.touching=true; input.id=t.identifier;
+  input.lx=t.clientX*DPR; input.t0=performance.now(); input.moved=false;
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  for(const t of e.changedTouches){if(t.identifier===input.id){input.lx=t.clientX*DPR;}}
+},{passive:false});
+canvas.addEventListener('touchend',e=>{
+  if(!input.touching)return; const dt=performance.now()-input.t0;
+  if(dt<250)tryDrop(); input.touching=false; input.id=null;
+},{passive:false});
+
+// ====== ゲームループ ======
+let started=false,last=performance.now();
+function startGame(){if(started)return; started=true; loader.style.display='none'; world.running=true; requestAnimationFrame(loop);}
+setTimeout(()=>{if(!started)startGame();},2000);
+
+function loop(t){const dt=Math.min(0.05,(t-last)/1000);last=t;if(world.running)update(dt);draw();requestAnimationFrame(loop);}
+
+function update(dt){
+  world.timeLeft-=dt;
+  if(world.timeLeft<=0){world.timeLeft=0;endGame();}
+  timeEl.textContent=world.timeLeft.toFixed(1);
+  scoreEl.textContent=world.score;
+
+  // プレイヤー移動
+  if(input.touching){const tx=input.lx-player.w/2;player.x+= (tx-player.x)*player.moveEaseX;}
+  player.y=baseY;
+
+  // 火の玉
+  if(fireball.active){
+    if(!fireball.seeking){
+      fireball.vy+=0.008*DPR; fireball.vy=Math.min(fireball.vy,2.4*DPR);
+      fireball.y+=fireball.vy*dt*1000;
+      for(const c of carriers){if(c.hasBin&&!c.bin.exploding){
+        const bx=c.x+(c.w-c.bin.w)/2;const by=(c.y-c.h)-c.bin.h;
+        if(fireball.x>bx&&fireball.x<bx+c.bin.w&&fireball.y>by&&fireball.y<by+c.bin.h){
+          c.bin.exploding=true;fireball.active=false;world.score++;
+        }}}
+      if(fireball.y>groundY)fireball.active=false;
+    }
+  }
+
+  // キャリア
+  for(const c of carriers){c.hopT+=dt*8;c.x+=c.vx*dt*1000;
+    if(c.x<-60*DPR)c.vx=Math.abs(c.vx);
+    if(c.x>W+60*DPR)c.vx=-Math.abs(c.vx);}
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // 背景
+  ctx.fillStyle="#1a2230";ctx.fillRect(0,0,W,H);
+  // キャリア
+  ctx.fillStyle="#ccc";for(const c of carriers){ctx.fillRect(c.x,c.y-c.h,c.w,c.h);
+    if(c.hasBin){ctx.fillStyle="#999";ctx.fillRect(c.x+c.w/4,c.y-c.h-40*DPR,40*DPR,40*DPR);ctx.fillStyle="#ccc";}}
+  // 火の玉
+  if(fireball.active){ctx.fillStyle="#ff0";ctx.beginPath();ctx.arc(fireball.x,fireball.y,fireball.r,0,Math.PI*2);ctx.fill();}
+  // プレイヤー
+  ctx.fillStyle="#6cf";ctx.fillRect(player.x,player.y,player.w,player.h);
+}
+
+function tryDrop(){
+  if(fireball.active)return;
+  fireball.active=true;fireball.x=player.x+player.w/2;fireball.y=player.y+player.h;
+  fireball.vy=0.06*DPR;
+}
+
+function endGame(){world.running=false;document.getElementById('finalScore').textContent=world.score;modal.style.display='flex';}
+retryBtn.addEventListener('click',()=>{world.timeLeft=30;world.score=0;world.running=true;modal.style.display='none';});
 })();
 </script>
 </body>
