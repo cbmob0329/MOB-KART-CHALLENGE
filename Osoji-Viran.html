@@ -70,6 +70,7 @@
 
 <script>
 (()=>{
+// ===== 基本 =====
 const DPR = Math.max(1, window.devicePixelRatio || 1);
 const canvas = document.getElementById('cv');
 const ctx = canvas.getContext('2d');
@@ -90,12 +91,12 @@ function resize(){
   canvas.width = W; canvas.height = H;
   canvas.style.width = vw+"px"; canvas.style.height = vh+"px";
   groundY = H*0.86;
-  baseY = H*0.25;
+  baseY = H*0.25;  // プレイヤーは上寄り固定
 }
 window.addEventListener('resize', resize, {passive:true});
 resize();
 
-// 画像ロード
+// ===== 画像ロード =====
 function loadImgSafe(src, timeoutMs=4000){
   return new Promise((resolve)=>{
     const im = new Image(); let done=false;
@@ -108,7 +109,7 @@ function loadImgSafe(src, timeoutMs=4000){
 }
 const files = [
   'work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png',
-  'nera.png','otosi.png','koti.png','imada.png','isoge.png','totte.png'
+  'isoge.png','totte.png'
 ];
 const assets = {};
 let started = false;
@@ -122,108 +123,104 @@ let started = false;
       if(done===files.length) startGame();
     });
   }
+  // 万一画像が欠けても3秒で開始
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
-// 入力
+// ===== 入力（左右ドラッグ／タップ投下）=====
 const input = { touching:false, id:null, lx:0, t0:0, moved:false };
 const TAP_TIME = 220, TAP_MOVE = 12*DPR;
 function viewToCanvas(x,y){ return { x:x*DPR, y:y*DPR }; }
-canvas.addEventListener('touchstart', e=>{
+canvas.addEventListener('touchstart',(e)=>{
   const t=e.changedTouches[0];
   input.touching=true; input.id=t.identifier; input.moved=false; input.t0=performance.now();
   input.lx=viewToCanvas(t.clientX,t.clientY).x;
 },{passive:false});
-canvas.addEventListener('touchmove', e=>{
-  for(const t of e.changedTouches){ if(t.identifier===input.id){
-    const p=viewToCanvas(t.clientX,t.clientY);
-    if(Math.abs(p.x-input.lx)>TAP_MOVE) input.moved=true;
-    input.lx=p.x; e.preventDefault(); break;
-  }}
+canvas.addEventListener('touchmove',(e)=>{
+  for(const t of e.changedTouches){
+    if(t.identifier===input.id){
+      const p=viewToCanvas(t.clientX,t.clientY);
+      if(Math.abs(p.x-input.lx)>TAP_MOVE) input.moved=true;
+      input.lx=p.x; e.preventDefault(); break;
+    }
+  }
 },{passive:false});
-canvas.addEventListener('touchend', e=>{
+canvas.addEventListener('touchend',(e)=>{
   if(!input.touching) return;
   const dt=performance.now()-input.t0;
   if(!input.moved && dt<=TAP_TIME) tryDrop();
   input.touching=false; input.id=null;
 },{passive:false});
 
-// 状態
-const world={timeLeft:30.0,score:0,running:false};
-const player={x:W*0.22,y:baseY,w:84*DPR,h:84*DPR,stunned:0,blinkT:0,lockDrop:0,moveEaseX:0.12};
-const fireball={active:false,x:0,y:0,vy:0,r:18*DPR};
-
-// 吹き出し管理
-const RANDOM_BALLOONS = ['nera.png','otosi.png','koti.png'];
-const FETCH_BALLOONS  = ['isoge.png','totte.png'];
-const PAUSE_BALLOON   = 'imada.png';
-
+// ===== ユーティリティ =====
+function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
 function rand(a,b){ return a + Math.random()*(b-a); }
+function aabb(x,y,w,h, X,Y,W2,H2){ return !(x+w<X || X+W2<x || y+h<Y || Y+H2<y); }
+
+// ===== 状態 =====
+const world={timeLeft:30.0, score:0, running:false};
+const player={x:W*0.22, y:baseY, w:84*DPR, h:84*DPR, stunned:0, blinkT:0, lockDrop:0, moveEaseX:0.12};
+const fireball={active:false, x:0,y:0, vy:0, r:18*DPR};
 
 function makeCarrier(kindIndex){
   const speed=(0.10+Math.random()*0.06)*DPR;
   const dir=Math.random()<0.5?-1:1;
   const startX=dir>0?-80*DPR:W+80*DPR;
   return{
-    kind:kindIndex,x:startX,y:groundY-20*DPR,w:72*DPR,h:72*DPR,
-    vx:speed*dir,baseSpeed:speed,hopT:Math.random()*6,
-    hasBin:true,bin:{w:56*DPR,h:56*DPR,explode:0,exploding:false},
-    state:'patrol',beh:'patrol',behT:rand(2.5,4.5),
-    pauseLeft:0,slowLeft:0,edgePause:0,
-    bubble:{name:null,time:0,cd:rand(9.0,14.0),fetchCd:null} // ← ランダム頻度を間引き
+    kind:kindIndex, x:startX, y:groundY-20*DPR, w:72*DPR, h:72*DPR,
+    vx:speed*dir, baseSpeed:speed, hopT:Math.random()*6,
+    hasBin:true, bin:{w:56*DPR, h:56*DPR, explode:0, exploding:false},
+    state:'patrol',
+    beh:'patrol', behT:rand(2.5,4.5),
+    pauseLeft:0, slowLeft:0, edgePause:0,
+    // 吹き出し（fetchのみ使用）
+    bubble:{name:null, time:0, fetchCd:null}
   };
 }
-// 6体固定
+// 各色2体ずつ＝6体固定
 const carriers=[makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3)];
 
-// ループ
+// ===== ループ =====
 let last=performance.now();
-function startGame(){ if(started)return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
-function loop(t){const dt=Math.min(0.05,(t-last)/1000);last=t;if(world.running)update(dt);draw();requestAnimationFrame(loop);}
+function startGame(){ if(started) return; started=true; loader.style.display='none'; world.running=true; last=performance.now(); requestAnimationFrame(loop); }
+function loop(t){ const dt=Math.min(0.05,(t-last)/1000); last=t; if(world.running) update(dt); draw(); requestAnimationFrame(loop); }
 
-function clamp(v,a,b){ return Math.max(a, Math.min(b,v)); }
-
+// ===== 更新 =====
 function update(dt){
   // タイマー
-  world.timeLeft-=dt;if(world.timeLeft<=0){world.timeLeft=0;endGame();}
+  world.timeLeft-=dt; if(world.timeLeft<=0){ world.timeLeft=0; endGame(); }
   timeEl.textContent=world.timeLeft.toFixed(1); scoreEl.textContent=world.score;
 
-  // ロック
-  if(player.lockDrop>0){ player.lockDrop = Math.max(0, player.lockDrop - dt); }
-  hint.textContent = (player.lockDrop>0)
-    ? `投下ロック中… ${player.lockDrop.toFixed(1)}s`
-    : 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
+  // 投下ロック
+  if(player.lockDrop>0) player.lockDrop=Math.max(0, player.lockDrop-dt);
+  hint.textContent = (player.lockDrop>0) ? `投下ロック中… ${player.lockDrop.toFixed(1)}s` : 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
 
-  // プレイヤー移動
+  // プレイヤー移動（Xのみ）
   if(input.touching){
     const tx=clamp(input.lx-player.w/2,20*DPR,W-20*DPR-player.w);
     player.x += (tx-player.x)*player.moveEaseX;
   }
   player.y=baseY;
-  if(player.stunned>0){ player.stunned = Math.max(0, player.stunned - dt); player.blinkT += dt*8; }
+  if(player.stunned>0){ player.stunned=Math.max(0,player.stunned-dt); player.blinkT+=dt*8; }
 
   // 火の玉
   if(fireball.active){
-    fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.4*DPR);
+    fireball.vy+=0.0080*DPR; fireball.vy=Math.min(fireball.vy,2.40*DPR);
     fireball.y+=fireball.vy*dt*1000;
     // 命中
     for(const c of carriers){
       if(c.hasBin && !c.bin.exploding){
         const bx=c.x+(c.w-c.bin.w)/2;
-        const by=(c.y-c.h)-c.bin.h-6*DPR; // 頭上
-        const hit = !(fireball.x-fireball.r+fireball.r*2<bx || bx+c.bin.w<fireball.x-fireball.r ||
-                      fireball.y-fireball.r+fireball.r*2<by || by+c.bin.h<fireball.y-fireball.r);
-        if(hit){
+        const by=(c.y-c.h)-c.bin.h-6*DPR;
+        if(aabb(fireball.x-fireball.r,fireball.y-fireball.r,fireball.r*2,fireball.r*2, bx,by,c.bin.w,c.bin.h)){
           c.bin.exploding=true; c.bin.explode=0;
           fireball.active=false; world.score++;
         }
       }
     }
-    // ミス（地面）
+    // 地面に到達 → ペナルティ
     if(fireball.active && fireball.y>groundY){
-      fireball.active=false;
-      player.stunned=2.0; player.blinkT=0;
-      player.lockDrop=2.0;
+      fireball.active=false; player.stunned=2.0; player.blinkT=0; player.lockDrop=2.0;
     }
   }
 
@@ -232,88 +229,69 @@ function update(dt){
     // ぴょん
     c.hopT+=dt*8; const hop=Math.abs(Math.sin(c.hopT))*8*DPR;
 
-    // 破裂進行
+    // 破裂進行（爆発1→消滅→fetch遷移）
     if(c.bin.exploding){
       c.bin.explode += dt*1.8;
       if(c.bin.explode>=1){
-        // bin が消えた瞬間 → fetch
         c.bin.exploding=false; c.hasBin=false; c.state='fetch'; c.beh='patrol'; c.edgePause=0;
-
-        // 取ってくる即時表示（小さめ密着）
-        const pick = (Math.random()<0.5)? 'isoge.png' : 'totte.png';
-        c.bubble.name = pick;
-        c.bubble.time = 1.1;                    // fetchは少し長め
-        c.bubble.fetchCd = rand(2.0, 3.0);      // 次のfetch吹き出しCD
+        // ★ 取ってくる「瞬間」に吹き出し表示
+        const pick = (Math.random()<0.5)? 'isoge.png':'totte.png';
+        c.bubble.name = pick; c.bubble.time = 1.1; c.bubble.fetchCd = rand(2.0,3.0);
       }
     }
 
-    // 吹き出しタイマー
-    if(c.bubble.time>0) c.bubble.time = Math.max(0, c.bubble.time - dt);
-    if(c.bubble.cd>0)   c.bubble.cd   = Math.max(0, c.bubble.cd   - dt);
-    if(c.bubble.fetchCd!==null) c.bubble.fetchCd = Math.max(0, c.bubble.fetchCd - dt);
+    // 吹き出しタイマー（fetchのみ使用）
+    if(c.bubble.time>0) c.bubble.time=Math.max(0,c.bubble.time-dt);
+    if(c.bubble.fetchCd!==null) c.bubble.fetchCd=Math.max(0,c.bubble.fetchCd-dt);
 
     if(c.state==='fetch'){
-      // 補給へ（普通の速さ）
+      // 右端へ補給（通常速度）
       const speed=Math.abs(c.baseSpeed)*1.0*DPR;
       c.x += speed * dt * 1000;
 
-      // fetch中の定期吹き出し（積極的）
+      // fetch中は2.0〜3.0秒ごとに再表示
       if(c.bubble.fetchCd!==null && c.bubble.time<=0 && c.bubble.fetchCd<=0){
-        c.bubble.name = (Math.random()<0.5)? 'isoge.png' : 'totte.png';
+        c.bubble.name = (Math.random()<0.5)? 'isoge.png':'totte.png';
         c.bubble.time = 1.1;
-        c.bubble.fetchCd = rand(2.0, 3.0);
+        c.bubble.fetchCd = rand(2.0,3.0);
       }
 
       if(c.x - c.w > W + 40*DPR){
-        // 右外で補給→復帰（左へ）
+        // 右外で補給 → 復帰（左へ）
         c.x = W + 120*DPR; c.vx = -Math.abs(c.baseSpeed);
         c.bin = {w:56*DPR,h:56*DPR,explode:0,exploding:false};
-        c.hasBin = true; c.state = 'patrol';
+        c.hasBin=true; c.state='patrol';
         c.beh='patrol'; c.behT=rand(2.5,4.5);
         c.pauseLeft=0; c.slowLeft=0; c.edgePause=0;
-        c.bubble.fetchCd=null; // fetch専用タイマ解除
+        c.bubble.fetchCd=null; // fetch専用解放
       }
-    }else{ // patrol
-      if(c.edgePause>0){
-        c.edgePause -= dt;
-        if(c.edgePause<=0){ c.vx = -c.vx; c.beh='patrol'; }
+    }else{ // === patrol ===
+      // ランダム行動（Pause/Slow）
+      c.behT -= dt;
+      if(c.behT<=0 && !c.bin.exploding){
+        if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
+        else{ c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5; }
+        c.behT = rand(3.0,6.0);
+      }
+
+      if(c.beh==='pause'){
+        // 停止
+        c.pauseLeft -= dt;
+        if(c.pauseLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
       }else{
-        // ランダム行動：Pause/Slow
-        c.behT -= dt;
-        if(c.behT<=0 && !c.bin.exploding){
-          if(Math.random()<0.5){ c.beh='pause'; c.pauseLeft=2.0; }
-          else{ c.beh='slow'; c.slowLeft=1.2; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed)*0.5; }
-          c.behT = rand(3.0, 6.0);
-        }
-
-        if(c.beh==='pause'){
-          c.pauseLeft -= dt;
-          // 停止中は imada を常時（延命方式）
-          if(c.pauseLeft>0){
-            c.bubble.name = PAUSE_BALLOON;
-            c.bubble.time = 0.15; // 小刻みに延命
-          }else{
-            c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed);
-          }
-        }else{
-          c.x += c.vx * dt * 1000;
-        }
-
-        if(c.beh==='slow'){
-          c.slowLeft -= dt;
-          if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
-        }
-
-        // ランダム吹き出し（かなり間引き・短め表示）
-        if(c.bubble.time<=0 && c.bubble.cd<=0){
-          const pick = RANDOM_BALLOONS[Math.floor(Math.random()*RANDOM_BALLOONS.length)];
-          c.bubble.name = pick; c.bubble.time = 0.9; c.bubble.cd = rand(9.0,14.0);
-        }
-
-        // 端で停止→反転（外に出さない）
-        if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause = 0.30; }
-        if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause = 0.30; }
+        c.x += c.vx * dt * 1000; // patrol/slow 共通
       }
+
+      // slow終了で速度戻す
+      if(c.beh==='slow'){
+        c.slowLeft -= dt;
+        if(c.slowLeft<=0){ c.beh='patrol'; c.vx = Math.sign(c.vx)*Math.abs(c.baseSpeed); }
+      }
+
+      // 端で停止→反転（画面外に出さない）
+      if(c.x < -60*DPR){ c.x = -60*DPR; c.edgePause=0.30; }
+      if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.edgePause=0.30; }
+      if(c.edgePause>0){ c.edgePause -= dt; if(c.edgePause<=0){ c.vx=-c.vx; } }
     }
     c.y = groundY - 20*DPR - hop;
   }
@@ -324,25 +302,25 @@ function tryDrop(){
   fireball.active=true; fireball.x=player.x+player.w/2; fireball.y=player.y+player.h; fireball.vy=0.06*DPR;
 }
 
-// 描画
+// ===== 描画 =====
 function draw(){
   ctx.clearRect(0,0,W,H);
 
-  // 背景
+  // 背景（固定）
   if(assets['work.png']){
     const img=assets['work.png']; const scale=(H/img.height); const w=img.width*scale;
     ctx.drawImage(img,0,0,w,H); if(w<W){ ctx.fillStyle="#111826"; ctx.fillRect(w,0,W-w,H); }
   }else{ ctx.fillStyle="#1a2230"; ctx.fillRect(0,0,W,H); }
 
-  // 各キャラ（順序：キャラ → ゴミ箱 → 吹き出し（前面））
+  // キャリア：描画順「キャラ → ゴミ箱 → 吹き出し（前面）」
   for(const c of carriers){
     const sx=c.x, sy=c.y-c.h;
 
-    // 1) キャラ本体
-    const im=assets[c.kind+'.png'];
-    if(im) ctx.drawImage(im,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
+    // 1) キャラ
+    const cim=assets[c.kind+'.png'];
+    if(cim) ctx.drawImage(cim,sx,sy,c.w,c.h); else { ctx.fillStyle="#ccc"; ctx.fillRect(sx,sy,c.w,c.h); }
 
-    // 2) ゴミ箱（頭上）
+    // 2) ゴミ箱（頭の上）
     if(c.hasBin){
       const bx=c.x+(c.w-c.bin.w)/2;
       const by=sy - c.bin.h;
@@ -351,6 +329,7 @@ function draw(){
         if(assets['gomi.png']){
           ctx.save(); ctx.globalAlpha=1-t; ctx.drawImage(assets['gomi.png'],bx,by,c.bin.w,c.bin.h); ctx.restore();
         }else{ ctx.fillStyle=`rgba(200,200,200,${1-t})`; ctx.fillRect(bx,by,c.bin.w,c.bin.h); }
+        // 赤いスパイク爆発
         ctx.save();
         ctx.globalCompositeOperation='lighter';
         ctx.fillStyle=`rgba(255,60,80,${0.65*(1-t)})`;
@@ -371,21 +350,19 @@ function draw(){
       }
     }
 
-    // 3) 吹き出し（小型・密着・前面）
+    // 3) 吹き出し（fetch時のみ）— 小型・頭横に密着・前面
     if(c.bubble.name && c.bubble.time>0){
-      const bimg = assets[c.bubble.name];
-      const bw = 56*DPR;                 // ← さらに小さく
-      const bh = bimg ? (bw * (bimg.height / bimg.width)) : 40*DPR;
-      const margin = 2*DPR;              // ← ほぼ密着
-      // 基本は右側。はみ出すなら左側へ。
+      const bimg=assets[c.bubble.name];
+      const bw=56*DPR;
+      const bh=bimg ? (bw*(bimg.height/bimg.width)) : 40*DPR;
+      const margin=2*DPR;
       let bx = sx + c.w + margin;
-      if(bx + bw > W - 2*DPR){ bx = sx - bw - margin; }
-      // 縦位置：頭のほぼ中央高さに沿わせる
-      let by = sy + c.h*0.35 - bh/2;
+      if(bx + bw > W - 2*DPR){ bx = sx - bw - margin; } // 右に出せない時は左側
+      let by = sy + c.h*0.35 - bh/2; // 頭の横
       // 画面内クランプ
       bx = clamp(bx, 2*DPR, W - bw - 2*DPR);
       by = clamp(by, 2*DPR, groundY - bh - 2*DPR);
-      if(bimg){ ctx.drawImage(bimg, bx, by, bw, bh); }
+      if(bimg) ctx.drawImage(bimg, bx, by, bw, bh);
       else { ctx.fillStyle="rgba(255,255,255,.9)"; ctx.fillRect(bx,by,bw,bh); }
     }
   }
@@ -406,22 +383,25 @@ function draw(){
   }
 }
 
-// 終了/リトライ
+// ===== 終了/リトライ =====
 function endGame(){ world.running=false; document.getElementById('finalScore').textContent=world.score; modal.style.display='flex'; }
 function resetGame(){
   world.timeLeft=30.0; world.score=0; world.running=true;
   player.stunned=0; player.lockDrop=0; player.blinkT=0;
   fireball.active=false; fireball.vy=0;
   carriers.length=0;
-  carriers.push( makeCarrier(1), makeCarrier(1), makeCarrier(2), makeCarrier(2), makeCarrier(3), makeCarrier(3) );
+  carriers.push( makeCarrier(1),makeCarrier(1),makeCarrier(2),makeCarrier(2),makeCarrier(3),makeCarrier(3) );
   modal.style.display='none';
 }
-
-// ユーティリティ
-function tryDrop(){
-  if(player.lockDrop>0 || fireball.active) return;
-  fireball.active=true; fireball.x=player.x+player.w/2; fireball.y=player.y+player.h; fireball.vy=0.06*DPR;
-}
+retryBtn.addEventListener('click', resetGame);
+shareBtn.addEventListener('click', async ()=>{
+  const text = `Osoji-Viran｜スコア ${world.score}（30秒）`;
+  try{
+    if(navigator.share) await navigator.share({text, url: location.href});
+    else await navigator.clipboard.writeText(text);
+    alert('結果を共有/コピーしました！');
+  }catch{}
+});
 })();
 </script>
 </body>
