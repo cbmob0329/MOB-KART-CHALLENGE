@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – safe spaced obstacles</title>
+<title>Runner – cone only (stable)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -14,7 +14,7 @@
     background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
     transform-origin:center center;
   }
-  /* HUD（固定） */
+  /* HUD（Canvasの外：固定） */
   header.hud{
     position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:10px;align-items:center;justify-content:space-around;padding:8px 10px;
@@ -22,10 +22,10 @@
     font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px}
-  /* プレイ領域 */
+  /* プレイ領域（HUD/ボタンと分離） */
   main.play{position:absolute;left:0;right:0;top:56px;bottom:96px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
-  /* 操作（固定） */
+  /* 操作ボタン（固定） */
   footer.ctrl{
     position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:96px;z-index:20;
     display:flex;gap:12px;align-items:center;justify-content:center;padding:10px 12px;
@@ -104,28 +104,35 @@
 
   /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
-      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } } return {trimTop:0,contentH:h}; },
-      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
-        const d=g.getImageData(0,0,w,h).data,TH=12; for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } } return {bottomTrim:0,h}; },
-      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas');
-        c.width=w;c.height=h;const g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
+      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12;
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } }
+        return {trimTop:0,contentH:h};
+      },
+      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12;
+        for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } }
+        return {bottomTrim:0,h};
+      },
+      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
         const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
-        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x; if(y<minY)minY=y; if(x>maxX)maxX=x; if(y>maxY)maxY=y; } } }
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y; } } }
         if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
       }
     };
 
-    /* ==== 背景 ==== */
+    /* ==== 背景：タイルスクロール ==== */
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
@@ -139,14 +146,14 @@
       return { draw };
     })();
 
-    /* ==== 地面 ==== */
+    /* ==== 地面：上端トリム→接地ライン整数化 ==== */
     const GR = (()=> {
       const t=Px.topTrim(IMG_GR);
-      const drawH=Math.max(48, Math.min(160, t.contentH));
+      const drawH=Math.max(48, Math.min(160, t.contentH)); // 表示厚
       const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
       const scaleY = drawH / srcH;
       const tileW  = IMG_GR.naturalWidth * scaleY;
-      function floorY(){ return Math.floor(H - drawH); }
+      function floorY(){ return Math.floor(H - drawH); }   // 接地ライン（整数）
       function draw(offsetX){
         const y=floorY(); let ox = offsetX % tileW; if(ox>0)ox-=tileW;
         for(let x=ox;x<W;x+=tileW){
@@ -159,63 +166,26 @@
     /* ==== プレイヤー ==== */
     function makePlayer(img){
       const b=Px.bottomTrim(img); const feetFrac=b.bottomTrim/b.h;
-      return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
+      return { x:80, y:GR.floorY(), vy:0, w:48, h:48, jumps:2, img, feetFrac };
     }
     let player=null;
 
-    /* ==== コーン／コンテナ（余白カット・接地） ==== */
+    /* ==== コーン：余白トリム→接地、少し小さめ ==== */
     const cornTrim = Px.tightRect(IMG_CO);
-    const contTrim = Px.tightRect(IMG_CT);
-
-    function newCorn(baseX){
-      const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.40);
+    const obstacles=[]; // {x,y,w,h,img,trim,type:'corn'}
+    function makeCorn(){
+      const fy=GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.40); // 1段ジャンプで越えやすい高さ
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
-      return [{ x: baseX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' }];
+      return { x: W+40, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
-    function newContSet(baseX){
-      const fy = GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.60);
-      const s = targetH / contTrim.sh;
-      const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
-      const n = 2 + Math.floor(Math.random()*2); // 2 or 3
-      const gap = 2; // ほぼ繋がる
-      const arr=[];
-      for(let i=0;i<n;i++){
-        arr.push({ x: baseX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
-      }
-      return arr; // グループ
-    }
-
-    /* ==== スポーン管理（重なり禁止＆安全間隔） ==== */
-    const obstacles=[]; // 画面上に存在する全オブジェクト
-    const PREBUFFER = 600;         // 画面右側に常にこれだけ先行で用意
-    const SPAWN_EDGE = W + 40;     // 初期湧きは右端から少し離す
-    const MIN_GAP = { corn:160, cont:240 }; // 絶対不可避を避ける間隔
-
-    function farthestRight(){
-      if(obstacles.length===0) return 0;
-      let m = 0;
-      for(const o of obstacles) m = Math.max(m, o.x + o.w);
-      return m;
-    }
-    function groupWidth(group){
-      return group[group.length-1].x + group[group.length-1].w - group[0].x;
-    }
-    function spawnIfNeeded(){
-      // 右側に十分な先行オブジェクトがなければ、重ならないように追加で生成
-      let fr = farthestRight();
-      while(fr < W + PREBUFFER){
-        // 次の種類を決定
-        const type = (Math.random() < 0.55) ? 'corn' : 'cont';
-        const minGap = (type==='corn') ? MIN_GAP.corn : MIN_GAP.cont;
-        const baseX = Math.max(SPAWN_EDGE, fr + minGap);
-
-        const group = (type==='corn') ? newCorn(baseX) : newContSet(baseX);
-        obstacles.push(...group);
-
-        fr = baseX + groupWidth(group); // これで連続生成時も必ず重なりゼロ
+    // スポーン（間隔はランダム）
+    let nextSpawnDist = 260 + Math.random()*240;
+    function maybeSpawn(totalDist){
+      if(totalDist > nextSpawnDist){
+        obstacles.push(makeCorn());
+        nextSpawnDist += 220 + Math.random()*240;
       }
     }
 
@@ -251,27 +221,25 @@
       if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
     });
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0;
-      if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; }
+      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; nextSpawnDist=260+Math.random()*240;
+      if(player){ player.y=GR.floorY(); player.vy=0; player.jumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
       gameover.style.display='none';
-      // 再配置
-      spawnIfNeeded();
     };
 
     /* ==== コーンの緩い当たり判定（2段） ==== */
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
-      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 };
-      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 };
+      const lower={ x:cone.x, y:cone.y + baseH*0.35, w:baseW,       h:baseH*0.65 }; // 下段：広め
+      const upper={ x:cone.x + baseW*0.30, y:cone.y + baseH*0.05, w:baseW*0.40, h:baseH*0.30 }; // 上段：細め
       const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
       const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
       return A||B;
     }
 
-    /* ==== ループ ==== */
+    /* ===== メインループ ===== */
     let prev=0, running=false;
-    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); spawnIfNeeded(); requestAnimationFrame(loop); }
+    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
       const dt = Math.min(0.033, (t-prev)/1000); prev=t;
 
@@ -283,11 +251,10 @@
 
       // 物理
       if(player && !gameOver){
-        player.prevBottom = player.y;          // 前フレーム足元
         player.vy += GRAV*dt;
         player.y  += player.vy*dt;
         const fy = GR.floorY();
-        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps = 2; }
+        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps=2; }
       }
 
       // 進行
@@ -296,10 +263,7 @@
         bgOff -= speed*0.20*dt;
         grOff -= speed*1.00*dt;
 
-        // 右端の先行在庫が足りなくなったら追加生成（重なりゼロ・安全間隔）
-        spawnIfNeeded();
-
-        // 移動と破棄
+        maybeSpawn(dist);
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
@@ -314,7 +278,7 @@
       // 地面
       (function(){ const t=Px.topTrim(IMG_GR); const drawH=Math.max(48, Math.min(160, t.contentH)); const srcY=t.trimTop, srcH=IMG_GR.naturalHeight-t.trimTop; const scale=drawH/srcH; const tileW=IMG_GR.naturalWidth*scale; const y=Math.floor(H-drawH); let ox=grOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } })();
 
-      // 障害物
+      // コーン
       obstacles.forEach(o=>{
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
@@ -326,25 +290,14 @@
         const py = Math.floor(player.y - player.h + feetPush);
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
-        // ===== 当たり判定 =====
+        // 当たり判定
         if(!gameOver){
           for(const o of obstacles){
             // まずAABBで早期判定
-            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            const aabb=(px<o.x+o.w && px+player.w>o.x && py<o.y+o.h && py+player.h>o.y);
             if(!aabb) continue;
-
-            if(o.type==='corn'){
-              if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='contena'){
-              // 上に乗れる：下降中で天面を跨いだら着地。それ以外の重なりは横当たり→ゲームオーバー
-              const top = o.y;
-              const comingDown = player.vy >= 0;
-              const crossed = (player.prevBottom <= top + 2) && (player.y >= top);
-              if(comingDown && crossed){
-                player.y = top; player.vy = 0; player.jumps = 2;
-              }else{
-                gameOver=true; gameover.style.display='grid'; break;
-              }
+            if( hitConeRelax(px,py,player.w,player.h,o) ){
+              gameOver=true; gameover.style.display='grid'; break;
             }
           }
         }
@@ -372,7 +325,7 @@
 
   }).catch(err=>{
     console.error(err);
-    document.querySelector('#loading .bubble').textContent = '画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
+    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
   });
 })();
 </script>
