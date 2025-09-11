@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + contena (stable spacing)</title>
+<title>Runner – cone + contena (soft top land)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -211,14 +211,11 @@
     }
     function trySpawn(totalDist){
       if(totalDist < nextAllowedDist) return;
-      // どちらかを選択
       const isCone = Math.random() < 0.55;
-      // 今ある最右端 + minGap 以降に出現
       const startX = Math.max(W + spawnMargin, rightmostFutureX() + minGap);
 
       if(isCone){
         obstacles.push( makeCorn(startX) );
-        // 次の許可距離はコーン幅に応じて
         nextAllowedDist = totalDist + 160 + Math.random()*160;
       }else{
         const set = makeContSet(startX);
@@ -276,6 +273,10 @@
       return A||B;
     }
 
+    /* ==== 上面着地を甘くする調整値 ==== */
+    const LAND_SNAP = 8;   // 上面に吸着できる縦バッファ（px）
+    const H_PAD     = 16;  // 横方向に広げるバッファ（px）
+
     /* ==== ループ ==== */
     let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
@@ -318,7 +319,7 @@
       // 地面
       (function(){ const t=Px.topTrim(IMG_GR); const drawH=Math.max(48, Math.min(160, t.contentH)); const srcY=t.trimTop, srcH=IMG_GR.naturalHeight-t.trimTop; const scale=drawH/srcH; const tileW=IMG_GR.naturalWidth*scale; const y=Math.floor(H-drawH); let ox=grOff%tileW; if(ox>0)ox-=tileW; for(let x=ox;x<W;x+=tileW){ ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH); } })();
 
-      // 障害物の描画
+      // 障害物描画
       obstacles.forEach(o=>{
         ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
       });
@@ -331,22 +332,30 @@
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
         if(!gameOver){
+          const currBottom = player.y;
+          const prevBottom = player.prevBottom;
+
           for(const o of obstacles){
-            const aabb=(px<o.x+o.w && px+player.w>o.x && py<o.y+o.h && py+player.h>o.y);
-            if(!aabb) continue;
+            // まずは横方向の重なり（上面着地は左右にゆとりを持って判定）
+            const overlapXWide = (px + player.w > o.x - H_PAD) && (px < o.x + o.w + H_PAD);
+            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!overlapXWide && !aabb) continue;
 
             if(o.type==='corn'){
-              if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
+              if(aabb && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
             }else if(o.type==='contena'){
-              // 天面に乗れる（下降中で天面を跨いだら着地）
-              const top=o.y, comingDown=player.vy>=0;
-              const prevB=player.prevBottom, currB=player.y;
-              const crossed=(prevB<=top+2)&&(currB>=top); // +2pxバッファ
-              const overlapX=(px+player.w>o.x)&&(px<o.x+o.w);
-              if(comingDown && crossed && overlapX){
-                player.y=top; player.vy=0; player.jumps=2;
-              }else{
-                // 横から or 下からの衝突はゲームオーバー
+              const top = o.y;
+              const comingDown = player.vy >= 0;
+              // 「跨いだ」または「少しめり込んだ」場合は“着地優先”
+              const crossed = (prevBottom <= top + LAND_SNAP) && (currBottom >= top - LAND_SNAP);
+
+              if(comingDown && crossed && overlapXWide){
+                // 天面に吸着して着地（めり込み救済）
+                player.y = top;
+                player.vy = 0;
+                player.jumps = 2;
+              }else if(aabb){
+                // 上面着地条件を満たしていない重なり＝横/下から衝突
                 gameOver=true; gameover.style.display='grid'; break;
               }
             }
