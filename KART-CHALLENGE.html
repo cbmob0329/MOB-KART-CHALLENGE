@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – items: tsubasa (slot fix)</title>
+<title>Runner – items: tsubasa + engine</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -47,9 +47,7 @@
     width:60px;height:60px;border-radius:12px;border:1px solid rgba(255,255,255,.12);
     background:#0e1626; position:relative; overflow:hidden;
   }
-  .slot button{
-    position:absolute;inset:0;border:0;background:transparent;padding:0;cursor:pointer
-  }
+  .slot button{position:absolute;inset:0;border:0;background:transparent;padding:0;cursor:pointer}
   .slot img{position:absolute;inset:8px;object-fit:contain;width:auto;height:auto;max-width:calc(100% - 16px);max-height:calc(100% - 16px);opacity:.95;pointer-events:none}
   .slot.empty{opacity:.35}
   .slot .badge{position:absolute;right:4px;bottom:4px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);font-size:10px;padding:1px 4px;border-radius:6px;pointer-events:none}
@@ -78,6 +76,7 @@
       <div class="status">
         <div class="pill">BOOST <span id="boostPct">100%</span></div>
         <div class="pill" id="wings" style="display:none;">WINGS <span id="wingsLeft">5.0s</span></div>
+        <div class="pill" id="engine" style="display:none;">ENGINE <span id="engineLeft">10.0s</span></div>
       </div>
     </header>
 
@@ -86,7 +85,7 @@
     <footer class="ctrl">
       <button class="btn" id="btnJump">ジャンプ</button>
 
-      <!-- ボタンは常設（JSで中身だけ差し替え） -->
+      <!-- ボタン常設（JSは中身だけ追加/削除） -->
       <div class="slots">
         <div class="slot empty" id="slot0"><button aria-label="slot 1"></button></div>
         <div class="slot empty" id="slot1"><button aria-label="slot 2"></button></div>
@@ -136,9 +135,9 @@
   Promise.all([
     load('sora.png'), load('mob.png'),
     load('corn.png'), load('contena.png'), load('tora.png'), load('gomi.png'),
-    load('tsubasa.png'),
+    load('tsubasa.png'), load('en.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_TR, IMG_GO, IMG_TS, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_TR, IMG_GO, IMG_TS, IMG_EN, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
@@ -246,20 +245,22 @@
         phase: Math.random()*Math.PI*2, amp: 3.0, rotAmp: 0.06 };
     }
 
-    /* ==== アイテム（浮遊：つばさ） ==== */
-    const itemTrim = Px.tightRect(IMG_TS);
+    /* ==== アイテム（浮遊：つばさ＆エンジン） ==== */
+    const trimTS = Px.tightRect(IMG_TS);
+    const trimEN = Px.tightRect(IMG_EN);
     const items=[]; // {x,y,w,h,img,trim,type,phase,amp,baseY}
-    function makeTsubasa(atX){
+    function makeFloating(img,trim,type, atX, targetH=36){
       const baseY = Math.round(H*0.28 + Math.random()*H*0.18);
-      const targetH = Math.round(36);
-      const s = targetH / itemTrim.sh;
-      const w = Math.round(itemTrim.sw * s), h = Math.round(itemTrim.sh * s);
-      return { x: atX, y: baseY, baseY, w, h, img: IMG_TS, trim: itemTrim, type:'tsubasa', phase: Math.random()*Math.PI*2, amp: 6.5 };
+      const s = targetH / trim.sh;
+      const w = Math.round(trim.sw * s), h = Math.round(trim.sh * s);
+      return { x: atX, y: baseY, baseY, w, h, img, trim, type, phase: Math.random()*Math.PI*2, amp: 6.5 };
     }
+    function makeTsubasa(atX){ return makeFloating(IMG_TS, trimTS, 'tsubasa', atX, 36); }
+    function makeEngine(atX){ return makeFloating(IMG_EN, trimEN, 'engine',  atX, 36); }
 
     /* ==== スポーン ==== */
     let nextAllowedDist = 200;   // 障害物
-    let nextItemDist    = 600;   // アイテム（レア）
+    let nextItemDist    = 650;   // アイテム（レア）
     const minGap = 90;
     const spawnMargin = 40;
     function rightmostFutureX(list){
@@ -289,55 +290,56 @@
           nextAllowedDist = totalDist + 180 + Math.random()*160;
         }
       }
-      // --- アイテム（レア） ---
+      // --- アイテム（低頻度／2種ランダム） ---
       if(totalDist >= nextItemDist){
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
-        items.push( makeTsubasa(startX) );
-        nextItemDist = totalDist + 900 + Math.random()*700; // 低頻度
+        if(Math.random() < 0.55){ items.push( makeTsubasa(startX) ); }
+        else { items.push( makeEngine(startX) ); }
+        nextItemDist = totalDist + 900 + Math.random()*700; // 低頻度を維持
       }
     }
 
-    /* ==== 進行・単発ブースト ==== */
+    /* ==== 進行・単発ブースト & エンジン ==== */
     const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28; // %/sec
-    const KM=0.072;
+    const KM=0.072;               // 内部速度→km/h 係数
+    const ENGINE_V = Math.round((25 / KM)); // 25 km/h を内部速度へ ≒ 347
     let speed=BASE, dist=0, bgOff=0, grOff=0;
     let boostCharge=100, burstActive=false, burstTimer=0;
+    let engineTime=0;             // エンジン効果残り秒
     let gameOver=false;
 
     /* ==== HUD / 入力 ==== */
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
           elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
     const wingsPill=document.getElementById('wings'), wingsLeftEl=document.getElementById('wingsLeft');
+    const enginePill=document.getElementById('engine'), engineLeftEl=document.getElementById('engineLeft');
     const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
     const slotEls=[document.getElementById('slot0'), document.getElementById('slot1')];
 
     // インベントリ（2枠）
-    const slots=[null,null]; // {type:'tsubasa'}
+    // オブジェクト形：{type:'tsubasa'|'engine', icon:'xxx.png'}
+    const slots=[null,null];
     function firstEmptySlot(){ return slots.findIndex(s=>!s); }
 
-    // ★ボタン常設版：中身だけ差し替え／ハンドラは常に付け直す
+    // スロットUI（ボタン常設）
     function updateSlotsUI(){
       slots.forEach((s,idx)=>{
         const el = slotEls[idx];
         el.classList.toggle('empty', !s);
-
-        // 画像とバッジだけ消す（buttonは残す）
+        // 画像・バッジを削除（buttonは残す）
         [...el.querySelectorAll('img,.badge')].forEach(n => n.remove());
-
         const btn = el.querySelector('button');
-        btn.onclick = null; // ハンドラ初期化
+        btn.onclick = null;
 
         if(s){
           const img = document.createElement('img');
-          img.src = 'tsubasa.png';
-          img.alt = 'tsubasa';
+          img.src = s.icon;
+          img.alt = s.type;
           el.appendChild(img);
-
           const badge = document.createElement('div');
           badge.className = 'badge';
           badge.textContent = 'USE';
           el.appendChild(badge);
-
           btn.onclick = () => useSlot(idx);
         }
       });
@@ -358,11 +360,25 @@
         wingsPill.style.display='none';
       }
     }
+
+    // エンジン効果
+    function setEngine(active){
+      if(active){
+        engineTime = 10.0; // 10秒
+        enginePill.style.display='inline-block';
+      }else{
+        engineTime = 0;
+        enginePill.style.display='none';
+      }
+    }
+
     function useSlot(idx){
       const it=slots[idx];
       if(!it) return;
       if(it.type==='tsubasa'){
-        setWings(true); // 効果開始（上書き延長可）
+        setWings(true);
+      }else if(it.type==='engine'){
+        setEngine(true);
       }
       slots[idx]=null;
       updateSlotsUI();
@@ -376,9 +392,8 @@
       if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); }
       else{ btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
 
-      if(wingsTime>0){
-        wingsLeftEl.textContent=`${wingsTime.toFixed(1)}s`;
-      }
+      if(wingsTime>0){ wingsLeftEl.textContent=`${wingsTime.toFixed(1)}s`; }
+      if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
     }
 
     btnJump.onpointerdown=e=>{ e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } };
@@ -394,11 +409,11 @@
       if(e.code==='Digit2'){ useSlot(1); }
     });
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0; items.length=0;
-      nextAllowedDist=200; nextItemDist=600;
+      gameOver=false; dist=0; bgOff=grOff=0; obstacles.length=0; items.length=0;
+      nextAllowedDist=200; nextItemDist=650;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
-      setWings(false);
+      setWings(false); setEngine(false);
       slots[0]=slots[1]=null; updateSlotsUI();
       gameover.style.display='none';
     };
@@ -424,25 +439,24 @@
     function loop(t){
       const dt = Math.min(0.033, (t-prev)/1000); prev=t;
 
-      // ブースト（単発）
+      // 効果タイマー
+      if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
+      if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
+
+      // 速度決定（優先度：ブースト > エンジン > ベース）
       if(!gameOver){
         if(burstActive){ speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; } }
+        else if(engineTime>0){ speed=ENGINE_V; }
         else { speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt); }
-      }
-
-      // つばさ効果タイマー
-      if(wingsTime>0){
-        wingsTime -= dt;
-        if(wingsTime<=0){ setWings(false); }
       }
 
       // 物理
       if(player && !gameOver){
         player.prevBottom = player.y;
-        player.vy += GRAV*dt;
+        player.vy += 1500*dt;
         player.y  += player.vy*dt;
         const fy = GR.floorY();
-        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps=player.maxJumps; } // 着地で最大回数に
+        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps=player.maxJumps; }
       }
 
       // 進行
@@ -519,7 +533,8 @@
             if(aabb){
               const slotIdx=firstEmptySlot();
               if(slotIdx>=0){
-                slots[slotIdx]={type:'tsubasa'};
+                const icon = it.type==='tsubasa' ? 'tsubasa.png' : 'en.png';
+                slots[slotIdx]={type:it.type, icon};
                 items.splice(i,1);
                 updateSlotsUI();
               }
