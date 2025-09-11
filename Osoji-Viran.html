@@ -109,7 +109,7 @@ function loadImgSafe(src, timeoutMs=4000){
 }
 const files = ['work.png','viran.png','tama.png','gomi.png','1.png','2.png','3.png'];
 const assets = {};
-let started = false; // ← ここで1度だけ宣言（以降は再宣言しない）
+let started = false;
 
 (async ()=>{
   let done=0;
@@ -121,7 +121,6 @@ let started = false; // ← ここで1度だけ宣言（以降は再宣言しな
       if(done===files.length) startGame();
     });
   }
-  // 画像が無くても起動するフォールバック
   setTimeout(()=>{ if(!started) startGame(); }, 3000);
 })();
 
@@ -129,7 +128,6 @@ let started = false; // ← ここで1度だけ宣言（以降は再宣言しな
 const input = { touching:false, id:null, sx:0, sy:0, lx:0, ly:0, moved:false, t0:0 };
 const TAP_TIME = 220;
 const TAP_MOVE = 12 * DPR;
-
 function viewToCanvas(x,y){ return { x: x*DPR, y: y*DPR }; }
 
 canvas.addEventListener('touchstart', (e)=>{
@@ -155,10 +153,9 @@ canvas.addEventListener('touchend', (e)=>{
   if(!input.touching) return;
   const dt = performance.now() - input.t0;
   const isTap = !input.moved && dt <= TAP_TIME;
-  if(isTap) tryDrop(); // タップ投下
+  if(isTap) tryDrop();
   input.touching=false; input.id=null;
 }, {passive:false});
-
 canvas.addEventListener('touchcancel', ()=>{ input.touching=false; input.id=null; });
 
 // ====== ユーティリティ ======
@@ -215,13 +212,11 @@ function loop(t){
 
 // ====== 更新 ======
 function update(dt){
-  // タイマー
   world.timeLeft -= dt;
   if(world.timeLeft<=0){ world.timeLeft=0; endGame(); }
   timeEl.textContent = world.timeLeft.toFixed(1);
   scoreEl.textContent = world.score;
 
-  // 投下ロック表示
   if(player.lockDrop>0){
     player.lockDrop -= dt;
     hint.textContent = `投下ロック中… ${player.lockDrop.toFixed(1)}s`;
@@ -229,13 +224,13 @@ function update(dt){
     hint.textContent = 'ドラッグで左右移動（高さ固定：上寄り）／タップで投下';
   }
 
-  // 移動：Xのみ追従（ゆっくり）
+  // Xのみ追従（ゆっくり）
   let targetX = player.x;
   if(input.touching){
     targetX = clamp((input.lx) - player.w/2, 20*DPR, W - 20*DPR - player.w);
   }
   player.x = lerp(player.x, targetX, player.moveEaseX);
-  player.y = baseY; // 高さ固定
+  player.y = baseY;
 
   // 失敗時の赤点滅
   if(player.stunned>0){ player.stunned -= dt; player.blinkT += dt*8; }
@@ -243,7 +238,6 @@ function update(dt){
   // 火の玉
   if(fireball.active){
     if(!fireball.seeking){
-      // 高速落下
       fireball.vy += 0.0080 * DPR;
       fireball.vy = Math.min(fireball.vy, 2.40*DPR);
       fireball.x += fireball.vx * dt * 1000;
@@ -254,21 +248,21 @@ function update(dt){
         if(c.hasBin && !c.bin.exploding){
           const headTopY = (c.y - c.h);
           const bx = c.x + (c.w - c.bin.w)/2;
-          const by = headTopY - c.bin.h - 6*DPR; // 頭の“上”
+          const by = headTopY - c.bin.h - 6*DPR;
           if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2, bx, by, c.bin.w, c.bin.h)){
             c.bin.exploding = true; c.bin.explode = 0;
-            c.hasBin = true;  // 表示は破裂演出へ
+            c.hasBin = true;
             fireball.active = false; world.score += 1;
           }
         }
       }
 
-      // 地面まで落ちたら追尾開始
+      // 地面到達→追尾
       if(fireball.active && fireball.y + fireball.r >= groundY){
         startSeek();
       }
     }else{
-      // 自動追尾：運搬キャラに当たると失敗
+      // 追尾中：キャラに当たると失敗
       if(!fireball.target){ fireball.active=false; }
       else{
         const c = fireball.target.c;
@@ -279,7 +273,7 @@ function update(dt){
         fireball.y += Math.sin(ang)*spd*dt*1000;
 
         if(aabb(fireball.x-fireball.r, fireball.y-fireball.r, fireball.r*2, fireball.r*2, c.x, c.y-c.h, c.w, c.h)){
-          player.stunned = 2.0;  // 2秒ロックと同じ長さで点滅
+          player.stunned = 2.0;
           player.blinkT = 0;
           player.lockDrop = 2.0;
           fireball.active = false;
@@ -295,7 +289,7 @@ function update(dt){
 
     // 破裂演出
     if(c.bin.exploding){
-      c.bin.explode += dt*1.8; // 0→1
+      c.bin.explode += dt*1.8;
       if(c.bin.explode >= 1){
         c.bin.exploding = false;
         c.hasBin = false;
@@ -304,7 +298,6 @@ function update(dt){
     }
 
     if(c.state==='fetch'){
-      // 右へ補給に（少し遅め）
       const speed = Math.abs(c.baseSpeed)*1.4*DPR;
       c.x += speed * dt * 1000;
       if(c.x - c.w > W + 40*DPR){
@@ -315,7 +308,6 @@ function update(dt){
         c.state = 'patrol';
       }
     }else{
-      // 左右往復
       c.x += c.vx * dt * 1000;
       if(c.x < -60*DPR){ c.x = -60*DPR; c.vx = Math.abs(c.vx); }
       if(c.x + c.w > W + 60*DPR){ c.x = W + 60*DPR - c.w; c.vx = -Math.abs(c.vx); }
@@ -340,7 +332,7 @@ function tryDrop(){
   fireball.active = true; fireball.seeking=false; fireball.target=null;
   fireball.x = player.x + player.w*0.5;
   fireball.y = player.y + player.h*0.6;
-  fireball.vx = 0; fireball.vy = 0.060 * DPR;  // 初速
+  fireball.vx = 0; fireball.vy = 0.060 * DPR;
 }
 
 /* ====== 描画 ====== */
@@ -362,19 +354,16 @@ function draw(){
   for(const c of carriers){
     const sx = c.x, sy = c.y - c.h;
 
-    // キャラ
     const kindFile = c.kind + '.png';
     const im = assets[kindFile];
     if(im){ ctx.drawImage(im, sx, sy, c.w, c.h); } else { ctx.fillStyle="#ccc"; ctx.fillRect(sx, sy, c.w, c.h); }
 
-    // ゴミ箱
     if(c.hasBin){
       const headTopY = sy + 6*DPR;
       const bx = c.x + (c.w - c.bin.w)/2;
       const by = headTopY - c.bin.h - 6*DPR;
 
       if(c.bin.exploding){
-        // 赤い破裂（星型＋フェード）
         const t = Math.min(1, c.bin.explode);
         if(assets['gomi.png']){
           ctx.save(); ctx.globalAlpha = 1 - t; ctx.drawImage(assets['gomi.png'], bx, by, c.bin.w, c.bin.h); ctx.restore();
@@ -423,20 +412,6 @@ function draw(){
     ctx.globalAlpha = 1;
     ctx.strokeStyle="rgba(255,60,80,.95)"; ctx.lineWidth=4*DPR; ctx.strokeRect(player.x, player.y, player.w, player.h);
   }
-
-  // アラインガイド（狙いやすく）
-  const guideX = player.x + player.w*0.5;
-  let near = false;
-  for(const c of carriers){
-    if(!c.hasBin) continue;
-    const bxCenter = c.x + (c.w - c.bin.w)/2 + c.bin.w/2;
-    if(Math.abs(bxCenter - guideX) < 8*DPR){ near = true; break; }
-  }
-  ctx.globalAlpha = 0.35;
-  ctx.strokeStyle = near ? "#ff3c50" : "#9aa3b2";
-  ctx.lineWidth = 2*DPR;
-  ctx.beginPath(); ctx.moveTo(guideX, 0); ctx.lineTo(guideX, H); ctx.stroke();
-  ctx.globalAlpha = 1;
 
   ctx.restore();
 }
