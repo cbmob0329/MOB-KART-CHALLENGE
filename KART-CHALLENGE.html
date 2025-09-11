@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – cone + contena + dokan (no overlap)</title>
+<title>Runner – safe spaced obstacles</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -105,9 +105,9 @@
   /* ===== 画像プリロード ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
-    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'), load('dokan.png'),
+    load('sora.png'), load('mob.png'), load('corn.png'), load('contena.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_DK, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_VR, IMG_OR])=>{
 
     /* ==== ピクセルユーティリティ ==== */
     const Px = {
@@ -129,13 +129,14 @@
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
-      function draw(off){
-        let ox=off%tileW; if(ox>0)ox-=tileW;
-        for(let x=ox;x<W;x+=tileW){
-          ctx.drawImage(IMG_BG,0,0,IMG_BG.naturalWidth,IMG_BG.naturalHeight,Math.floor(x),0,Math.ceil(tileW),H);
+      function draw(offsetX){
+        let ox = offsetX % tileW; if (ox>0) ox -= tileW;
+        for(let x=ox; x<W; x+=tileW){
+          ctx.drawImage(IMG_BG, 0, 0, IMG_BG.naturalWidth, IMG_BG.naturalHeight,
+                        Math.floor(x), 0, Math.ceil(tileW), H);
         }
       }
-      return {draw};
+      return { draw };
     })();
 
     /* ==== 地面 ==== */
@@ -146,8 +147,8 @@
       const scaleY = drawH / srcH;
       const tileW  = IMG_GR.naturalWidth * scaleY;
       function floorY(){ return Math.floor(H - drawH); }
-      function draw(off){
-        const y=floorY(); let ox=off%tileW; if(ox>0)ox-=tileW;
+      function draw(offsetX){
+        const y=floorY(); let ox = offsetX % tileW; if(ox>0)ox-=tileW;
         for(let x=ox;x<W;x+=tileW){
           ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,Math.floor(x),y,Math.ceil(tileW),drawH);
         }
@@ -162,47 +163,59 @@
     }
     let player=null;
 
-    /* ==== 障害物（余白カット・接地） ==== */
+    /* ==== コーン／コンテナ（余白カット・接地） ==== */
     const cornTrim = Px.tightRect(IMG_CO);
     const contTrim = Px.tightRect(IMG_CT);
-    const dkanTrim = Px.tightRect(IMG_DK);
 
-    function makeCornAt(x0){
-      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.40);
-      const s=targetH/cornTrim.sh, w=Math.round(cornTrim.sw*s), h=Math.round(cornTrim.sh*s);
-      return [{ x:x0, y:fy-h, w, h, img:IMG_CO, trim:cornTrim, type:'corn' }];
+    function newCorn(baseX){
+      const fy = GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.40);
+      const s = targetH / cornTrim.sh;
+      const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
+      return [{ x: baseX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' }];
     }
-    function makeContSetAt(x0){
-      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.60);
-      const s=targetH/contTrim.sh, w=Math.round(contTrim.sw*s), h=Math.round(contTrim.sh*s);
-      const n=2 + Math.floor(Math.random()*2); const gap=2; const arr=[];
-      for(let i=0;i<n;i++) arr.push({ x:x0 + i*(w+gap), y:fy-h, w, h, img:IMG_CT, trim:contTrim, type:'contena' });
-      return arr;
-    }
-    function makeDokanAt(x0){
-      const fy=GR.floorY(), targetH=Math.round(GR.drawH*0.65);
-      const s=targetH/dkanTrim.sh, w=Math.round(dkanTrim.sw*s), h=Math.round(dkanTrim.sh*s);
-      return [{ x:x0, y:fy-h, w, h, img:IMG_DK, trim:dkanTrim, type:'dokan' }];
+    function newContSet(baseX){
+      const fy = GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.60);
+      const s = targetH / contTrim.sh;
+      const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
+      const n = 2 + Math.floor(Math.random()*2); // 2 or 3
+      const gap = 2; // ほぼ繋がる
+      const arr=[];
+      for(let i=0;i<n;i++){
+        arr.push({ x: baseX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
+      }
+      return arr; // グループ
     }
 
-    /* ==== ノンオーバーラップ・スポーンカーソル ==== */
-    const obstacles=[];
-    let spawnCursorX = W + 80; // 次のオブジェクト開始位置の予約カーソル
-    function trySpawn(){
-      // 画面右端に近づいたら（カーソルが一定未満なら）新規生成し、カーソルを先へ進める
-      while(spawnCursorX < W + 80){
-        const choice = Math.random();
-        let pack;
-        if(choice < 0.45)      pack = makeCornAt(Math.max(spawnCursorX, W+40));
-        else if(choice < 0.80) pack = makeContSetAt(Math.max(spawnCursorX, W+40));
-        else                   pack = makeDokanAt(Math.max(spawnCursorX, W+40));
+    /* ==== スポーン管理（重なり禁止＆安全間隔） ==== */
+    const obstacles=[]; // 画面上に存在する全オブジェクト
+    const PREBUFFER = 600;         // 画面右側に常にこれだけ先行で用意
+    const SPAWN_EDGE = W + 40;     // 初期湧きは右端から少し離す
+    const MIN_GAP = { corn:160, cont:240 }; // 絶対不可避を避ける間隔
 
-        // 追加
-        for(const o of pack) obstacles.push(o);
-        // このパックの末尾Xを計算して、次の予約位置を進める（最小ギャップを確保）
-        const last = pack[pack.length-1];
-        const minGap = 36 + Math.random()*64; // 36〜100px の余白
-        spawnCursorX = last.x + last.w + minGap;
+    function farthestRight(){
+      if(obstacles.length===0) return 0;
+      let m = 0;
+      for(const o of obstacles) m = Math.max(m, o.x + o.w);
+      return m;
+    }
+    function groupWidth(group){
+      return group[group.length-1].x + group[group.length-1].w - group[0].x;
+    }
+    function spawnIfNeeded(){
+      // 右側に十分な先行オブジェクトがなければ、重ならないように追加で生成
+      let fr = farthestRight();
+      while(fr < W + PREBUFFER){
+        // 次の種類を決定
+        const type = (Math.random() < 0.55) ? 'corn' : 'cont';
+        const minGap = (type==='corn') ? MIN_GAP.corn : MIN_GAP.cont;
+        const baseX = Math.max(SPAWN_EDGE, fr + minGap);
+
+        const group = (type==='corn') ? newCorn(baseX) : newContSet(baseX);
+        obstacles.push(...group);
+
+        fr = baseX + groupWidth(group); // これで連続生成時も必ず重なりゼロ
       }
     }
 
@@ -238,12 +251,12 @@
       if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
     });
     document.getElementById('retryBtn').onclick=()=>{
-      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0;
-      obstacles.length=0;
-      spawnCursorX = W + 80;
+      gameOver=false; dist=0; speed=BASE; bgOff=grOff=0; obstacles.length=0;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0;
       gameover.style.display='none';
+      // 再配置
+      spawnIfNeeded();
     };
 
     /* ==== コーンの緩い当たり判定（2段） ==== */
@@ -258,7 +271,7 @@
 
     /* ==== ループ ==== */
     let prev=0, running=false;
-    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); requestAnimationFrame(loop); }
+    function start(){ if(running) return; running=true; prev=performance.now(); updateHUD(); spawnIfNeeded(); requestAnimationFrame(loop); }
     function loop(t){
       const dt = Math.min(0.033, (t-prev)/1000); prev=t;
 
@@ -283,10 +296,10 @@
         bgOff -= speed*0.20*dt;
         grOff -= speed*1.00*dt;
 
-        // 予約カーソルと既存オブジェクトを同じ速度で左へ
-        spawnCursorX -= speed*dt;
-        trySpawn();
+        // 右端の先行在庫が足りなくなったら追加生成（重なりゼロ・安全間隔）
+        spawnIfNeeded();
 
+        // 移動と破棄
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
@@ -315,23 +328,19 @@
 
         // ===== 当たり判定 =====
         if(!gameOver){
-          const currBottom = player.y;
-          const prevBottom = player.prevBottom;
-
           for(const o of obstacles){
-            // まずAABB（横＆縦）
+            // まずAABBで早期判定
             const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
             if(!aabb) continue;
 
             if(o.type==='corn'){
               if( hitConeRelax(px,py,player.w,player.h,o) ){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='contena' || o.type==='dokan'){
-              // 上に乗れる。下降中で天面跨ぎなら着地、それ以外は横当たり→ゲームオーバー
+            }else if(o.type==='contena'){
+              // 上に乗れる：下降中で天面を跨いだら着地。それ以外の重なりは横当たり→ゲームオーバー
               const top = o.y;
               const comingDown = player.vy >= 0;
-              const crossed = (prevBottom <= top + 2) && (currBottom >= top);
-              const overlapX = (px+player.w > o.x) && (px < o.x+o.w);
-              if(comingDown && crossed && overlapX){
+              const crossed = (player.prevBottom <= top + 2) && (player.y >= top);
+              if(comingDown && crossed){
                 player.y = top; player.vy = 0; player.jumps = 2;
               }else{
                 gameOver=true; gameover.style.display='grid'; break;
