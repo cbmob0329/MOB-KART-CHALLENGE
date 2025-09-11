@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – Villain tuned</title>
+<title>Runner – Villain tuned (obstacles↓, fire ahead↑)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -18,7 +18,8 @@
   header.hud{
     position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:8px;align-items:center;justify-content:space-around;padding:8px 10px;
-    background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8)); border-bottom:1px solid rgba(255,255,255,.06);
+    background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8));
+    border-bottom:1px solid rgba(255,255,255,.06);
     font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
   }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px;white-space:nowrap}
@@ -108,10 +109,12 @@
 
 <script>
 (() => {
+  /* ===== PCでもスマホ画角のまま ===== */
   const phone=document.getElementById('phone');
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
 
+  /* ===== Canvas ===== */
   const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
   ctx.imageSmoothingEnabled=false; const W=390, H=540;
   function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
@@ -119,6 +122,7 @@
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
+  /* ===== 画像 ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
     load('sora.png'), load('mob.png'),
@@ -150,7 +154,7 @@
       }
     };
 
-    /* === background / ground === */
+    /* === 背景・地面 === */
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
@@ -182,7 +186,7 @@
       return { draw, floorY, drawH };
     })();
 
-    /* === player === */
+    /* === プレイヤー === */
     function makePlayer(img){
       if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
       const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
@@ -190,7 +194,7 @@
     }
     let player=null;
 
-    /* === obstacles === */
+    /* === 障害物 === */
     const cornTrim  = Px.tightRect(IMG_CO);
     const contTrim  = Px.tightRect(IMG_CT);
     const trampTrim = Px.tightRect(IMG_TR);
@@ -232,7 +236,7 @@
         phase: Math.random()*Math.PI*2, amp: 3.0, rotAmp: 0.06 };
     }
 
-    /* === items (wings / engine) === */
+    /* === アイテム（つばさ / エンジン） === */
     const trimTS = Px.tightRect(IMG_TS);
     const trimEN = Px.tightRect(IMG_EN);
     const items=[];
@@ -245,7 +249,7 @@
     function makeTsubasa(atX){ return makeFloating(IMG_TS, trimTS, 'tsubasa', atX, 36); }
     function makeEngine(atX){ return makeFloating(IMG_EN, trimEN, 'engine',  atX, 36); }
 
-    /* === Villain & Fireballs === */
+    /* === ヴィラン & 火の玉 === */
     const viTrim = Px.tightRect(IMG_VI);
     const tmTrim = Px.tightRect(IMG_TM);
     let villain = null; // {phase,x,y,w,h, vy,targetY,timer,dropsLeft,dropCd}
@@ -291,19 +295,19 @@
     }
     function endVillain(){ villain=null; }
 
-    // 進行方向に落とす火の玉（“ホーミングなし”・サイズ大きめ）
+    // “進行方向のかなり先”へ落とす火の玉（ホーミングなし／サイズ大きめ）
     function spawnFireball(){
       if(!villain) return;
-      const targetH = 48; // ← 少し大きく
+      const targetH = 48;                   // 必要ならここでサイズ調整
       const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
 
-      // プレイヤーの進行方向（前方）に落とす：xはプレイヤーの少し先に生成
-      const ahead = 80 + Math.random()*80; // 80〜160px 前方
+      // 先投げ：プレイヤーの 180〜360px 先に着弾するイメージ
+      const ahead = 180 + Math.random()*180;   // 180〜360px
       const dropX = (player.x + ahead);
 
-      const vx = -40;             // 世界に対して少し左へ流れる程度
-      const vy = 180 + Math.random()*60; // 落下速度
+      const vx = -70;                          // 左流れやや強め
+      const vy = 220 + Math.random()*90;       // 落下も速め
 
       fireballs.push({
         x: dropX - w/2, y: villain.y + villain.h*0.6,
@@ -311,10 +315,10 @@
       });
     }
 
-    /* === spawn distances / pacing === */
-    let nextAllowedDist = 260;        // 障害物：初期は長め（序盤を緩く）
-    let nextItemDist    = 650;        // アイテム（レア）
-    const startVillainGapM = 150 + Math.random()*50; // 初回ヴィラン 150-200m
+    /* === スポーン距離・間隔 === */
+    let nextAllowedDist = 260;        // 序盤ゆるめ
+    let nextItemDist    = 650;        // レアアイテム
+    const startVillainGapM = 150 + Math.random()*50; // 初回 150-200m
     let nextVillainM    = startVillainGapM;
     let firstVillainOccurred = false;
 
@@ -341,16 +345,16 @@
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
 
         if(!firstVillainOccurred){
-          // 序盤：コーン/ゴミ箱のみ & 出現間隔をさらに長く（体感をスカスカに）
+          // 序盤：コーン/ゴミ箱のみ & かなりスカスカ
           const kind = (Math.random()<0.6)?'corn':'gomi';
           obstacles.push(kind==='corn' ? makeCorn(startX) : makeGomi(startX));
           nextAllowedDist = totalDist + 320 + Math.random()*240; // 320〜560
 
         }else if(villainActive){
-          // 襲来中はコーン/ゴミ箱のみ・頻度少
+          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度を激減（体感かなりスカスカ）
           const kind = (Math.random()<0.5)?'corn':'gomi';
           obstacles.push(kind==='corn'? makeCorn(startX) : makeGomi(startX));
-          nextAllowedDist = totalDist + 260 + Math.random()*200;
+          nextAllowedDist = totalDist + 420 + Math.random()*360; // 420〜780
 
         }else{
           // 通常
@@ -382,7 +386,7 @@
       }
     }
 
-    /* === movement / gameplay === */
+    /* === ゲームパラメータ === */
     const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28;
     const KM=0.072;
     const ENGINE_V = Math.round((25 / KM)); // 25km/h
@@ -391,7 +395,7 @@
     let engineTime=0, wingsTime=0;
     let gameOver=false;
 
-    /* === HUD / input === */
+    /* === HUD / 入力 === */
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
           elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
     const wingsPill=document.getElementById('wings'), wingsLeftEl=document.getElementById('wingsLeft');
@@ -439,6 +443,7 @@
       if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
     }
 
+    /* === 入力 === */
     btnJump.onpointerdown=e=>{ e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } };
     btnBoost.onclick=e=>{ e.preventDefault(); if(gameOver) return;
       if(!burstActive && boostCharge>=100){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } };
@@ -455,12 +460,12 @@
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
     };
 
-    /* === collisions === */
-    // コーンの当たり判定をさらに緩和（上部はかなり小さく）
+    /* === 当たり判定 === */
+    // コーンをさらに緩和（下部主体/上部かなり小さく）
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
-      const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 }; // 下部のみ広め
-      const upper={ x:cone.x + baseW*0.34, y:cone.y + baseH*0.06, w:baseW*0.32, h:baseH*0.22 }; // ごく小さく
+      const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 };
+      const upper={ x:cone.x + baseW*0.34, y:cone.y + baseH*0.06, w:baseW*0.32, h:baseH*0.22 };
       const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
       const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
       return A||B;
@@ -468,7 +473,7 @@
 
     const LAND_SNAP = 10, H_PAD = 16, TRAMP_BOOST = 1.35, TRAMP_CD = 0.25;
 
-    /* === loop === */
+    /* === ループ === */
     let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateSlotsUI(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
@@ -478,7 +483,7 @@
       if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
       if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
 
-      // speed (priority: BOOST > ENGINE > BASE)
+      // speed (BOOST > ENGINE > BASE)
       if(!gameOver){
         if(burstActive){ speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; } }
         else if(engineTime>0){ speed=ENGINE_V; }
@@ -540,7 +545,6 @@
               villain.dropsLeft--;
               villain.dropCd = 1.0 + Math.random(); // 1-2秒
             }
-            // すべて投下し、画面に火の玉が無ければ帰還
             if(villain.dropsLeft<=0 && fireballs.length===0){
               villain.phase='exit'; villain.vy = -50;
             }
@@ -550,10 +554,10 @@
           }
         }
 
-        // fireballs move（ホーミングなし／“前方に落ちてくる”）
+        // fireballs move（ホーミングなし／先投げ）
         for(let i=fireballs.length-1;i>=0;i--){
           const f=fireballs[i];
-          f.x += (f.vx - speed)*dt; // 世界は左へ、玉はわずかに左へ
+          f.x += (f.vx - speed)*dt; // 世界は左へ、玉は少し左へ
           f.y += f.vy*dt;
           if(f.x + f.w < -60 || f.y > H+80) fireballs.splice(i,1);
         }
@@ -647,6 +651,7 @@
         }
       }
 
+      // ロゴ
       drawLogo(dt);
       updateHUD();
       requestAnimationFrame(loop);
@@ -663,6 +668,7 @@
       start();
     });
 
+    /* === ページスクロール抑止（UI以外） === */
     ['touchstart','touchmove','gesturestart'].forEach(ev=>{
       document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
     });
