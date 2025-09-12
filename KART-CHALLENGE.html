@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – smaller containers (48%)</title>
+<title>Runner – 20/30/60kmh + right-edge fireballs</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -190,7 +190,7 @@
     function makePlayer(img){
       if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
       const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
-      return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, maxJumps:2, img, feetFrac };
+      return { x:40, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, maxJumps:2, img, feetFrac };
     }
     let player=null;
 
@@ -202,14 +202,14 @@
 
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.29); // 少し小さく
+      const targetH = Math.round(GR.drawH * 0.29);
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
     function makeContSet(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.48); // ★ 60% → 48%（小さく）
+      const targetH = Math.round(GR.drawH * 0.48); // 小さめ
       const s = targetH / contTrim.sh;
       const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
       const n = 2 + Math.floor(Math.random()*2);
@@ -221,7 +221,7 @@
     }
     function makeGomi(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.31); // 少し小さく
+      const targetH = Math.round(GR.drawH * 0.31);
       const s = targetH / gomiTrim.sh;
       const w = Math.round(gomiTrim.sw * s), h = Math.round(gomiTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_GO, trim: gomiTrim, type:'gomi',
@@ -287,13 +287,14 @@
     }
     function endVillain(){ villain=null; }
 
+    // 右端寄りに落とす火の玉（プレイヤー直撃を避ける）
     function spawnFireball(){
       if(!villain) return;
       const targetH = 48;
       const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
-      const margin = 30;
-      const dropX  = (W - margin) - Math.random()*50; // [W-80, W-30]
+      // 画面右端付近へ投下（W-100 ～ W-30）
+      const dropX  = (W - 100) + Math.random()*70;
       const vx = -70, vy = 220 + Math.random()*90;
       fireballs.push({ x: dropX - w/2, y: villain.y + villain.h*0.6, w, h, vx, vy, landed:false });
     }
@@ -375,9 +376,9 @@
     // --- ゲームパラメータ（km/h仕様） ---
     const GRAV=1500, JUMP=540, BURST_DUR=1.6, CHARGE_RATE=28;
     const KM=0.072;
-    const BASE_KMH   = 25;
-    const ENGINE_KMH = 35;
-    const BOOST_KMH  = 60;
+    const BASE_KMH   = 20; // 通常 20km/h
+    const ENGINE_KMH = 30; // エンジン 30km/h
+    const BOOST_KMH  = 60; // ブースト最大 60km/h
     const BASE       = Math.round(BASE_KMH   / KM);
     const ENGINE     = Math.round(ENGINE_KMH / KM);
     const BOOST_MAX  = Math.round(BOOST_KMH  / KM);
@@ -459,7 +460,7 @@
       if(gameOver) return;
       if(!burstActive && boostCharge>=100){
         burstActive = true;
-        burstTimer  = BURST_DUR;   // 60→25km/h減衰開始
+        burstTimer  = BURST_DUR;   // 60→20km/h減衰開始
         boostCharge = 0;
         updateHUD();
       }
@@ -493,7 +494,7 @@
       if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
       if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
 
-      // speed
+      // speed（BOOST: 60→20 に減衰 / ENGINE: 30 固定 / BASE: 20）
       if(!gameOver){
         if(burstActive){
           const frac = Math.max(0, burstTimer / BURST_DUR); // 1→0
@@ -525,7 +526,7 @@
 
         trySpawn(dist);
 
-        // obstacles scroll
+        // obstacles
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
@@ -533,7 +534,7 @@
           if(o.x + o.w < -40) obstacles.splice(i,1);
         }
 
-        // items scroll
+        // items
         for(let i=items.length-1;i>=0;i--){
           const it=items[i];
           it.x -= speed*dt;
@@ -623,6 +624,7 @@
         ctx.drawImage(player.img, px, py, player.w, player.h);
 
         if(!gameOver){
+          // items pickup
           for(let i=items.length-1;i>=0;i--){
             const it=items[i];
             const aabb = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
@@ -637,6 +639,7 @@
             }
           }
 
+          // obstacle collisions
           const currBottom = player.y, prevBottom = player.prevBottom;
           for(const o of obstacles){
             const overlapXWide = (px + player.w > o.x - 16) && (px < o.x + o.w + 16);
@@ -654,6 +657,7 @@
             }
           }
 
+          // fireball collisions
           for(const f of fireballs){
             const aabb = (px < f.x+f.w && px+player.w > f.x && py < f.y+f.h && py+player.h > f.y);
             if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
