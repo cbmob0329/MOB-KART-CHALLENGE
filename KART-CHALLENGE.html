@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – Villain tuned (obstacles↓, fire ahead↑)</title>
+<title>Runner – Villain (landed fireballs, right-edge throw)</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -109,7 +109,7 @@
 
 <script>
 (() => {
-  /* ===== PCでもスマホ画角のまま ===== */
+  /* ===== スマホ画角固定（PCでも同じ見え方） ===== */
   const phone=document.getElementById('phone');
   function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
   addEventListener('resize', fit, {passive:true}); fit();
@@ -253,7 +253,7 @@
     const viTrim = Px.tightRect(IMG_VI);
     const tmTrim = Px.tightRect(IMG_TM);
     let villain = null; // {phase,x,y,w,h, vy,targetY,timer,dropsLeft,dropCd}
-    const fireballs = []; // {x,y,w,h,vx,vy}
+    const fireballs = []; // {x,y,w,h,vx,vy,landed?}
 
     const LOGO = {state:'idle', t:0};
     function triggerLogo(){ LOGO.state='fadein'; LOGO.t=0; }
@@ -295,23 +295,23 @@
     }
     function endVillain(){ villain=null; }
 
-    // “進行方向のかなり先”へ落とす火の玉（ホーミングなし／サイズ大きめ）
+    // 右端付近に“投げる”火の玉（ホーミングなし・地面で着地して残る）
     function spawnFireball(){
       if(!villain) return;
-      const targetH = 48;                   // 必要ならここでサイズ調整
+      const targetH = 48;                   // 火の玉サイズ（必要なら調整）
       const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
 
-      // 先投げ：プレイヤーの 180〜360px 先に着弾するイメージ
-      const ahead = 180 + Math.random()*180;   // 180〜360px
-      const dropX = (player.x + ahead);
+      // 右端に落とす：画面右端から少し内側のランダム地点
+      const margin = 40;                    // 右端からの内側マージン
+      const dropX  = (W - margin) - Math.random()*40; // [W-80, W-40] 付近
 
-      const vx = -70;                          // 左流れやや強め
-      const vy = 220 + Math.random()*90;       // 落下も速め
+      const vx = -70;                       // 横流れ（落下中のみ有効）
+      const vy = 220 + Math.random()*90;    // 落下速度
 
       fireballs.push({
         x: dropX - w/2, y: villain.y + villain.h*0.6,
-        w, h, vx, vy
+        w, h, vx, vy, landed:false
       });
     }
 
@@ -351,7 +351,7 @@
           nextAllowedDist = totalDist + 320 + Math.random()*240; // 320〜560
 
         }else if(villainActive){
-          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度を激減（体感かなりスカスカ）
+          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度を激減
           const kind = (Math.random()<0.5)?'corn':'gomi';
           obstacles.push(kind==='corn'? makeCorn(startX) : makeGomi(startX));
           nextAllowedDist = totalDist + 420 + Math.random()*360; // 420〜780
@@ -554,12 +554,24 @@
           }
         }
 
-        // fireballs move（ホーミングなし／先投げ）
+        // fireballs move（落下→地面で着地して残る）
         for(let i=fireballs.length-1;i>=0;i--){
           const f=fireballs[i];
-          f.x += (f.vx - speed)*dt; // 世界は左へ、玉は少し左へ
-          f.y += f.vy*dt;
-          if(f.x + f.w < -60 || f.y > H+80) fireballs.splice(i,1);
+          // 横：自前速度 - 世界の流れ
+          f.x += (f.vx - speed)*dt;
+          // 縦：落下 or 着地後は0
+          if(!f.landed){
+            f.y += f.vy*dt;
+            const groundY = GR.floorY();
+            if(f.y + f.h >= groundY){
+              f.y = groundY - f.h; // 着地
+              f.vy = 0;
+              f.vx = 0;          // 世界に合わせて左に流れる（= net -speed）
+              f.landed = true;
+            }
+          }
+          // 画面外で破棄
+          if(f.x + f.w < -60) fireballs.splice(i,1);
         }
       }
 
@@ -643,7 +655,7 @@
             }
           }
 
-          // fireball collisions
+          // fireball collisions（着地後も含む）
           for(const f of fireballs){
             const aabb = (px < f.x+f.w && px+player.w > f.x && py < f.y+f.h && py+player.h > f.y);
             if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
