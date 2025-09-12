@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – full build</title>
+<title>Runner – 25/35/60kmh + Boost High Jump</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -59,7 +59,6 @@
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
   #gameover{position:absolute;inset:56px 0 112px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
   #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
-
 </style>
 </head>
 <body>
@@ -204,7 +203,7 @@
 
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.29); // 少し小さく（元0.32）
+      const targetH = Math.round(GR.drawH * 0.29); // 少し小さく
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
@@ -230,7 +229,7 @@
     }
     function makeGomi(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.31); // 少し小さく（元0.34）
+      const targetH = Math.round(GR.drawH * 0.31); // 少し小さく
       const s = targetH / gomiTrim.sh;
       const w = Math.round(gomiTrim.sw * s), h = Math.round(gomiTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_GO, trim: gomiTrim, type:'gomi',
@@ -299,7 +298,7 @@
     // 右端付近に“投げる”火の玉（ホーミングなし・地面で着地して残る）
     function spawnFireball(){
       if(!villain) return;
-      const targetH = 48;                 // 玉の見た目サイズ
+      const targetH = 48;                 // 玉サイズ
       const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
 
@@ -386,10 +385,17 @@
       }
     }
 
-    /* === ゲームパラメータ === */
-    const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28;
-    const KM=0.072;
-    const ENGINE_V = Math.round((25 / KM)); // 25km/h
+    /* === ゲームパラメータ（km/h仕様） === */
+    const GRAV=1500, JUMP=540, BURST_DUR=1.6, CHARGE_RATE=28;
+    const KM=0.072;                          // px/s → km/h 変換係数
+    const BASE_KMH   = 25;                   // 通常 25km/h
+    const ENGINE_KMH = 35;                   // エンジン 35km/h
+    const BOOST_KMH  = 60;                   // ブースト最大 60km/h
+    const BASE       = Math.round(BASE_KMH   / KM);
+    const ENGINE     = Math.round(ENGINE_KMH / KM);
+    const BOOST_MAX  = Math.round(BOOST_KMH  / KM);
+    const BOOST_JUMP_MUL = 1.35;             // ブースト中はハイジャンプ
+
     let speed=BASE, dist=0, bgOff=0, grOff=0;
     let boostCharge=100, burstActive=false, burstTimer=0;
     let engineTime=0, wingsTime=0;
@@ -443,14 +449,36 @@
       if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
     }
 
-    btnJump.onpointerdown=e=>{ e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } };
-    btnBoost.onclick=e=>{ e.preventDefault(); if(gameOver) return;
-      if(!burstActive && boostCharge>=100){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } };
+    /* === 入力（ブースト中はハイジャンプ） === */
+    function doJump(){
+      if(player && !gameOver && player.jumps>0){
+        const j = burstActive ? JUMP*BOOST_JUMP_MUL : JUMP;
+        player.vy = -j;
+        player.jumps--;
+        updateHUD();
+      }
+    }
+    btnJump.onpointerdown=e=>{ e.preventDefault(); doJump(); };
     addEventListener('keydown',e=>{
-      if(e.code==='Space'||e.code==='ArrowUp'){ if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } }
-      if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
+      if(e.code==='Space'||e.code==='ArrowUp'){ doJump(); }
+      if(e.code==='KeyB'){
+        if(!burstActive && boostCharge>=100 && !gameOver){
+          burstActive = true; burstTimer = BURST_DUR; boostCharge = 0; updateHUD();
+        }
+      }
       if(e.code==='Digit1'){ useSlot(0); } if(e.code==='Digit2'){ useSlot(1); }
     });
+    btnBoost.onclick=e=>{
+      e.preventDefault();
+      if(gameOver) return;
+      if(!burstActive && boostCharge>=100){
+        burstActive = true;
+        burstTimer  = BURST_DUR;   // 減衰スタート
+        boostCharge = 0;
+        updateHUD();
+      }
+    };
+
     document.getElementById('retryBtn').onclick=()=>{
       gameOver=false; dist=0; bgOff=grOff=0; obstacles.length=0; items.length=0; fireballs.length=0; villain=null;
       nextAllowedDist=260; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
@@ -459,8 +487,7 @@
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
     };
 
-    /* === 当たり判定 === */
-    // コーン：さらに緩和（下部主体/上部かなり小さく）
+    /* === 当たり判定（コーン緩和） === */
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
       const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 };
@@ -480,11 +507,19 @@
       if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
       if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
 
-      // speed (BOOST > ENGINE > BASE)
+      // speed（BOOST: 60→25 に減衰 / ENGINE: 35 固定 / BASE: 25）
       if(!gameOver){
-        if(burstActive){ speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; } }
-        else if(engineTime>0){ speed=ENGINE_V; }
-        else { speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt); }
+        if(burstActive){
+          const frac = Math.max(0, burstTimer / BURST_DUR); // 1→0
+          speed = BASE + (BOOST_MAX - BASE) * frac;
+          burstTimer -= dt;
+          if(burstTimer<=0){ burstActive=false; }
+        }else if(engineTime>0){
+          speed = ENGINE;
+        }else{
+          speed = BASE;
+          boostCharge = Math.min(100, boostCharge + CHARGE_RATE*dt);
+        }
       }
 
       // physics
