@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – 25/35/60kmh + Boost High Jump</title>
+<title>Runner – early: corn & container / no ramp</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -126,11 +126,11 @@
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
     load('sora.png'), load('mob.png'),
-    load('corn.png'), load('contena.png'), load('tora.png'), load('gomi.png'),
+    load('corn.png'), load('contena.png'), load('gomi.png'),
     load('tsubasa.png'), load('en.png'),
     load('viran.png'), load('tama.png'), load('viran op.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_TR, IMG_GO, IMG_TS, IMG_EN, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_GO, IMG_TS, IMG_EN, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR])=>{
 
     /* === pixel helpers === */
     const Px = {
@@ -197,7 +197,6 @@
     /* === 障害物 === */
     const cornTrim  = Px.tightRect(IMG_CO);
     const contTrim  = Px.tightRect(IMG_CT);
-    const trampTrim = Px.tightRect(IMG_TR);
     const gomiTrim  = Px.tightRect(IMG_GO);
     const obstacles=[];
 
@@ -219,13 +218,6 @@
         arr.push({ x: atX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
       }
       return arr;
-    }
-    function makeTrampoline(atX){
-      const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.40);
-      const s = targetH / trampTrim.sh;
-      const w = Math.round(trampTrim.sw * s), h = Math.round(trampTrim.sh * s);
-      return { x: atX, y: fy - h, w, h, img: IMG_TR, trim: trampTrim, type:'tramp', cd:0 };
     }
     function makeGomi(atX){
       const fy=GR.floorY();
@@ -295,28 +287,21 @@
     }
     function endVillain(){ villain=null; }
 
-    // 右端付近に“投げる”火の玉（ホーミングなし・地面で着地して残る）
+    // 右端付近に落とす火の玉（地面に着地して残る）
     function spawnFireball(){
       if(!villain) return;
-      const targetH = 48;                 // 玉サイズ
+      const targetH = 48;
       const s = targetH / tmTrim.sh;
       const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
-
-      const margin = 30;                  // 右端からの内側マージン
+      const margin = 30;
       const dropX  = (W - margin) - Math.random()*50; // [W-80, W-30]
-
-      const vx = -70;                     // 落下中の横流れ
-      const vy = 220 + Math.random()*90;  // 落下速度
-
-      fireballs.push({
-        x: dropX - w/2, y: villain.y + villain.h*0.6,
-        w, h, vx, vy, landed:false
-      });
+      const vx = -70, vy = 220 + Math.random()*90;
+      fireballs.push({ x: dropX - w/2, y: villain.y + villain.h*0.6, w, h, vx, vy, landed:false });
     }
 
     /* === スポーン距離・間隔 === */
-    let nextAllowedDist = 260;        // 序盤ゆるめ
-    let nextItemDist    = 650;        // レアアイテム
+    let nextAllowedDist = 220;
+    let nextItemDist    = 650;
     const startVillainGapM = 150 + Math.random()*50; // 初回 150-200m
     let nextVillainM    = startVillainGapM;
     let firstVillainOccurred = false;
@@ -344,21 +329,27 @@
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
 
         if(!firstVillainOccurred){
-          // 序盤：コーン/ゴミ箱のみ & かなりスカスカ
-          const kind = (Math.random()<0.6)?'corn':'gomi';
-          obstacles.push(kind==='corn' ? makeCorn(startX) : makeGomi(startX));
-          nextAllowedDist = totalDist + 320 + Math.random()*240; // 320〜560
+          // ★序盤：コーン＆コンテナ中心
+          const kind = (Math.random()<0.55)?'corn':'contena';
+          if(kind==='corn'){
+            obstacles.push(makeCorn(startX));
+            nextAllowedDist = totalDist + 200 + Math.random()*120;
+          }else{
+            const set = makeContSet(startX); obstacles.push(...set);
+            const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
+            nextAllowedDist = totalDist + Math.max(260, setWidth) + 180 + Math.random()*120;
+          }
 
         }else if(villainActive){
-          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度を激減（420〜780）
-          const kind = (Math.random()<0.5)?'corn':'gomi';
+          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度激減
+          const kind = (Math.random()<0.6)?'corn':'gomi';
           obstacles.push(kind==='corn'? makeCorn(startX) : makeGomi(startX));
           nextAllowedDist = totalDist + 420 + Math.random()*360;
 
         }else{
-          // 通常
+          // 通常：コーン/コンテナ/ゴミ箱（ジャンプ台は無し）
           const r = Math.random();
-          let kind = r < 0.40 ? 'corn' : (r < 0.70 ? 'contena' : (r < 0.85 ? 'tramp' : 'gomi'));
+          const kind = r < 0.45 ? 'corn' : (r < 0.75 ? 'contena' : 'gomi');
           if(kind==='corn'){
             obstacles.push( makeCorn(startX) );
             nextAllowedDist = totalDist + 160 + Math.random()*160;
@@ -366,9 +357,6 @@
             const set = makeContSet(startX); obstacles.push(...set);
             const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
             nextAllowedDist = totalDist + Math.max(240, setWidth) + 160 + Math.random()*120;
-          }else if(kind==='tramp'){
-            obstacles.push( makeTrampoline(startX) );
-            nextAllowedDist = totalDist + 220 + Math.random()*160;
           }else{
             obstacles.push( makeGomi(startX) );
             nextAllowedDist = totalDist + 180 + Math.random()*160;
@@ -387,14 +375,14 @@
 
     /* === ゲームパラメータ（km/h仕様） === */
     const GRAV=1500, JUMP=540, BURST_DUR=1.6, CHARGE_RATE=28;
-    const KM=0.072;                          // px/s → km/h 変換係数
-    const BASE_KMH   = 25;                   // 通常 25km/h
-    const ENGINE_KMH = 35;                   // エンジン 35km/h
-    const BOOST_KMH  = 60;                   // ブースト最大 60km/h
+    const KM=0.072;                          // px/s → km/h
+    const BASE_KMH   = 25;
+    const ENGINE_KMH = 35;
+    const BOOST_KMH  = 60;
     const BASE       = Math.round(BASE_KMH   / KM);
     const ENGINE     = Math.round(ENGINE_KMH / KM);
     const BOOST_MAX  = Math.round(BOOST_KMH  / KM);
-    const BOOST_JUMP_MUL = 1.35;             // ブースト中はハイジャンプ
+    const BOOST_JUMP_MUL = 1.35;
 
     let speed=BASE, dist=0, bgOff=0, grOff=0;
     let boostCharge=100, burstActive=false, burstTimer=0;
@@ -408,7 +396,7 @@
     const enginePill=document.getElementById('engine'), engineLeftEl=document.getElementById('engineLeft');
     const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
     const slotEls=[document.getElementById('slot0'), document.getElementById('slot1')];
-    const slots=[null,null]; // {type:'tsubasa'|'engine', icon:'...png'}
+    const slots=[null,null];
 
     function firstEmptySlot(){ return slots.findIndex(s=>!s); }
     function updateSlotsUI(){
@@ -473,7 +461,7 @@
       if(gameOver) return;
       if(!burstActive && boostCharge>=100){
         burstActive = true;
-        burstTimer  = BURST_DUR;   // 減衰スタート
+        burstTimer  = BURST_DUR;   // 60→25km/hへ減衰開始
         boostCharge = 0;
         updateHUD();
       }
@@ -481,7 +469,7 @@
 
     document.getElementById('retryBtn').onclick=()=>{
       gameOver=false; dist=0; bgOff=grOff=0; obstacles.length=0; items.length=0; fireballs.length=0; villain=null;
-      nextAllowedDist=260; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
+      nextAllowedDist=220; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; }
       boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
@@ -543,7 +531,6 @@
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
-          if(o.cd){ o.cd = Math.max(0, o.cd - dt); }
           if(o.phase!=null){ o.phase += dt*1.2; }
           if(o.x + o.w < -40) obstacles.splice(i,1);
         }
@@ -586,23 +573,17 @@
           }
         }
 
-        // fireballs move（落下→地面で着地して残る）
+        // fireballs（落下→地面で着地して残る）
         for(let i=fireballs.length-1;i>=0;i--){
           const f=fireballs[i];
-          // 横：自前速度 - 世界の流れ
-          f.x += (f.vx - speed)*dt;
-          // 縦：落下 or 着地後は0
+          f.x += (f.vx - speed)*dt; // 横
           if(!f.landed){
-            f.y += f.vy*dt;
+            f.y += f.vy*dt;          // 縦
             const groundY = GR.floorY();
             if(f.y + f.h >= groundY){
-              f.y = groundY - f.h; // 着地
-              f.vy = 0;
-              f.vx = 0;          // 世界に合わせて左に流れる（= net -speed）
-              f.landed = true;
+              f.y = groundY - f.h; f.vy = 0; f.vx = 0; f.landed = true;
             }
           }
-          // 画面外で破棄
           if(f.x + f.w < -60) fireballs.splice(i,1);
         }
       }
@@ -677,12 +658,6 @@
               const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
               if(comingDown && crossed && overlapXWide){ player.y = top; player.vy = 0; player.jumps = player.maxJumps; }
               else if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
-            }else if(o.type==='tramp'){
-              const top = o.y, comingDown = player.vy >= 0;
-              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
-              if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
-                player.y = top; player.vy = -JUMP * 1.35; player.jumps = player.maxJumps; o.cd = 0.25;
-              }
             }else if(o.type==='gomi'){
               if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
             }
