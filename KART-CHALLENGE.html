@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – smaller corn & gomi</title>
+<title>Runner – full build</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -15,20 +15,24 @@
     transform-origin:center center;
   }
 
-  header.hud{position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
+  header.hud{
+    position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
     display:flex;gap:8px;align-items:center;justify-content:space-around;padding:8px 10px;
     background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8));
     border-bottom:1px solid rgba(255,255,255,.06);
-    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;}
+    font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
+  }
   .pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px;white-space:nowrap}
   .status{display:flex;gap:6px;align-items:center}
 
   main.play{position:absolute;left:0;right:0;top:56px;bottom:112px}
   canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
 
-  footer.ctrl{position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:112px;z-index:20;
+  footer.ctrl{
+    position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:112px;z-index:20;
     display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:10px 12px;
-    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);}
+    background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);
+  }
   .btn{-webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
     min-width:120px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.1);
     background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
@@ -36,8 +40,10 @@
   .muted{opacity:.6;filter:saturate(.2)}
 
   .slots{display:flex;gap:8px;justify-content:center}
-  .slot{width:60px;height:60px;border-radius:12px;border:1px solid rgba(255,255,255,.12);
-    background:#0e1626; position:relative; overflow:hidden;}
+  .slot{
+    width:60px;height:60px;border-radius:12px;border:1px solid rgba(255,255,255,.12);
+    background:#0e1626; position:relative; overflow:hidden;
+  }
   .slot button{position:absolute;inset:0;border:0;background:transparent;padding:0;cursor:pointer}
   .slot img{position:absolute;inset:8px;object-fit:contain;width:auto;height:auto;max-width:calc(100% - 16px);max-height:calc(100% - 16px);opacity:.95;pointer-events:none}
   .slot.empty{opacity:.35}
@@ -53,12 +59,12 @@
   .bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
   #gameover{position:absolute;inset:56px 0 112px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
   #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
+
 </style>
 </head>
 <body>
 <div id="root">
   <div id="phone">
-    <!-- HUD -->
     <header class="hud">
       <div class="pill" id="dist">距離 0 m</div>
       <div class="pill" id="speed">速度 0 km/h</div>
@@ -70,10 +76,8 @@
       </div>
     </header>
 
-    <!-- Canvas -->
     <main class="play"><canvas id="game" width="390" height="540"></canvas></main>
 
-    <!-- Controls -->
     <footer class="ctrl">
       <button class="btn" id="btnJump">ジャンプ</button>
       <div class="slots">
@@ -83,7 +87,6 @@
       <button class="btn" id="btnBoost">BOOST!</button>
     </footer>
 
-    <!-- キャラ選択 -->
     <div id="overlay">
       <div class="card">
         <p style="margin:0 0 8px;font-weight:800;">どちらか選択してスタート</p>
@@ -94,23 +97,33 @@
       </div>
     </div>
 
-    <!-- ローディング / ゲームオーバー -->
     <div id="loading"><div class="bubble">画像読み込み中…</div></div>
-    <div id="gameover"><div class="panel"><div>GAME OVER</div><button class="btn" id="retryBtn">リトライ</button></div></div>
+
+    <div id="gameover">
+      <div class="panel">
+        <div>GAME OVER</div>
+        <button class="btn" id="retryBtn">リトライ</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
-/* ==== 省略せずフルコード ==== */
 (() => {
+  /* ===== スマホ画角固定（PCでも同じ見え方） ===== */
+  const phone=document.getElementById('phone');
+  function fit(){ const s=Math.min(innerWidth/390, innerHeight/700); phone.style.transform=`scale(${s})`; }
+  addEventListener('resize', fit, {passive:true}); fit();
+
+  /* ===== Canvas ===== */
   const cvs=document.getElementById('game'), ctx=cvs.getContext('2d',{alpha:true});
   ctx.imageSmoothingEnabled=false; const W=390, H=540;
-
   function setup(){ const dpr=Math.max(1,devicePixelRatio||1); cvs.width=W*dpr; cvs.height=H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0); }
-  setup();
+  setup(); addEventListener('resize', setup, {passive:true});
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
+  /* ===== 画像読み込み ===== */
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
   Promise.all([
     load('sora.png'), load('mob.png'),
@@ -120,57 +133,559 @@
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
   ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_TR, IMG_GO, IMG_TS, IMG_EN, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR])=>{
 
-    const GR = (()=>{ const y=H-64; function floorY(){return y;} function draw(off){ctx.fillStyle="#333";ctx.fillRect(0,y, W, H-y);} return {floorY,draw,drawH:64}; })();
+    /* === pixel helpers === */
+    const Px = {
+      topTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12;
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {trimTop:y,contentH:h-y}; } }
+        return {trimTop:0,contentH:h};
+      },
+      bottomTrim(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12;
+        for(let y=h-1;y>=0;y--){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH) return {bottomTrim:h-1-y,h}; } }
+        return {bottomTrim:0,h};
+      },
+      tightRect(img){ const w=img.naturalWidth,h=img.naturalHeight,c=document.createElement('canvas'); c.width=w;c.height=h;
+        const g=c.getContext('2d',{willReadFrequently:true}); g.drawImage(img,0,0);
+        const d=g.getImageData(0,0,w,h).data,TH=12; let minX=w,minY=h,maxX=-1,maxY=-1;
+        for(let y=0;y<h;y++){ for(let x=0;x<w;x++){ if(d[(y*w+x)*4+3]>TH){ if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y; } } }
+        if(maxX<0) return {sx:0,sy:0,sw:w,sh:h}; return {sx:minX,sy:minY,sw:maxX-minX+1,sh:maxY-minY+1};
+      }
+    };
 
-    const cornTrim={sx:0,sy:0,sw:IMG_CO.naturalWidth,sh:IMG_CO.naturalHeight};
-    const gomiTrim={sx:0,sy:0,sw:IMG_GO.naturalWidth,sh:IMG_GO.naturalHeight};
+    /* === 背景・地面 === */
+    const BG = (()=> {
+      const scaleY = H / IMG_BG.naturalHeight;
+      const tileW  = IMG_BG.naturalWidth * scaleY;
+      function draw(offsetX){
+        let ox = offsetX % tileW; if (ox>0) ox -= tileW;
+        for(let x=ox; x<W; x+=tileW){
+          ctx.drawImage(IMG_BG, 0, 0, IMG_BG.naturalWidth, IMG_BG.naturalHeight,
+                        Math.floor(x), 0, Math.ceil(tileW), H);
+        }
+      }
+      return { draw };
+    })();
+
+    const GR = (()=> {
+      const t=Px.topTrim(IMG_GR);
+      const drawH=Math.max(48, Math.min(160, t.contentH));
+      const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
+      const scaleY = drawH / srcH;
+      const tileW  = IMG_GR.naturalWidth * scaleY;
+      const y      = Math.floor(H - drawH);
+      function floorY(){ return y; }
+      function draw(offsetX){
+        let ox = offsetX % tileW; if(ox>0) ox -= tileW;
+        for(let x=ox;x<W;x+=tileW){
+          ctx.drawImage(IMG_GR,0,srcY,IMG_GR.naturalWidth,srcH,
+                        Math.floor(x), y, Math.ceil(tileW), drawH);
+        }
+      }
+      return { draw, floorY, drawH };
+    })();
+
+    /* === プレイヤー === */
+    function makePlayer(img){
+      if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
+      const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
+      return { x:80, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, maxJumps:2, img, feetFrac };
+    }
+    let player=null;
+
+    /* === 障害物 === */
+    const cornTrim  = Px.tightRect(IMG_CO);
+    const contTrim  = Px.tightRect(IMG_CT);
+    const trampTrim = Px.tightRect(IMG_TR);
+    const gomiTrim  = Px.tightRect(IMG_GO);
     const obstacles=[];
 
-    // ★ コーン小さめ
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.29); // 元0.32
+      const targetH = Math.round(GR.drawH * 0.29); // 少し小さく（元0.32）
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
-    // ★ ゴミ箱小さめ
+    function makeContSet(atX){
+      const fy=GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.60);
+      const s = targetH / contTrim.sh;
+      const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
+      const n = 2 + Math.floor(Math.random()*2);
+      const gap = 2, arr=[];
+      for(let i=0;i<n;i++){
+        arr.push({ x: atX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
+      }
+      return arr;
+    }
+    function makeTrampoline(atX){
+      const fy=GR.floorY();
+      const targetH = Math.round(GR.drawH * 0.40);
+      const s = targetH / trampTrim.sh;
+      const w = Math.round(trampTrim.sw * s), h = Math.round(trampTrim.sh * s);
+      return { x: atX, y: fy - h, w, h, img: IMG_TR, trim: trampTrim, type:'tramp', cd:0 };
+    }
     function makeGomi(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.31); // 元0.34
+      const targetH = Math.round(GR.drawH * 0.31); // 少し小さく（元0.34）
       const s = targetH / gomiTrim.sh;
       const w = Math.round(gomiTrim.sw * s), h = Math.round(gomiTrim.sh * s);
-      return { x: atX, y: fy - h, w, h, img: IMG_GO, trim: gomiTrim, type:'gomi' };
+      return { x: atX, y: fy - h, w, h, img: IMG_GO, trim: gomiTrim, type:'gomi',
+        phase: Math.random()*Math.PI*2, amp: 3.0, rotAmp: 0.06 };
     }
 
-    let player=null;
-    function makePlayer(img){ return {x:80,y:GR.floorY(),vy:0,w:48,h:48,img}; }
+    /* === アイテム（つばさ / エンジン） === */
+    const trimTS = Px.tightRect(IMG_TS);
+    const trimEN = Px.tightRect(IMG_EN);
+    const items=[];
+    function makeFloating(img,trim,type, atX, targetH=36){
+      const baseY = Math.round(H*0.28 + Math.random()*H*0.18);
+      const s = targetH / trim.sh;
+      const w = Math.round(trim.sw * s), h = Math.round(trim.sh * s);
+      return { x: atX, y: baseY, baseY, w, h, img, trim, type, phase: Math.random()*Math.PI*2, amp: 6.5 };
+    }
+    function makeTsubasa(atX){ return makeFloating(IMG_TS, trimTS, 'tsubasa', atX, 36); }
+    function makeEngine(atX){ return makeFloating(IMG_EN, trimEN, 'engine',  atX, 36); }
 
-    let speed=220, dist=0; let gameOver=false;
-    function loop(){
+    /* === ヴィラン & 火の玉 === */
+    const viTrim = Px.tightRect(IMG_VI);
+    const tmTrim = Px.tightRect(IMG_TM);
+    let villain = null; // {phase,x,y,w,h, vy,targetY,timer,dropsLeft,dropCd}
+    const fireballs = []; // {x,y,w,h,vx,vy,landed?}
+
+    const LOGO = {state:'idle', t:0};
+    function triggerLogo(){ LOGO.state='fadein'; LOGO.t=0; }
+    function drawLogo(dt){
+      if(LOGO.state==='idle') return;
+      LOGO.t += dt;
+      let a=0, s=1;
+      if(LOGO.state==='fadein'){
+        const t=Math.min(1, LOGO.t/1.0); a=t; s=1.0;
+        if(LOGO.t>=1.0){ LOGO.state='burst'; LOGO.t=0; }
+      }else if(LOGO.state==='burst'){
+        const t=Math.min(1, LOGO.t/0.4); a=1-t; s=1+0.6*t;
+        if(LOGO.t>=0.4){ LOGO.state='idle'; LOGO.t=0; }
+      }
+      const iw = Math.min(IMG_LOGO.naturalWidth, 260);
+      const scale = (iw/IMG_LOGO.naturalWidth)*s;
+      const w = IMG_LOGO.naturalWidth*scale;
+      const h = IMG_LOGO.naturalHeight*scale;
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.drawImage(IMG_LOGO, Math.floor((W-w)/2), Math.floor((H-h)/2 - 40), Math.floor(w), Math.floor(h));
+      ctx.restore();
+    }
+
+    function spawnVillain(){
+      const targetH = Math.round(GR.drawH * 0.70);
+      const s = targetH / viTrim.sh;
+      const w = Math.round(viTrim.sw * s), h = Math.round(viTrim.sh * s);
+      villain = {
+        phase:'enter',
+        x: Math.min(W-90, W*0.72),
+        y: -h, w, h,
+        vy: 60, targetY: Math.round(H*0.22),
+        timer: 0,
+        dropsLeft: 5 + Math.floor(Math.random()*4), // 5-8
+        dropCd: 0
+      };
+      triggerLogo();
+      firstVillainOccurred = true;
+    }
+    function endVillain(){ villain=null; }
+
+    // 右端付近に“投げる”火の玉（ホーミングなし・地面で着地して残る）
+    function spawnFireball(){
+      if(!villain) return;
+      const targetH = 48;                 // 玉の見た目サイズ
+      const s = targetH / tmTrim.sh;
+      const w = Math.round(tmTrim.sw*s), h = Math.round(tmTrim.sh*s);
+
+      const margin = 30;                  // 右端からの内側マージン
+      const dropX  = (W - margin) - Math.random()*50; // [W-80, W-30]
+
+      const vx = -70;                     // 落下中の横流れ
+      const vy = 220 + Math.random()*90;  // 落下速度
+
+      fireballs.push({
+        x: dropX - w/2, y: villain.y + villain.h*0.6,
+        w, h, vx, vy, landed:false
+      });
+    }
+
+    /* === スポーン距離・間隔 === */
+    let nextAllowedDist = 260;        // 序盤ゆるめ
+    let nextItemDist    = 650;        // レアアイテム
+    const startVillainGapM = 150 + Math.random()*50; // 初回 150-200m
+    let nextVillainM    = startVillainGapM;
+    let firstVillainOccurred = false;
+
+    const minGap = 90;
+    const spawnMargin = 40;
+    function rightmostFutureX(list){
+      let r = W + spawnMargin;
+      for(const o of list){ r = Math.max(r, o.x + (o.w||0)); }
+      return r;
+    }
+
+    function trySpawn(totalDist){
+      const meters = totalDist*0.02;
+
+      // --- Villain ---
+      if(!villain && meters >= nextVillainM){
+        spawnVillain();
+        nextVillainM = meters + 150 + Math.random()*50;
+      }
+
+      // --- Obstacles ---
+      const villainActive = !!villain;
+      if(totalDist >= nextAllowedDist){
+        const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
+
+        if(!firstVillainOccurred){
+          // 序盤：コーン/ゴミ箱のみ & かなりスカスカ
+          const kind = (Math.random()<0.6)?'corn':'gomi';
+          obstacles.push(kind==='corn' ? makeCorn(startX) : makeGomi(startX));
+          nextAllowedDist = totalDist + 320 + Math.random()*240; // 320〜560
+
+        }else if(villainActive){
+          // ★襲来中：コーン/ゴミ箱のみ ＋ 頻度を激減（420〜780）
+          const kind = (Math.random()<0.5)?'corn':'gomi';
+          obstacles.push(kind==='corn'? makeCorn(startX) : makeGomi(startX));
+          nextAllowedDist = totalDist + 420 + Math.random()*360;
+
+        }else{
+          // 通常
+          const r = Math.random();
+          let kind = r < 0.40 ? 'corn' : (r < 0.70 ? 'contena' : (r < 0.85 ? 'tramp' : 'gomi'));
+          if(kind==='corn'){
+            obstacles.push( makeCorn(startX) );
+            nextAllowedDist = totalDist + 160 + Math.random()*160;
+          }else if(kind==='contena'){
+            const set = makeContSet(startX); obstacles.push(...set);
+            const setWidth = (set[set.length-1].x + set[set.length-1].w) - set[0].x;
+            nextAllowedDist = totalDist + Math.max(240, setWidth) + 160 + Math.random()*120;
+          }else if(kind==='tramp'){
+            obstacles.push( makeTrampoline(startX) );
+            nextAllowedDist = totalDist + 220 + Math.random()*160;
+          }else{
+            obstacles.push( makeGomi(startX) );
+            nextAllowedDist = totalDist + 180 + Math.random()*160;
+          }
+        }
+      }
+
+      // --- Items (rare) ※ 襲来中は出さない
+      if(totalDist >= nextItemDist && !villain){
+        const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
+        if(Math.random() < 0.55){ items.push( makeTsubasa(startX) ); }
+        else { items.push( makeEngine(startX) ); }
+        nextItemDist = totalDist + 900 + Math.random()*700;
+      }
+    }
+
+    /* === ゲームパラメータ === */
+    const GRAV=1500, JUMP=540, BASE=220, BOOST=700, BURST_DUR=0.9, CHARGE_RATE=28;
+    const KM=0.072;
+    const ENGINE_V = Math.round((25 / KM)); // 25km/h
+    let speed=BASE, dist=0, bgOff=0, grOff=0;
+    let boostCharge=100, burstActive=false, burstTimer=0;
+    let engineTime=0, wingsTime=0;
+    let gameOver=false;
+
+    /* === HUD / 入力 === */
+    const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
+          elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
+    const wingsPill=document.getElementById('wings'), wingsLeftEl=document.getElementById('wingsLeft');
+    const enginePill=document.getElementById('engine'), engineLeftEl=document.getElementById('engineLeft');
+    const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
+    const slotEls=[document.getElementById('slot0'), document.getElementById('slot1')];
+    const slots=[null,null]; // {type:'tsubasa'|'engine', icon:'...png'}
+
+    function firstEmptySlot(){ return slots.findIndex(s=>!s); }
+    function updateSlotsUI(){
+      slots.forEach((s,idx)=>{
+        const el = slotEls[idx];
+        el.classList.toggle('empty', !s);
+        [...el.querySelectorAll('img,.badge')].forEach(n => n.remove());
+        const btn = el.querySelector('button'); btn.onclick=null;
+        if(s){
+          const img = document.createElement('img'); img.src=s.icon; img.alt=s.type; el.appendChild(img);
+          const badge = document.createElement('div'); badge.className='badge'; badge.textContent='USE'; el.appendChild(badge);
+          btn.onclick = ()=>useSlot(idx);
+        }
+      });
+    }
+    function setWings(active){
+      if(active){ wingsTime=5.0; player.maxJumps=4; player.jumps=Math.max(player.jumps,4); wingsPill.style.display='inline-block'; }
+      else{ wingsTime=0; player.maxJumps=2; player.jumps=Math.min(player.jumps,2); wingsPill.style.display='none'; }
+    }
+    function setEngine(active){
+      if(active){ engineTime=10.0; enginePill.style.display='inline-block'; }
+      else{ engineTime=0; enginePill.style.display='none'; }
+    }
+    function useSlot(idx){
+      const it=slots[idx]; if(!it) return;
+      if(it.type==='tsubasa') setWings(true);
+      if(it.type==='engine')  setEngine(true);
+      slots[idx]=null; updateSlotsUI();
+    }
+    function updateHUD(){
+      elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`;
+      elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
+      elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
+      elBoostPct.textContent=`${Math.round(boostCharge)}%`;
+      if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); }
+      else{ btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
+      if(wingsTime>0){ wingsLeftEl.textContent=`${wingsTime.toFixed(1)}s`; }
+      if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
+    }
+
+    btnJump.onpointerdown=e=>{ e.preventDefault(); if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } };
+    btnBoost.onclick=e=>{ e.preventDefault(); if(gameOver) return;
+      if(!burstActive && boostCharge>=100){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } };
+    addEventListener('keydown',e=>{
+      if(e.code==='Space'||e.code==='ArrowUp'){ if(player && !gameOver && player.jumps>0){ player.vy=-JUMP; player.jumps--; updateHUD(); } }
+      if(e.code==='KeyB'){ if(!burstActive && boostCharge>=100 && !gameOver){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } }
+      if(e.code==='Digit1'){ useSlot(0); } if(e.code==='Digit2'){ useSlot(1); }
+    });
+    document.getElementById('retryBtn').onclick=()=>{
+      gameOver=false; dist=0; bgOff=grOff=0; obstacles.length=0; items.length=0; fireballs.length=0; villain=null;
+      nextAllowedDist=260; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
+      if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; }
+      boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
+      slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
+    };
+
+    /* === 当たり判定 === */
+    // コーン：さらに緩和（下部主体/上部かなり小さく）
+    function hitConeRelax(px,py,pw,ph, cone){
+      const baseH=cone.h, baseW=cone.w;
+      const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 };
+      const upper={ x:cone.x + baseW*0.34, y:cone.y + baseH*0.06, w:baseW*0.32, h:baseH*0.22 };
+      const A=(px<lower.x+lower.w&&px+pw>lower.x&&py<lower.y+lower.h&&py+ph>lower.y);
+      const B=(px<upper.x+upper.w&&px+pw>upper.x&&py<upper.y+upper.h&&py+ph>upper.y);
+      return A||B;
+    }
+
+    /* === ループ === */
+    let prev=0, running=false;
+    function start(){ if(running) return; running=true; prev=performance.now(); updateSlotsUI(); updateHUD(); requestAnimationFrame(loop); }
+    function loop(t){
+      const dt = Math.min(0.033, (t-prev)/1000); prev=t;
+
+      // timers
+      if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
+      if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
+
+      // speed (BOOST > ENGINE > BASE)
+      if(!gameOver){
+        if(burstActive){ speed=BOOST; burstTimer-=dt; if(burstTimer<=0){ burstActive=false; } }
+        else if(engineTime>0){ speed=ENGINE_V; }
+        else { speed=BASE; boostCharge=Math.min(100, boostCharge + CHARGE_RATE*dt); }
+      }
+
+      // physics
+      if(player && !gameOver){
+        player.prevBottom = player.y;
+        player.vy += 1500*dt;
+        player.y  += player.vy*dt;
+        const fy = GR.floorY();
+        if(player.y > fy){ player.y = fy; player.vy = 0; player.jumps=player.maxJumps; }
+      }
+
+      // progress
+      if(!gameOver){
+        dist  += speed*dt;
+        bgOff -= speed*0.20*dt;
+        grOff -= speed*1.00*dt;
+
+        trySpawn(dist);
+
+        // obstacles scroll
+        for(let i=obstacles.length-1;i>=0;i--){
+          const o=obstacles[i];
+          o.x -= speed*dt;
+          if(o.cd){ o.cd = Math.max(0, o.cd - dt); }
+          if(o.phase!=null){ o.phase += dt*1.2; }
+          if(o.x + o.w < -40) obstacles.splice(i,1);
+        }
+
+        // items scroll
+        for(let i=items.length-1;i>=0;i--){
+          const it=items[i];
+          it.x -= speed*dt;
+          it.y = it.baseY + Math.sin(it.phase)*it.amp;
+          it.phase += dt*1.5;
+          if(it.x + it.w < -40) items.splice(i,1);
+        }
+
+        // villain logic
+        if(villain){
+          const minLead = 140; // 前方維持
+          villain.x -= speed*dt;
+          const desired = player.x + minLead;
+          if(villain.x < desired) villain.x = desired;
+          villain.x = Math.min(villain.x, W-90);
+
+          if(villain.phase==='enter'){
+            villain.y += villain.vy*dt;
+            if(villain.y >= villain.targetY){ villain.y = villain.targetY; villain.phase='attack'; villain.timer=0; villain.dropCd=0; }
+          }else if(villain.phase==='attack'){
+            villain.timer += dt;
+            villain.y = villain.targetY + Math.sin(villain.timer*1.3)*6;
+            villain.dropCd -= dt;
+            if(villain.dropCd<=0 && villain.dropsLeft>0){
+              spawnFireball();
+              villain.dropsLeft--;
+              villain.dropCd = 1.0 + Math.random(); // 1-2秒
+            }
+            if(villain.dropsLeft<=0 && fireballs.length===0){
+              villain.phase='exit'; villain.vy = -50;
+            }
+          }else if(villain.phase==='exit'){
+            villain.y += villain.vy*dt; // 上へ
+            if(villain.y + villain.h < -20) endVillain();
+          }
+        }
+
+        // fireballs move（落下→地面で着地して残る）
+        for(let i=fireballs.length-1;i>=0;i--){
+          const f=fireballs[i];
+          // 横：自前速度 - 世界の流れ
+          f.x += (f.vx - speed)*dt;
+          // 縦：落下 or 着地後は0
+          if(!f.landed){
+            f.y += f.vy*dt;
+            const groundY = GR.floorY();
+            if(f.y + f.h >= groundY){
+              f.y = groundY - f.h; // 着地
+              f.vy = 0;
+              f.vx = 0;          // 世界に合わせて左に流れる（= net -speed）
+              f.landed = true;
+            }
+          }
+          // 画面外で破棄
+          if(f.x + f.w < -60) fireballs.splice(i,1);
+        }
+      }
+
+      /* ==== draw ==== */
       ctx.clearRect(0,0,W,H);
-      GR.draw(0);
+      BG.draw(bgOff);
+      GR.draw(grOff);
 
+      // 障害物
       obstacles.forEach(o=>{
-        o.x -= speed*0.016;
-        ctx.drawImage(o.img,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,o.x,o.y,o.w,o.h);
+        if(o.type==='gomi'){
+          const dx = Math.sin(o.phase)*o.amp;
+          const cx = Math.floor(o.x + o.w/2 + dx);
+          const cy = Math.floor(o.y + o.h/2);
+          ctx.save(); ctx.translate(cx,cy); ctx.rotate(Math.sin(o.phase)*o.rotAmp);
+          ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(-o.w/2), Math.floor(-o.h/2), o.w, o.h);
+          ctx.restore();
+        }else{
+          ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
+        }
       });
 
-      if(player){ ctx.drawImage(player.img,player.x,player.y-player.h,player.w,player.h); }
+      // アイテム
+      items.forEach(it=>{
+        ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h);
+      });
 
+      // ヴィラン
+      if(villain){
+        ctx.drawImage(IMG_VI, viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh, Math.floor(villain.x), Math.floor(villain.y), villain.w, villain.h);
+      }
+
+      // 火の玉
+      fireballs.forEach(f=>{
+        ctx.drawImage(IMG_TM, tmTrim.sx,tmTrim.sy,tmTrim.sw,tmTrim.sh, Math.floor(f.x), Math.floor(f.y), f.w, f.h);
+      });
+
+      // プレイヤー
+      if(player){
+        const feetPush = Math.floor(player.h * player.feetFrac);
+        const px = Math.floor(player.x);
+        const py = Math.floor(player.y - player.h + feetPush);
+        ctx.drawImage(player.img, px, py, player.w, player.h);
+
+        if(!gameOver){
+          // item pickup
+          for(let i=items.length-1;i>=0;i--){
+            const it=items[i];
+            const aabb = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
+            if(aabb){
+              const slotIdx=firstEmptySlot();
+              if(slotIdx>=0){
+                const icon = it.type==='tsubasa' ? 'tsubasa.png' : 'en.png';
+                slots[slotIdx]={type:it.type, icon};
+                items.splice(i,1);
+                updateSlotsUI();
+              }
+            }
+          }
+
+          // obstacle collisions
+          const currBottom = player.y, prevBottom = player.prevBottom;
+          for(const o of obstacles){
+            const overlapXWide = (px + player.w > o.x - 16) && (px < o.x + o.w + 16);
+            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!overlapXWide && !aabb) continue;
+            if(o.type==='corn'){
+              if(aabb && hitConeRelax(px,py,player.w,player.h,o)){ gameOver=true; gameover.style.display='grid'; break; }
+            }else if(o.type==='contena'){
+              const top = o.y, comingDown = player.vy >= 0;
+              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
+              if(comingDown && crossed && overlapXWide){ player.y = top; player.vy = 0; player.jumps = player.maxJumps; }
+              else if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
+            }else if(o.type==='tramp'){
+              const top = o.y, comingDown = player.vy >= 0;
+              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
+              if(comingDown && crossed && overlapXWide && (!o.cd || o.cd<=0)){
+                player.y = top; player.vy = -JUMP * 1.35; player.jumps = player.maxJumps; o.cd = 0.25;
+              }
+            }else if(o.type==='gomi'){
+              if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
+            }
+          }
+
+          // fireball collisions（着地後も含む）
+          for(const f of fireballs){
+            const aabb = (px < f.x+f.w && px+player.w > f.x && py < f.y+f.h && py+player.h > f.y);
+            if(aabb){ gameOver=true; gameover.style.display='grid'; break; }
+          }
+        }
+      }
+
+      // ロゴ
+      drawLogo(dt);
+      updateHUD();
       requestAnimationFrame(loop);
     }
 
+    /* === start === */
     loading.style.display='none';
     overlay.style.display='grid';
     overlay.addEventListener('click', e=>{
       const c=e.target.closest('.choice'); if(!c) return;
-      const img=(c.dataset.char==='VR' && IMG_VR)?IMG_VR:IMG_OR;
-      player=makePlayer(img);
+      const img = (c.dataset.char==='VR' && IMG_VR) ? IMG_VR : (IMG_OR || IMG_VR);
+      player = makePlayer(img);
       overlay.style.display='none';
-      obstacles.push(makeCorn(W+100), makeGomi(W+200)); // テスト配置
-      loop();
+      start();
     });
+
+    /* === ページスクロール抑止（UI以外） === */
+    ['touchstart','touchmove','gesturestart'].forEach(ev=>{
+      document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
+    });
+
+  }).catch(err=>{
+    console.error(err);
+    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
   });
 })();
 </script>
