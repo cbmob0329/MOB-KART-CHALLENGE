@@ -158,22 +158,16 @@
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
- // 置き換え：どの画像が失敗してもゲームは起動（プレースホルダーにフォールバック）
-function load(src){
-  return new Promise((res)=>{
-    const i=new Image();
-    i.onload=()=>{ console.log('[loaded]', src); res(i); };
-    i.onerror=()=>{
-      console.warn('[missing]', src, '→ placeholder使用');
-      const c=document.createElement('canvas'); c.width=c.height=2;
-      const g=c.getContext('2d'); g.fillStyle='#f0f'; g.fillRect(0,0,2,2);
-      // プレースホルダーにも naturalWidth/Height が必要になる箇所があるので設定
-      c.naturalWidth = 2; c.naturalHeight = 2;
-      res(c);
-    };
-    i.src = src;
-  });
-}
+  // --- 画像読み込み ---
+  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+  Promise.all([
+    load('sora.png'), load('mob.png'),
+    load('corn.png'), load('contena.png'), load('gomi.png'),
+    load('tora.png'),
+    load('tsubasa.png'), load('en.png'), load('mranp.png'),
+    load('viran.png'), load('tama.png'), load('viran op.png'),
+    load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_GO, IMG_TR, IMG_TS, IMG_EN, IMG_LP, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR])=>{
 
     // --- pixel helpers ---
     const Px = {
@@ -516,21 +510,9 @@ function load(src){
 
       // speed
       if(!gameOver){
-        if(burstActive){
-          const frac=Math.max(0,burstTimer/BURST_DUR);
-          speed=BASE+(BOOST_MAX-BASE)*frac;
-          burstTimer-=dt;
-          if(burstTimer<=0) burstActive=false;
-        }else if(engineTime>0){
-          speed=ENGINE;
-        }else{
-          speed=BASE;
-          // Worldシリーズのみブースト溜まりが速い
-          const charge = (MODE==='world') ? CHARGE_RATE*1.5 : CHARGE_RATE;
-          boostCharge=Math.min(100,boostCharge+charge*dt);
-        }
+        if(burstActive){ const frac=Math.max(0,burstTimer/BURST_DUR); speed=BASE+(BOOST_MAX-BASE)*frac; burstTimer-=dt; if(burstTimer<=0) burstActive=false; }
+        else if(engineTime>0) speed=ENGINE; else { speed=BASE; boostCharge=Math.min(100,boostCharge+CHARGE_RATE*dt); }
       }
-
 
       // physics
       if(player && !gameOver){
@@ -562,26 +544,15 @@ function load(src){
         // sparkles
         for(let i=sparkles.length-1;i>=0;i--){ const p=sparkles[i]; p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.96; p.vy*=0.96; if(p.t>=p.life) sparkles.splice(i,1); }
 
-                // World：ボット更新＆順位
+        // World：ボット更新＆順位
         if(MODE==='world'){
           worldRaceTime+=dt;
           updateBots(dt);
-          rankTick+=dt;
-          if(rankTick>0.1){ rankTick=0; computeRankAndBoard(dist*0.02); }
-
-          // プレイヤーが300m到達したらゴール処理
-          const m=dist*0.02;
-          if(playerFinishTime==null && m>=WORLD_GOAL_M){
-            playerFinishTime=worldRaceTime;
-
-            // ゴール後は動きを止めてリザルトへ
-            gameOver=true;
-            gameover.style.display='grid';
-            gameover.querySelector('.panel div').textContent =
-              `FINISH! ${rankPillEl.textContent}`;
-          }
+          rankTick+=dt; if(rankTick>0.1){ rankTick=0; computeRankAndBoard(dist*0.02); }
+          // プレイヤーが300m到達でタイム記録
+          const m=dist*0.02; if(playerFinishTime==null && m>=WORLD_GOAL_M){ playerFinishTime=worldRaceTime; }
         }
-
+      }
 
       drawFrame(dt);
       requestAnimationFrame(loop);
