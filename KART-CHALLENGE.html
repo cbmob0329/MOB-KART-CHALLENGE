@@ -3,12 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – mobile no-select</title>
+<title>Runner – 完全版</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
   html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
-  /* ★ スマホの長押しメニュー／テキスト選択を無効化 */
   html,body{
     -webkit-user-select:none;
     -webkit-touch-callout:none;
@@ -46,6 +45,14 @@
   .btn:active{transform:translateY(1px)}
   .muted{opacity:.6;filter:saturate(.2)}
 
+  /* ★ ジャンプボタンを大きめに */
+  #btnJump{
+    width: clamp(120px, 34vw, 180px);
+    padding: 14px 18px;
+    font-size: 18px;
+    border-radius: 16px;
+  }
+
   .slots{display:flex;gap:8px;justify-content:center}
   .slot{
     width:60px;height:60px;border-radius:12px;border:1px solid rgba(255,255,255,.12);
@@ -71,6 +78,7 @@
 <body>
 <div id="root">
   <div id="phone">
+    <!-- HUD -->
     <header class="hud">
       <div class="pill" id="dist">距離 0 m</div>
       <div class="pill" id="speed">速度 0 km/h</div>
@@ -82,8 +90,10 @@
       </div>
     </header>
 
+    <!-- Game -->
     <main class="play"><canvas id="game" width="390" height="540"></canvas></main>
 
+    <!-- Controls -->
     <footer class="ctrl">
       <button class="btn" id="btnJump">ジャンプ</button>
       <div class="slots">
@@ -93,6 +103,7 @@
       <button class="btn" id="btnBoost">BOOST!</button>
     </footer>
 
+    <!-- Overlay -->
     <div id="overlay">
       <div class="card">
         <p style="margin:0 0 8px;font-weight:800;">どちらか選択してスタート</p>
@@ -161,7 +172,7 @@
       }
     };
 
-    // --- 背景・地面 ---
+    // --- 背景 ---
     const BG = (()=> {
       const scaleY = H / IMG_BG.naturalHeight;
       const tileW  = IMG_BG.naturalWidth * scaleY;
@@ -175,9 +186,10 @@
       return { draw };
     })();
 
+    // --- 地面 ---
     const GR = (()=> {
       const t=Px.topTrim(IMG_GR);
-      const drawH=Math.max(48, Math.min(160, t.contentH));
+      const drawH=Math.max(48, Math.min(160, t.contentH));  // 画像の余白を上からトリムして描画高さ決定
       const srcY=t.trimTop, srcH=IMG_GR.naturalHeight - t.trimTop;
       const scaleY = drawH / srcH;
       const tileW  = IMG_GR.naturalWidth * scaleY;
@@ -193,33 +205,35 @@
       return { draw, floorY, drawH };
     })();
 
-    // --- プレイヤー ---
+    // --- プレイヤー生成 ---
     function makePlayer(img){
       if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
-      const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0;
+      const b=Px.bottomTrim(img); const feetFrac=b.h? (b.bottomTrim/b.h):0; // 足元の透明境界補正
       return { x:40, y:GR.floorY(), prevBottom:GR.floorY(), vy:0, w:48, h:48, jumps:2, maxJumps:2, img, feetFrac };
     }
     let player=null;
 
-    // --- 障害物 ---
+    // --- 障害物トリム ---
     const cornTrim  = Px.tightRect(IMG_CO);
     const contTrim  = Px.tightRect(IMG_CT);
     const gomiTrim  = Px.tightRect(IMG_GO);
+
+    // --- 障害物生成 ---
     const obstacles=[];
 
     function makeCorn(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.29);
+      const targetH = Math.round(GR.drawH * 0.29); // コーン少し小さめ
       const s = targetH / cornTrim.sh;
       const w = Math.round(cornTrim.sw * s), h = Math.round(cornTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_CO, trim: cornTrim, type:'corn' };
     }
     function makeContSet(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.48);
+      const targetH = Math.round(GR.drawH * 0.48); // コンテナ小さめ（地面高の48%）
       const s = targetH / contTrim.sh;
       const w = Math.round(contTrim.sw * s), h = Math.round(contTrim.sh * s);
-      const n = 2 + Math.floor(Math.random()*2);
+      const n = 2 + Math.floor(Math.random()*2);   // 2〜3連
       const gap = 2, arr=[];
       for(let i=0;i<n;i++){
         arr.push({ x: atX + i*(w+gap), y: fy - h, w, h, img: IMG_CT, trim: contTrim, type:'contena' });
@@ -228,11 +242,11 @@
     }
     function makeGomi(atX){
       const fy=GR.floorY();
-      const targetH = Math.round(GR.drawH * 0.31);
+      const targetH = Math.round(GR.drawH * 0.31); // ゴミ箱やや小さめ
       const s = targetH / gomiTrim.sh;
       const w = Math.round(gomiTrim.sw * s), h = Math.round(gomiTrim.sh * s);
       return { x: atX, y: fy - h, w, h, img: IMG_GO, trim: gomiTrim, type:'gomi',
-        phase: Math.random()*Math.PI*2, amp: 3.0, rotAmp: 0.06 };
+        phase: Math.random()*Math.PI*2, amp: 3.0, rotAmp: 0.06 }; // ゆっくり揺れる
     }
 
     // --- アイテム（つばさ / エンジン） ---
@@ -286,7 +300,7 @@
         y: -h, w, h,
         vy: 60, targetY: Math.round(H*0.22),
         timer: 0,
-        dropsLeft: 5 + Math.floor(Math.random()*4), // 5-8
+        dropsLeft: 5 + Math.floor(Math.random()*4), // 5-8個
         dropCd: 0
       };
       triggerLogo();
@@ -306,7 +320,7 @@
       fireballs.push({ x: dropX - w/2, y: villain.y + villain.h*0.6, w, h, vx, vy, landed:false });
     }
 
-    // --- スポーン距離・間隔 ---
+    // --- スポーン距離・間隔管理 ---
     let nextAllowedDist = 220;
     let nextItemDist    = 650;
     const startVillainGapM = 150 + Math.random()*50; // 初回 150-200m
@@ -324,13 +338,13 @@
     function trySpawn(totalDist){
       const meters = totalDist*0.02;
 
-      // Villain
+      // ヴィラン
       if(!villain && meters >= nextVillainM){
         spawnVillain();
         nextVillainM = meters + 150 + Math.random()*50;
       }
 
-      // Obstacles
+      // 障害物
       const villainActive = !!villain;
       if(totalDist >= nextAllowedDist){
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
@@ -371,7 +385,7 @@
         }
       }
 
-      // Items（襲来中は出さない）
+      // アイテム（襲来中は出さない）
       if(totalDist >= nextItemDist && !villain){
         const startX = Math.max(W + spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items)) + minGap);
         if(Math.random() < 0.55){ items.push( makeTsubasa(startX) ); }
@@ -380,7 +394,7 @@
       }
     }
 
-    // --- ゲームパラメータ（km/h仕様） ---
+    // --- 物理・速度パラメータ（km/h仕様） ---
     const GRAV=1500, JUMP=540, BURST_DUR=1.6, CHARGE_RATE=28;
     const KM=0.072;
     const BASE_KMH   = 20; // 通常 20km/h
@@ -391,10 +405,13 @@
     const BOOST_MAX  = Math.round(BOOST_KMH  / KM);
     const BOOST_JUMP_MUL = 1.35;
 
+    // --- ランタイム状態 ---
     let speed=BASE, dist=0, bgOff=0, grOff=0;
     let boostCharge=100, burstActive=false, burstTimer=0;
     let engineTime=0, wingsTime=0;
     let gameOver=false;
+
+    // ここまでが初期化と生成系。続き（HUD/入力/当たり判定/描画ループ）は Part 4 で定義します。
 
     // --- HUD / 入力 ---
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
@@ -467,7 +484,7 @@
       if(gameOver) return;
       if(!burstActive && boostCharge>=100){
         burstActive = true;
-        burstTimer  = BURST_DUR;   // 60→20km/h減衰開始
+        burstTimer  = BURST_DUR;   // 60→20km/h 減衰
         boostCharge = 0;
         updateHUD();
       }
@@ -481,7 +498,7 @@
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
     };
 
-    // --- 当たり判定（コーン緩和） ---
+    // --- コーンの当たり判定（緩和） ---
     function hitConeRelax(px,py,pw,ph, cone){
       const baseH=cone.h, baseW=cone.w;
       const lower={ x:cone.x, y:cone.y + baseH*0.45, w:baseW*0.92,  h:baseH*0.55 };
@@ -595,8 +612,7 @@
       }
 
       // --- draw ---
-      const W2=W, H2=H;
-      ctx.clearRect(0,0,W2,H2);
+      ctx.clearRect(0,0,W,H);
       BG.draw(bgOff);
       GR.draw(grOff);
 
@@ -647,7 +663,7 @@
             }
           }
 
-          // obstacle collisions
+          // obstacle collisions / landing
           const currBottom = player.y, prevBottom = player.prevBottom;
           for(const o of obstacles){
             const overlapXWide = (px + player.w > o.x - 16) && (px < o.x + o.w + 16);
@@ -689,7 +705,7 @@
       start();
     });
 
-    // --- ページスクロール抑止（UI以外） ---
+    // --- ページスクロール抑止（UI以外は阻止） ---
     ['touchstart','touchmove','gesturestart'].forEach(ev=>{
       document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
     });
