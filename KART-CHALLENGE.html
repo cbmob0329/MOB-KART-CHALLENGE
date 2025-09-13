@@ -422,7 +422,20 @@
     const slotEls=[document.getElementById('slot0'), document.getElementById('slot1')];
     const slots=[null,null];
 
-    // ラストチャンス表示用
+    // ★ ブーストボタンを少し小さく（Part1/2/3を触らず動的注入）
+    (function injectBoostSize(){
+      const st=document.createElement('style');
+      st.textContent = `
+        #btnBoost{
+          min-width:100px;
+          padding:10px 14px;
+          font-size:15px;
+          border-radius:12px;
+        }`;
+      document.head.appendChild(st);
+    })();
+
+    // ラストチャンス：シンプルな白文字オーバーレイ
     const lastChanceOverlay = document.createElement('div');
     lastChanceOverlay.style.position='absolute';
     lastChanceOverlay.style.inset='56px 0 112px';
@@ -431,17 +444,22 @@
     lastChanceOverlay.style.justifyContent='center';
     lastChanceOverlay.style.zIndex='60';
     lastChanceOverlay.style.background='rgba(0,0,0,0.4)';
-    lastChanceOverlay.style.font='bold 42px/1 system-ui';
+    lastChanceOverlay.style.font='bold 42px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif';
+    lastChanceOverlay.style.letterSpacing='1px';
     lastChanceOverlay.style.color='#fff';
     lastChanceOverlay.style.textAlign='center';
     lastChanceOverlay.textContent='ラストチャンス！';
     document.getElementById('phone').appendChild(lastChanceOverlay);
 
+    let recovering=false; // ラストチャンス中（完全ポーズ）
+
     function showLastChance(cb){
+      recovering = true;
       lastChanceOverlay.style.display='flex';
       setTimeout(()=>{
         lastChanceOverlay.style.display='none';
-        cb();
+        recovering = false;
+        cb && cb();
       },2000);
     }
 
@@ -485,7 +503,7 @@
     }
 
     function doJump(){
-      if(player && !gameOver && player.jumps>0){
+      if(player && !gameOver && !recovering && player.jumps>0){
         const j = burstActive ? JUMP*BOOST_JUMP_MUL : JUMP;
         player.vy = -j;
         player.jumps--;
@@ -496,7 +514,7 @@
     addEventListener('keydown',e=>{
       if(e.code==='Space'||e.code==='ArrowUp'){ doJump(); }
       if(e.code==='KeyB'){
-        if(!burstActive && boostCharge>=100 && !gameOver){
+        if(!burstActive && boostCharge>=100 && !gameOver && !recovering){
           burstActive = true; burstTimer = BURST_DUR; boostCharge = 0; updateHUD();
         }
       }
@@ -504,18 +522,16 @@
     });
     btnBoost.onclick=e=>{
       e.preventDefault();
-      if(gameOver) return;
+      if(gameOver || recovering) return;
       if(!burstActive && boostCharge>=100){
         burstActive = true;
-        burstTimer  = BURST_DUR;
+        burstTimer  = BURST_DUR;   // 60→20km/h 減衰
         boostCharge = 0;
         updateHUD();
       }
     };
 
-    document.getElementById('retryBtn').onclick=()=>{
-      resetGame();
-    };
+    document.getElementById('retryBtn').onclick=()=>{ resetGame(); };
 
     // --- コーンの当たり判定（緩和） ---
     function hitConeRelax(px,py,pw,ph, cone){
@@ -533,7 +549,7 @@
       nextAllowedDist=220; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; player.lives=2; }
       boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
-      slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none';
+      slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none'; recovering=false;
     }
 
     // --- ループ ---
@@ -542,11 +558,41 @@
     function loop(t){
       const dt = Math.min(0.033, (t-prev)/1000); prev=t;
 
+      // ラストチャンス中は完全ポーズ（描画だけ行う）
+      if(recovering){
+        // 描画のみ
+        ctx.clearRect(0,0,W,H);
+        BG.draw(bgOff);
+        GR.draw(grOff);
+        obstacles.forEach(o=>{
+          if(o.type==='gomi'){
+            const cx = Math.floor(o.x + o.w/2);
+            const cy = Math.floor(o.y + o.h/2);
+            ctx.save(); ctx.translate(cx,cy); ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(-o.w/2), Math.floor(-o.h/2), o.w, o.h); ctx.restore();
+          }else{
+            ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
+          }
+        });
+        items.forEach(it=>{ ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h); });
+        if(villain){ ctx.drawImage(IMG_VI, viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh, Math.floor(villain.x), Math.floor(villain.y), villain.w, villain.h); }
+        fireballs.forEach(f=>{ ctx.drawImage(IMG_TM, tmTrim.sx,tmTrim.sy,tmTrim.sw,tmTrim.sh, Math.floor(f.x), Math.floor(f.y), f.w, f.h); });
+        if(player){
+          const feetPush = Math.floor(player.h * player.feetFrac);
+          const px = Math.floor(player.x);
+          const py = Math.floor(player.y - player.h + feetPush);
+          ctx.drawImage(player.img, px, py, player.w, player.h);
+        }
+        drawLogo(0);
+        updateHUD();
+        requestAnimationFrame(loop);
+        return;
+      }
+
       // timers
       if(wingsTime>0){ wingsTime -= dt; if(wingsTime<=0){ setWings(false); } }
       if(engineTime>0){ engineTime -= dt; if(engineTime<=0){ setEngine(false); } }
 
-      // speed
+      // speed（BOOST: 60→20 に減衰 / ENGINE: 30 固定 / BASE: 20）
       if(!gameOver){
         if(burstActive){
           const frac = Math.max(0, burstTimer / BURST_DUR);
@@ -574,7 +620,7 @@
 
         trySpawn(dist);
 
-        // update obstacles
+        // obstacles
         for(let i=obstacles.length-1;i>=0;i--){
           const o=obstacles[i];
           o.x -= speed*dt;
@@ -630,6 +676,7 @@
       ctx.clearRect(0,0,W,H);
       BG.draw(bgOff);
       GR.draw(grOff);
+
       obstacles.forEach(o=>{
         if(o.type==='gomi'){
           const dx = Math.sin(o.phase)*o.amp;
@@ -642,36 +689,74 @@
           ctx.drawImage(o.img, o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh, Math.floor(o.x), Math.floor(o.y), o.w, o.h);
         }
       });
+
       items.forEach(it=>{
         ctx.drawImage(it.img, it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh, Math.floor(it.x), Math.floor(it.y), it.w, it.h);
       });
-      if(villain){ ctx.drawImage(IMG_VI, viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh, Math.floor(villain.x), Math.floor(villain.y), villain.w, villain.h); }
-      fireballs.forEach(f=>{ ctx.drawImage(IMG_TM, tmTrim.sx,tmTrim.sy,tmTrim.sw,tmTrim.sh, Math.floor(f.x), Math.floor(f.y), f.w, f.h); });
-      if(player){ const feetPush=Math.floor(player.h*player.feetFrac); const px=Math.floor(player.x); const py=Math.floor(player.y-player.h+feetPush); ctx.drawImage(player.img, px, py, player.w, player.h); }
 
-      // --- 当たり判定 ---
-      if(player && !gameOver){
-        const px=player.x, py=player.y-player.h, pw=player.w, ph=player.h;
-        // items
-        for(let i=items.length-1;i>=0;i--){
-          const it=items[i];
-          if(px<pit.x+it.w&&px+pw>it.x&&py<it.y+it.h&&py+ph>it.y){ const slotIdx=firstEmptySlot(); if(slotIdx>=0){ slots[slotIdx]={type:it.type,icon:(it.type==='tsubasa'?'tsubasa.png':'en.png')}; items.splice(i,1); updateSlotsUI(); } }
-        }
-        // obstacles
-        for(let i=0;i<obstacles.length;i++){
-          const o=obstacles[i];
-          const aabb=(px<o.x+o.w&&px+pw>o.x&&py<o.y+o.h&&py+ph>o.y);
-          if(!aabb) continue;
-          let hit=false;
-          if(o.type==='corn'){ if(hitConeRelax(px,py,pw,ph,o)) hit=true; }
-          else if(o.type==='contena'||o.type==='gomi'){ hit=true; }
-          if(hit){ handleDamage(i); break; }
-        }
-        // fireballs
-        for(let i=0;i<fireballs.length;i++){
-          const f=fireballs[i];
-          const aabb=(px<f.x+f.w&&px+pw>f.x&&py<f.y+f.h&&py+ph>f.y);
-          if(aabb){ handleDamage(); break; }
+      if(villain){
+        ctx.drawImage(IMG_VI, viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh, Math.floor(villain.x), Math.floor(villain.y), villain.w, villain.h);
+      }
+
+      fireballs.forEach(f=>{
+        ctx.drawImage(IMG_TM, tmTrim.sx,tmTrim.sy,tmTrim.sw,tmTrim.sh, Math.floor(f.x), Math.floor(f.y), f.w, f.h);
+      });
+
+      if(player){
+        const feetPush = Math.floor(player.h * player.feetFrac);
+        const px = Math.floor(player.x);
+        const py = Math.floor(player.y - player.h + feetPush);
+        ctx.drawImage(player.img, px, py, player.w, player.h);
+
+        // === 当たり判定（アイテム／障害物／火の玉） ===
+        if(!gameOver){
+          // items（★ pit→it タイポ修正済み）
+          for(let i=items.length-1;i>=0;i--){
+            const it=items[i];
+            const aabb = (px < it.x+it.w && px+player.w > it.x && py < it.y+it.h && py+player.h > it.y);
+            if(aabb){
+              const slotIdx=firstEmptySlot();
+              if(slotIdx>=0){
+                const icon = it.type==='tsubasa' ? 'tsubasa.png' : 'en.png';
+                slots[slotIdx]={type:it.type, icon};
+                items.splice(i,1);
+                updateSlotsUI();
+              }
+            }
+          }
+
+          // obstacles（★ コンテナに着地可／横からは即アウト）
+          const currBottom = player.y, prevBottom = player.prevBottom;
+          for(let i=0;i<obstacles.length;i++){
+            const o=obstacles[i];
+            const aabb = (px < o.x+o.w && px+player.w > o.x && py < o.y+o.h && py+player.h > o.y);
+            if(!aabb) continue;
+
+            if(o.type==='corn'){
+              if(hitConeRelax(px,py,player.w,player.h,o)){ handleDamage(i); break; }
+            }else if(o.type==='contena'){
+              const top = o.y, comingDown = player.vy >= 0;
+              const crossed = (prevBottom <= top + 10) && (currBottom >= top - 10);
+              const overlapXWide = (px + player.w > o.x - 16) && (px < o.x + o.w + 16);
+              if(comingDown && crossed && overlapXWide){
+                // 上から着地
+                player.y = top; player.vy = 0; player.jumps = player.maxJumps;
+              }else{
+                // 横から or 下から → ダメージ
+                handleDamage(i); break;
+              }
+            }else {
+              // gomi など
+              handleDamage(i); break;
+            }
+          }
+
+          // fireballs
+          for(let i=0;i<fireballs.length;i++){
+            const f=fireballs[i];
+            const aabb = (px < f.x+f.w && px+player.w > f.x && py < f.y+f.h && py+player.h > f.y);
+            if(aabb){ handleDamage(); break; }
+          }
         }
       }
 
@@ -681,36 +766,44 @@
     }
 
     function handleDamage(obIdx){
+      if(gameOver || recovering) return; // 多重発火防止
       if(player.lives===undefined) player.lives=2;
+
       if(player.lives>1){
         player.lives--;
-        if(obIdx!=null) obstacles.splice(obIdx,1); // 当たった障害物消去
+        // 当たった障害物だけ除去（indexが来ていれば）
+        if(obIdx!=null && obIdx>=0 && obIdx<obstacles.length){ obstacles.splice(obIdx,1); }
         showLastChance(()=>{
-          player.y = -100; player.vy = 200; player.jumps=player.maxJumps;
+          // 天から落ちて復帰
+          player.y = -120; player.vy = 220; player.jumps = player.maxJumps;
         });
+        return; // ★ 復帰演出中はここで終わり
       }else{
         gameOver=true; gameover.style.display='grid';
       }
     }
 
     // --- start ---
-    loading.style.display='none'; overlay.style.display='grid';
+    loading.style.display='none';
+    overlay.style.display='grid';
     overlay.addEventListener('click', e=>{
       const c=e.target.closest('.choice'); if(!c) return;
-      const img=(c.dataset.char==='VR'&&IMG_VR)?IMG_VR:(IMG_OR||IMG_VR);
+      const img = (c.dataset.char==='VR' && IMG_VR) ? IMG_VR : (IMG_OR || IMG_VR);
       player = makePlayer(img); player.lives=2;
-      overlay.style.display='none'; start();
+      overlay.style.display='none';
+      start();
     });
 
+    // --- ページスクロール抑止（UI以外は阻止） ---
     ['touchstart','touchmove','gesturestart'].forEach(ev=>{
-      document.addEventListener(ev,e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); },{passive:false});
+      document.addEventListener(ev, e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); }, {passive:false});
     });
+
   }).catch(err=>{
     console.error(err);
-    document.querySelector('#loading .bubble').textContent='画像読み込み失敗: ファイル名と配置を確認してください。';
+    document.querySelector('#loading .bubble').textContent='画像の読み込みに失敗しました。ファイル名と配置を確認してください。';
   });
 })();
 </script>
 </body>
 </html>
-
