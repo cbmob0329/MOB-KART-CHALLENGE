@@ -158,16 +158,22 @@
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
 
-  // --- 画像読み込み ---
-  function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
-  Promise.all([
-    load('sora.png'), load('mob.png'),
-    load('corn.png'), load('contena.png'), load('gomi.png'),
-    load('tora.png'),
-    load('tsubasa.png'), load('en.png'), load('mranp.png'),
-    load('viran.png'), load('tama.png'), load('viran op.png'),
-    load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_GO, IMG_TR, IMG_TS, IMG_EN, IMG_LP, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR])=>{
+ // 置き換え：どの画像が失敗してもゲームは起動（プレースホルダーにフォールバック）
+function load(src){
+  return new Promise((res)=>{
+    const i=new Image();
+    i.onload=()=>{ console.log('[loaded]', src); res(i); };
+    i.onerror=()=>{
+      console.warn('[missing]', src, '→ placeholder使用');
+      const c=document.createElement('canvas'); c.width=c.height=2;
+      const g=c.getContext('2d'); g.fillStyle='#f0f'; g.fillRect(0,0,2,2);
+      // プレースホルダーにも naturalWidth/Height が必要になる箇所があるので設定
+      c.naturalWidth = 2; c.naturalHeight = 2;
+      res(c);
+    };
+    i.src = src;
+  });
+}
 
     // --- pixel helpers ---
     const Px = {
