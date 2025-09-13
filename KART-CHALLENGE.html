@@ -511,10 +511,21 @@
       if(wingsTime>0){ wingsTime-=dt; if(wingsTime<=0) setWings(false); }
       if(engineTime>0){ engineTime-=dt; if(engineTime<=0) setEngine(false); }
 
-      // speed
+          // speed
       if(!gameOver){
-        if(burstActive){ const frac=Math.max(0,burstTimer/BURST_DUR); speed=BASE+(BOOST_MAX-BASE)*frac; burstTimer-=dt; if(burstTimer<=0) burstActive=false; }
-        else if(engineTime>0) speed=ENGINE; else { speed=BASE; boostCharge=Math.min(100,boostCharge+CHARGE_RATE*dt); }
+        if(burstActive){
+          const frac=Math.max(0,burstTimer/BURST_DUR);
+          speed=BASE+(BOOST_MAX-BASE)*frac;
+          burstTimer-=dt;
+          if(burstTimer<=0) burstActive=false;
+        }else if(engineTime>0){
+          speed=ENGINE;
+        }else{
+          speed=BASE;
+          // Worldシリーズのみブースト溜まりが速い
+          const charge = (MODE==='world') ? CHARGE_RATE*1.5 : CHARGE_RATE;
+          boostCharge=Math.min(100,boostCharge+charge*dt);
+        }
       }
 
       // physics
@@ -547,15 +558,25 @@
         // sparkles
         for(let i=sparkles.length-1;i>=0;i--){ const p=sparkles[i]; p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.96; p.vy*=0.96; if(p.t>=p.life) sparkles.splice(i,1); }
 
-        // World：ボット更新＆順位
+                // World：ボット更新＆順位
         if(MODE==='world'){
           worldRaceTime+=dt;
           updateBots(dt);
-          rankTick+=dt; if(rankTick>0.1){ rankTick=0; computeRankAndBoard(dist*0.02); }
-          // プレイヤーが300m到達でタイム記録
-          const m=dist*0.02; if(playerFinishTime==null && m>=WORLD_GOAL_M){ playerFinishTime=worldRaceTime; }
+          rankTick+=dt;
+          if(rankTick>0.1){ rankTick=0; computeRankAndBoard(dist*0.02); }
+
+          // プレイヤーが300m到達したらゴール処理
+          const m=dist*0.02;
+          if(playerFinishTime==null && m>=WORLD_GOAL_M){
+            playerFinishTime=worldRaceTime;
+
+            // ゴール後は動きを止めてリザルトへ
+            gameOver=true;
+            gameover.style.display='grid';
+            gameover.querySelector('.panel div').textContent =
+              `FINISH! ${rankPillEl.textContent}`;
+          }
         }
-      }
 
       drawFrame(dt);
       requestAnimationFrame(loop);
