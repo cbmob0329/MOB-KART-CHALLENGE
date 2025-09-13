@@ -66,7 +66,6 @@
   #gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
 </style>
 </head>
-
 <body>
 <div id="root">
   <div id="phone">
@@ -144,7 +143,6 @@
     </div>
   </div>
 </div>
-
 <script>
 (() => {
   // --- スマホ画角固定 ---
@@ -400,7 +398,6 @@
     let boostCharge=100, burstActive=false, burstTimer=0;
     let engineTime=0, wingsTime=0;
     let gameOver=false;
-
     // --- HUD / 入力 & UI ---
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
           elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
@@ -511,7 +508,7 @@
       if(wingsTime>0){ wingsTime-=dt; if(wingsTime<=0) setWings(false); }
       if(engineTime>0){ engineTime-=dt; if(engineTime<=0) setEngine(false); }
 
-          // speed
+      // speed
       if(!gameOver){
         if(burstActive){
           const frac=Math.max(0,burstTimer/BURST_DUR);
@@ -527,6 +524,7 @@
           boostCharge=Math.min(100,boostCharge+charge*dt);
         }
       }
+
 
       // physics
       if(player && !gameOver){
@@ -577,6 +575,7 @@
               `FINISH! ${rankPillEl.textContent}`;
           }
         }
+
 
       drawFrame(dt);
       requestAnimationFrame(loop);
@@ -655,8 +654,7 @@
     function handleDamage(obIdx){
       if(gameOver||recovering) return;
       if(MODE==='world'){
-      
-  // World：即リスポーン（無制限）＋当たった障害物は消す
+        // World：即リスポーン（無制限）＋当たった障害物は消す
         if(obIdx!=null && obIdx>=0 && obIdx<obstacles.length){ const o=obstacles[obIdx]; if(o.type!=='flag'){ spawnSparkles(o.x+o.w/2,o.y+o.h/2); obstacles.splice(obIdx,1); } }
         recovering=true; setTimeout(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; recovering=false; }, 1200);
       }else{
