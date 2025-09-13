@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-<title>Runner – Drive & World</title>
+<title>Runner – Drive Mode</title>
 <meta name="theme-color" content="#0b0c10" />
 <style>
   :root{ --stage-w:390px; --stage-h:700px; }
@@ -79,12 +79,6 @@
         <div class="pill" id="wings" style="display:none;">WINGS <span id="wingsLeft">5.0s</span></div>
         <div class="pill" id="engine" style="display:none;">ENGINE <span id="engineLeft">10.0s</span></div>
       </div>
-
-      <!-- Worldシリーズ専用：順位表示 -->
-      <div id="rankWrap" style="display:none; position:absolute; right:10px; top:8px; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-        <div class="pill" id="rankPill">-- / 50</div>
-        <div id="top8" style="display:none; background:#0d1526cc; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:6px 8px; font-weight:600; font-size:11px; max-width:180px;"></div>
-      </div>
     </header>
 
     <!-- Game -->
@@ -100,36 +94,14 @@
       <button class="btn" id="btnBoost">BOOST!</button>
     </footer>
 
-    <!-- Overlay（モード選択＋名前＋キャラ選択） -->
+    <!-- Overlay（キャラ選択のみ） -->
     <div id="overlay">
-      <div class="card" style="display:grid; gap:12px;">
-        <p style="margin:0;font-weight:800;">モードを選択</p>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-          <label class="choice" style="cursor:pointer;">
-            <input type="radio" name="mode" value="drive" checked style="display:none;">
-            <div>ドライブ</div>
-            <small>いつものモード</small>
-          </label>
-          <label class="choice" style="cursor:pointer;">
-            <input type="radio" name="mode" value="world" style="display:none;">
-            <div>Worldシリーズ</div>
-            <small>50人で300mタイム勝負</small>
-          </label>
-        </div>
-
-        <div id="nameRow" style="display:none; margin-top:2px;">
-          <label style="font-size:12px; opacity:.9; display:block; margin-bottom:6px;">プレイヤー名</label>
-          <input id="playerNameInput" type="text" placeholder="あなたの名前" maxlength="16"
-                 style="width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:#0e1626; color:#fff;">
-        </div>
-
-        <hr style="border:none; border-top:1px solid rgba(255,255,255,.08); margin:4px 0 0;">
-        <p style="margin:6px 0 8px; font-weight:800;">どちらか選択してスタート（キャラ）</p>
+      <div class="card">
+        <p style="margin:0 0 8px;font-weight:800;">どちらか選択してスタート</p>
         <div class="choices">
           <div class="choice" data-char="VR"><img src="VR.png" alt="VR"><small>VR.png</small></div>
           <div class="choice" data-char="orange"><img src="orange.png" alt="orange"><small>orange.png</small></div>
         </div>
-        <button class="btn" id="startBtn" style="margin-top:8px;">スタート</button>
       </div>
     </div>
 
@@ -224,71 +196,7 @@
       return { draw, floorY, drawH };
     })();
 
-    // --- モード／World 用 ---
-    let MODE='drive', PLAYER_NAME='YOU';
-    const WORLD_GOAL_M=300;
-    let worldFlagSpawned=false, playerFinishTime=null, worldFinishedCount=0;
-    const rankWrapEl=document.getElementById('rankWrap');
-    const rankPillEl=document.getElementById('rankPill');
-    const top8El=document.getElementById('top8');
-
-    function makeFlag(atX){
-      const fy=GR.floorY(); const w=18, h=54;
-      return { x:atX, y:fy-h, w, h, type:'flag' };
-    }
-
-    const ALWAYS_FAST = ['MOBレッド','MOBブルー','MOBグリーン','MOBブラウン','MOBグレー','MOBイエロー','MOBオレンジ','MOBピンク','MOBホワイト','MOBブラック','MOBパープル','MOBカーキ','MOBホットピンク','MOBブロンズ','MOBメタル'];
-    const ALWAYS_NORMAL = ['MOBミント','MOBライム','MOBデイジー','MOBライトピンク','MOBライトイエロー','MOBライトグリーン','MOBライトオレンジ','MOBライトレッド','MOBディープイエロー','MOBディープグリーン','MOBディープブルー','MOBジャパンブルー','MOBロイヤルブルー','MOBオーシャン','MOBネイビー','MOBサックス','MOBイタリアンレッド','MOBホワイトイエロー','MOBバナナ','MOBレザーグレー'];
-    const ALWAYS_SLOW = ['MOBトマト','MOBキャベツ','MOBリンゴ','MOBコムギ','MOBサトウ'];
-    const ELITE_POOL = ['中華店主','レッドブルー','ブロンズ','シルバー','ゴールド','レインボー','ヒーロー','プテラ','ラプトル','ヴィラン','シュガー','ワンダ','フリーズ'];
-
-    let bots=[]; // {name, distM, finishedTime, baseKmh, variance, misrate, boostTimer}
-    function pickRandom(list,n){ const a=[...list]; for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]];} return a.slice(0,n); }
-    function makeBot(name,tier){
-      let base=22, varK=1.0, miss=0.02;
-      if(tier==='fast'){ base=26; varK=1.2; miss=0.01; }
-      else if(tier==='normal'){ base=22; varK=1.0; miss=0.02; }
-      else if(tier==='slow'){ base=18; varK=0.9; miss=0.03; }
-      else if(tier==='legend'){ base=28; varK=1.35; miss=0.008; }
-      return {name, distM:0, finishedTime:null, baseKmh:base, variance:varK, misrate:miss, boostTimer:0};
-    }
-    function initBots(){
-      bots=[];
-      ALWAYS_FAST.forEach(n=>bots.push(makeBot(n,'fast')));
-      ALWAYS_NORMAL.forEach(n=>bots.push(makeBot(n,'normal')));
-      ALWAYS_SLOW.forEach(n=>bots.push(makeBot(n,'slow')));
-      pickRandom(ELITE_POOL,9).forEach(n=>bots.push(makeBot(n,'legend')));
-    }
-    let worldRaceTime=0; // 秒
-    function updateBots(dt){
-      for(const b of bots){
-        if(b.finishedTime!=null) continue;
-        if(b.boostTimer>0) b.boostTimer-=dt; else if(Math.random()<0.02) b.boostTimer=0.8;
-        const kmh = b.baseKmh * ( b.variance + (b.boostTimer>0?0.5:0) + (Math.random()*0.06-0.03) );
-        const mps = kmh/3.6; b.distM += mps*dt;
-        if(b.distM>=WORLD_GOAL_M){ b.finishedTime=worldRaceTime; worldFinishedCount++; }
-      }
-    }
-    function formatTime(sec){ const m=Math.floor(sec/60), s=Math.floor(sec%60), ms=Math.floor((sec-Math.floor(sec))*100); return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(ms).padStart(2,'0')}`; }
-    function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-    function computeRankAndBoard(playerM){
-      const arr=bots.map(b=>({name:b.name,m:b.distM,t:b.finishedTime}));
-      arr.push({name:PLAYER_NAME,m:playerM,t:playerFinishTime});
-      arr.sort((a,b)=>{
-        if(a.t!=null&&b.t!=null) return a.t-b.t;
-        if(a.t!=null) return -1; if(b.t!=null) return 1; return b.m-a.m;
-      });
-      const rank = arr.findIndex(x=>x.name===PLAYER_NAME)+1;
-      rankPillEl.textContent=`${rank} / 50`;
-      let html=''; const top=arr.slice(0,8);
-      for(let i=0;i<top.length;i++){
-        const x=top[i]; const tail = x.t!=null?formatTime(x.t):`${Math.floor(x.m)}m`;
-        html+=`<div style="display:flex;justify-content:space-between;gap:8px;"><span>#${i+1} ${escapeHtml(x.name)}</span><span>${tail}</span></div>`;
-      }
-      top8El.innerHTML=html;
-    }
-
-    // --- プレイヤー生成 ---
+    // --- プレイヤー ---
     function makePlayer(img){
       if(!img){ const c=document.createElement('canvas'); c.width=c.height=1; const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,1,1); img=c; }
       const b=Px.bottomTrim(img); const feetFrac=b.h?(b.bottomTrim/b.h):0;
@@ -317,7 +225,7 @@
     function makeEngine(atX){return makeFloating(IMG_EN,trimEN,'engine',atX,36)}
     function makeLamp(atX){return makeFloating(IMG_LP,trimLP,'lamp',atX,34)}
 
-    // --- ヴィラン & 火の玉（Worldでは無効化） ---
+    // --- ヴィラン & 火の玉 ---
     const viTrim=Px.tightRect(IMG_VI), tmTrim=Px.tightRect(IMG_TM);
     let villain=null; const fireballs=[];
     const LOGO={state:'idle',t:0}; function triggerLogo(){LOGO.state='fadein';LOGO.t=0;}
@@ -327,7 +235,7 @@
       const iw=Math.min(IMG_LOGO.naturalWidth,260); const scale=(iw/IMG_LOGO.naturalWidth)*s; const w=IMG_LOGO.naturalWidth*scale, h=IMG_LOGO.naturalHeight*scale;
       ctx.save(); ctx.globalAlpha=a; ctx.drawImage(IMG_LOGO,Math.floor((W-w)/2),Math.floor((H-h)/2-40),Math.floor(w),Math.floor(h)); ctx.restore();
     }
-    function spawnVillain(){ /* drive専用 */ const targetH=Math.round(GR.drawH*0.70); const s=targetH/viTrim.sh; const w=Math.round(viTrim.sw*s),h=Math.round(viTrim.sh*s);
+    function spawnVillain(){ const targetH=Math.round(GR.drawH*0.70); const s=targetH/viTrim.sh; const w=Math.round(viTrim.sw*s),h=Math.round(viTrim.sh*s);
       villain={phase:'enter',x:Math.min(W-90,W*0.72),y:-h,w,h,vy:60,targetY:Math.round(H*0.22),timer:0,dropsLeft:5+Math.floor(Math.random()*4),dropCd:0}; triggerLogo(); firstVillainOccurred=true; }
     function endVillain(){villain=null;}
     function spawnFireball(){ if(!villain) return; const targetH=48; const s=targetH/tmTrim.sh; const w=Math.round(tmTrim.sw*s),h=Math.round(tmTrim.sh*s);
@@ -342,29 +250,9 @@
     function trySpawn(totalDist){
       const meters=totalDist*0.02;
 
-      // Worldモード：障害物少なめ＆ゴールフラッグ
-      if(MODE==='world'){
-        if(!worldFlagSpawned && meters>=260){
-          const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
-          obstacles.push(makeFlag(startX)); worldFlagSpawned=true;
-        }
-        if(totalDist>=nextAllowedDist){
-          const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
-          const r=Math.random();
-          if(r<0.55){ obstacles.push(makeCorn(startX)); nextAllowedDist=totalDist+260+Math.random()*220; }
-          else { const set=makeContSet(startX); obstacles.push(...set); const setW=(set[set.length-1].x+set[set.length-1].w)-set[0].x; nextAllowedDist=totalDist+Math.max(300,setW)+240+Math.random()*240; }
-        }
-        if(totalDist>=nextItemDist && !villain){
-          const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
-          const r=Math.random(); if(r<0.2) items.push(makeLamp(startX)); else if(r<0.6) items.push(makeTsubasa(startX)); else items.push(makeEngine(startX));
-          nextItemDist=totalDist+900+Math.random()*700;
-        }
-        return;
-      }
-
-      // --- drive（通常） ---
       if(!villain && meters>=nextVillainM){ spawnVillain(); nextVillainM=meters+150+Math.random()*50; }
       const villainActive=!!villain;
+
       if(totalDist>=nextAllowedDist){
         const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
         if(!firstVillainOccurred){
@@ -410,7 +298,7 @@
     // ブーストボタン少し小さく（CSS後ろ勝ち）
     (function(){const st=document.createElement('style');st.textContent='#btnBoost{min-width:100px;padding:10px 14px;font-size:15px;border-radius:12px;}';document.head.appendChild(st);})();
 
-    // ラストチャンス（drive用）
+    // ラストチャンス（1回だけ復活）
     const lastChanceOverlay=document.createElement('div');
     Object.assign(lastChanceOverlay.style,{position:'absolute',inset:'56px 0 112px',display:'none',alignItems:'center',justifyContent:'center',zIndex:'60',background:'rgba(0,0,0,0.4)',color:'#fff',textAlign:'center',font:'bold 42px/1 system-ui'});
     lastChanceOverlay.textContent='ラストチャンス！';
@@ -446,7 +334,7 @@
       if(it.type==='engine')  setEngine(true);
       if(it.type==='lamp'){
         let best=null,bestD=1e9,cx=player.x+player.w/2,cy=player.y-player.h/2;
-        for(const o of obstacles){ if(o.type==='flag') continue; const ox=o.x+o.w/2,oy=o.y+o.h/2; const d=Math.hypot(ox-cx,oy-cy); if(d<bestD){bestD=d;best=o;} }
+        for(const o of obstacles){ const ox=o.x+o.w/2,oy=o.y+o.h/2; const d=Math.hypot(ox-cx,oy-cy); if(d<bestD){bestD=d;best=o;} }
         if(best){ spawnSparkles(best.x+best.w/2,best.y+best.h/2); const i=obstacles.indexOf(best); if(i>=0) obstacles.splice(i,1); }
       }
       slots[idx]=null; updateSlotsUI();
@@ -457,8 +345,6 @@
       elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
       elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
       elBoostPct.textContent=`${Math.round(boostCharge)}%`;
-      if(MODE==='world'){ rankWrapEl.style.display='block'; top8El.style.display='block'; }
-      else{ rankWrapEl.style.display='none'; top8El.style.display='none'; }
       if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); } else { btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
       if(wingsTime>0){ wingsLeftEl.textContent=`${wingsTime.toFixed(1)}s`; }
       if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
@@ -490,11 +376,10 @@
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; player.lives=2; }
       boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none'; recovering=false;
-      if(MODE==='world'){ worldRaceTime=0; playerFinishTime=null; worldFinishedCount=0; worldFlagSpawned=false; initBots(); }
     }
 
     // ループ
-    let prev=0, running=false, rankTick=0;
+    let prev=0, running=false;
     function start(){ if(running) return; running=true; prev=performance.now(); updateSlotsUI(); updateHUD(); requestAnimationFrame(loop); }
     function loop(t){
       const dt=Math.min(0.033,(t-prev)/1000); prev=t;
@@ -508,7 +393,7 @@
       if(wingsTime>0){ wingsTime-=dt; if(wingsTime<=0) setWings(false); }
       if(engineTime>0){ engineTime-=dt; if(engineTime<=0) setEngine(false); }
 
-      // speed
+      // speed（ブースト 60→20 に減衰 / エンジン 30 / 通常 20）
       if(!gameOver){
         if(burstActive){ const frac=Math.max(0,burstTimer/BURST_DUR); speed=BASE+(BOOST_MAX-BASE)*frac; burstTimer-=dt; if(burstTimer<=0) burstActive=false; }
         else if(engineTime>0) speed=ENGINE; else { speed=BASE; boostCharge=Math.min(100,boostCharge+CHARGE_RATE*dt); }
@@ -530,8 +415,8 @@
         for(let i=obstacles.length-1;i>=0;i--){ const o=obstacles[i]; o.x-=speed*dt; if(o.phase!=null) o.phase+=dt*1.2; if(o.x+o.w<-40) obstacles.splice(i,1); }
         for(let i=items.length-1;i>=0;i--){ const it=items[i]; it.x-=speed*dt; it.y=it.baseY+Math.sin(it.phase)*it.amp; it.phase+=dt*1.5; if(it.x+it.w<-40) items.splice(i,1); }
 
-        // ヴィラン（driveのみ）
-        if(MODE==='drive' && villain){
+        // ヴィラン
+        if(villain){
           const minLead=140; villain.x-=speed*dt; const desired=player.x+minLead; if(villain.x<desired) villain.x=desired; villain.x=Math.min(villain.x,W-90);
           if(villain.phase==='enter'){ villain.y+=villain.vy*dt; if(villain.y>=villain.targetY){villain.y=villain.targetY; villain.phase='attack'; villain.timer=0; villain.dropCd=0;} }
           else if(villain.phase==='attack'){ villain.timer+=dt; villain.y=villain.targetY+Math.sin(villain.timer*1.3)*6; villain.dropCd-=dt;
@@ -539,47 +424,18 @@
             if(villain.dropsLeft<=0 && fireballs.length===0){ villain.phase='exit'; villain.vy=-50; } }
           else if(villain.phase==='exit'){ villain.y+=villain.vy*dt; if(villain.y+villain.h<-20) endVillain(); }
         }
-        for(let i=fireballs.length-1;i>=0;i--){ const f=fireballs[i]; f.x+=(f.vx-speed)*dt; if(!f.landed){ f.y+=f.vy*dt; const gy=GR.floorY(); if(f.y+f.h>=gy){f.y=gy-f.h; f.vy=0; f.vx=0; f.landed=true;} } if(f.x+f.w<-60) fireballs.splice(i,1); }
+
+        // 火の玉
+        for(let i=fireballs.length-1;i>=0;i--){
+          const f=fireballs[i];
+          f.x+=(f.vx-speed)*dt;
+          if(!f.landed){ f.y+=f.vy*dt; const gy=GR.floorY(); if(f.y+f.h>=gy){f.y=gy-f.h; f.vy=0; f.vx=0; f.landed=true;} }
+          if(f.x+f.w<-60) fireballs.splice(i,1);
+        }
 
         // sparkles
         for(let i=sparkles.length-1;i>=0;i--){ const p=sparkles[i]; p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.96; p.vy*=0.96; if(p.t>=p.life) sparkles.splice(i,1); }
-
-        // World：ボット更新＆順位
-if (MODE === 'world') {
-  worldRaceTime += dt;
-  updateBots(dt);
-
-  // 順位は0.1秒ごとに更新
-  rankTick += dt;
-  if (rankTick > 0.1) {
-    rankTick = 0;
-    computeRankAndBoard(dist * 0.02);
-  }
-
-  // ゴール判定（300m）
-  const m = dist * 0.02;
-  if (playerFinishTime === null && m >= WORLD_GOAL_M) {
-    finishRace();
-  }
-}
-
-function finishRace() {
-  playerFinishTime = worldRaceTime;
-
-  // プレイヤーを停止
-  speed = 0;
-  if (player) player.vy = 0;
-
-  // リザルト表示
-  const titleEl = document.querySelector('#gameover .panel div');
-  if (titleEl) {
-    titleEl.textContent = `FINISH! ${rankPillEl ? rankPillEl.textContent : ''}`;
-  }
-  gameover.style.display = 'grid';
-
-  gameOver = true;
-}
-
+      }
 
       drawFrame(dt);
       requestAnimationFrame(loop);
@@ -595,11 +451,6 @@ function finishRace() {
           const dx=Math.sin(o.phase)*o.amp; const cx=Math.floor(o.x+o.w/2+dx), cy=Math.floor(o.y+o.h/2);
           ctx.save(); ctx.translate(cx,cy); ctx.rotate(Math.sin(o.phase)*o.rotAmp);
           ctx.drawImage(o.img,o.trim?.sx||0,o.trim?.sy||0,o.trim?.sw||o.w,o.trim?.sh||o.h,Math.floor(-o.w/2),Math.floor(-o.h/2),o.w,o.h); ctx.restore();
-        }else if(o.type==='flag'){
-          // 簡易フラッグ描画
-          ctx.fillStyle='#e33'; ctx.fillRect(Math.floor(o.x), Math.floor(o.y), 3, o.h); // ポール
-          ctx.fillStyle='#ffd800'; // 旗
-          ctx.beginPath(); ctx.moveTo(o.x+3,o.y+6); ctx.lineTo(o.x+3+14,o.y+12); ctx.lineTo(o.x+3,o.y+18); ctx.closePath(); ctx.fill();
         }else{
           ctx.drawImage(o.img,o.trim.sx,o.trim.sy,o.trim.sw,o.trim.sh,Math.floor(o.x),Math.floor(o.y),o.w,o.h);
         }
@@ -609,19 +460,19 @@ function finishRace() {
       items.forEach(it=>{ ctx.drawImage(it.img,it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh,Math.floor(it.x),Math.floor(it.y),it.w,it.h); });
 
       // ヴィラン / 火の玉
-      if(MODE==='drive' && villain){ ctx.drawImage(IMG_VI,viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh,Math.floor(villain.x),Math.floor(villain.y),villain.w,villain.h); }
+      if(villain){ ctx.drawImage(IMG_VI,viTrim.sx,viTrim.sy,viTrim.sw,viTrim.sh,Math.floor(villain.x),Math.floor(villain.y),villain.w,villain.h); }
       fireballs.forEach(f=>{ ctx.drawImage(IMG_TM,tmTrim.sx,tmTrim.sy,tmTrim.sw,tmTrim.sh,Math.floor(f.x),Math.floor(f.y),f.w,f.h); });
 
       // キラキラ
       sparkles.forEach(p=>{ const a=1-(p.t/p.life); ctx.save(); ctx.globalAlpha=Math.max(0,a); ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(p.x,p.y,2.2,0,Math.PI*2); ctx.fill(); ctx.restore(); });
 
-      // プレイヤー
+      // プレイヤー＋当たり
       if(player){
         const feetPush=Math.floor(player.h*player.feetFrac); const px=Math.floor(player.x), py=Math.floor(player.y-player.h+feetPush);
         ctx.drawImage(player.img,px,py,player.w,player.h);
 
         if(!gameOver && !recovering){
-          // アイテム取得
+          // アイテム取得（★ it.x タイポ対策済み）
           for(let i=items.length-1;i>=0;i--){
             const it=items[i]; const aabb=(px<it.x+it.w&&px+player.w>it.x&&py<it.y+it.h&&py+player.h>it.y);
             if(aabb){ const sidx=firstEmptySlot(); if(sidx>=0){ const icon=it.type==='tsubasa'?'tsubasa.png':(it.type==='engine'?'en.png':'mranp.png'); slots[sidx]={type:it.type,icon}; items.splice(i,1); updateSlotsUI(); } }
@@ -631,7 +482,6 @@ function finishRace() {
           const currBottom=player.y, prevBottom=player.prevBottom;
           for(let i=0;i<obstacles.length;i++){
             const o=obstacles[i];
-            if(o.type==='flag') continue;
             const aabb=(px<o.x+o.w&&px+player.w>o.x&&py<o.y+o.h&&py+player.h>o.y);
             if(!aabb) continue;
             if(o.type==='corn'){ if(hitConeRelax(px,py,player.w,player.h,o)) { handleDamage(i); break; } }
@@ -646,6 +496,7 @@ function finishRace() {
               else if(hitSideLenient(px,py,player.w,player.h,o)){ handleDamage(i); break; }
             }else{ handleDamage(i); break; }
           }
+
           // 火の玉
           for(let i=0;i<fireballs.length;i++){ const f=fireballs[i]; const aabb=(px<f.x+f.w&&px+player.w>f.x&&py<f.y+f.h&&py+player.h>f.y); if(aabb){ handleDamage(); break; } }
         }
@@ -657,43 +508,27 @@ function finishRace() {
 
     function handleDamage(obIdx){
       if(gameOver||recovering) return;
-      if(MODE==='world'){
-        // World：即リスポーン（無制限）＋当たった障害物は消す
-        if(obIdx!=null && obIdx>=0 && obIdx<obstacles.length){ const o=obstacles[obIdx]; if(o.type!=='flag'){ spawnSparkles(o.x+o.w/2,o.y+o.h/2); obstacles.splice(obIdx,1); } }
-        recovering=true; setTimeout(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; recovering=false; }, 1200);
+      if(player.lives===undefined) player.lives=2;
+      if(player.lives>1){
+        player.lives--;
+        if(obIdx!=null&&obIdx>=0&&obIdx<obstacles.length){
+          const o=obstacles[obIdx]; spawnSparkles(o.x+o.w/2,o.y+o.h/2); obstacles.splice(obIdx,1);
+        }
+        showLastChance(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; });
+        return; // 復帰演出中は終了
       }else{
-        // drive：1回目はラストチャンス、2回目でゲームオーバー
-        if(player.lives===undefined) player.lives=2;
-        if(player.lives>1){
-          player.lives--; if(obIdx!=null&&obIdx>=0&&obIdx<obstacles.length){ const o=obstacles[obIdx]; if(o.type!=='flag'){ spawnSparkles(o.x+o.w/2,o.y+o.h/2); obstacles.splice(obIdx,1);} }
-          showLastChance(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; });
-        }else{ gameOver=true; gameover.style.display='grid'; }
+        gameOver=true; gameover.style.display='grid';
       }
     }
 
-    // --- start（モード選択 & 名前入力 & キャラ） ---
+    // --- start（キャラ選択 → 開始） ---
     loading.style.display='none';
     overlay.style.display='grid';
 
-    const modeRadios=[...document.querySelectorAll('input[name="mode"]')];
-    const nameRow=document.getElementById('nameRow');
-    const nameInput=document.getElementById('playerNameInput');
-    modeRadios.forEach(r=>r.addEventListener('change',()=>{ nameRow.style.display = (r.value==='world' && r.checked)?'block':'none'; }));
-
-    let pendingChar=null;
-    document.querySelectorAll('#overlay .choice[data-char]').forEach(el=>{ el.addEventListener('click',()=>{ pendingChar=el.dataset.char; }); });
-
-    document.getElementById('startBtn').addEventListener('click',()=>{
-      const selected=modeRadios.find(r=>r.checked)?.value||'drive';
-      MODE=selected;
-      if(MODE==='world'){
-        PLAYER_NAME=(nameInput.value||'YOU').slice(0,16);
-        initBots(); worldRaceTime=0; playerFinishTime=null; worldFinishedCount=0; worldFlagSpawned=false;
-        rankWrapEl.style.display='block'; top8El.style.display='block';
-      }else{
-        rankWrapEl.style.display='none'; top8El.style.display='none';
-      }
-      const img=(pendingChar==='VR'&&IMG_VR)?IMG_VR:(IMG_OR||IMG_VR);
+    // キャラ選択クリックで開始
+    overlay.addEventListener('click', e=>{
+      const c=e.target.closest('.choice'); if(!c) return;
+      const img=(c.dataset.char==='VR'&&IMG_VR)?IMG_VR:(IMG_OR||IMG_VR);
       player=makePlayer(img);
       overlay.style.display='none';
       start();
@@ -701,7 +536,7 @@ function finishRace() {
 
     // ページスクロール抑止（UI以外は阻止）
     ['touchstart','touchmove','gesturestart'].forEach(ev=>{
-      document.addEventListener(ev,e=>{ if(e.target.closest('button,.choice,input'))return; e.preventDefault(); },{passive:false});
+      document.addEventListener(ev,e=>{ if(e.target.closest('button,.choice'))return; e.preventDefault(); },{passive:false});
     });
 
   }).catch(err=>{
