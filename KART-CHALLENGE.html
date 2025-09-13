@@ -545,7 +545,7 @@
         for(let i=sparkles.length-1;i>=0;i--){ const p=sparkles[i]; p.t+=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.96; p.vy*=0.96; if(p.t>=p.life) sparkles.splice(i,1); }
 
                 // World：ボット更新＆順位
-        if (MODE === 'world') {
+         if (MODE === 'world') {
           worldRaceTime += dt;
           updateBots(dt);
 
