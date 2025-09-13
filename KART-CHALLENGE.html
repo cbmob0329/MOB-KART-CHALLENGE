@@ -655,7 +655,8 @@
     function handleDamage(obIdx){
       if(gameOver||recovering) return;
       if(MODE==='world'){
-        // World：即リスポーン（無制限）＋当たった障害物は消す
+      
+  // World：即リスポーン（無制限）＋当たった障害物は消す
         if(obIdx!=null && obIdx>=0 && obIdx<obstacles.length){ const o=obstacles[obIdx]; if(o.type!=='flag'){ spawnSparkles(o.x+o.w/2,o.y+o.h/2); obstacles.splice(obIdx,1); } }
         recovering=true; setTimeout(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; recovering=false; }, 1200);
       }else{
