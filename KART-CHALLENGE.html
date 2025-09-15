@@ -95,7 +95,7 @@
       <button class="btn" id="btnBoost">BOOST!</button>
     </footer>
 
-    <!-- Overlay（キャラ選択） -->
+    <!-- Overlay（キャラ選択 = スタートボタンの役割） -->
     <div id="overlay">
       <div class="card">
         <p style="margin:0 0 8px;font-weight:800;">キャラクターを選択してスタート</p>
@@ -121,6 +121,10 @@
   </div>
 </div>
 
+<!-- ▼▼ レース中のみ流れるBGM（ループ） ▼▼ -->
+<audio id="bgm" src="mobkart.m4a" preload="auto" loop></audio>
+<!-- ▲▲ ------------------------------------ ▲▲ -->
+
 <script>
 (() => {
   // スマホ画角固定
@@ -135,6 +139,23 @@
   setup(); addEventListener('resize', setup, {passive:true});
 
   const overlay=document.getElementById('overlay'), loading=document.getElementById('loading'), gameover=document.getElementById('gameover');
+
+  // ▼ BGM 制御
+  const bgm = document.getElementById('bgm');
+  function playBGM(){
+    try{
+      bgm.currentTime = 0;
+      // iOS/Safari 対策：ユーザー操作（タップ）を起点に呼ばれる
+      bgm.play().catch(()=>{/* サイレント失敗でOK */});
+    }catch(e){}
+  }
+  function stopBGM(){
+    try{
+      bgm.pause();
+      bgm.currentTime = 0;
+    }catch(e){}
+  }
+  // ▲ BGM 制御
 
   // 画像読み込み
   function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
@@ -388,7 +409,7 @@
 
     function updateHUD(){
       elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`;
-      elSpeed.textContent=`速度 ${Math.round(speed*KM)} km/h`;
+      elSpeed.textContent=`速度 ${Math.round(speed*0.072)} km/h`;
       elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
       elBoostPct.textContent=`${Math.round(boostCharge)}%`;
       if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); } else { btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
@@ -405,7 +426,11 @@
     });
     btnBoost.onclick=e=>{ e.preventDefault(); if(gameOver||recovering) return; if(!burstActive && boostCharge>=100){ burstActive=true; burstTimer=BURST_DUR; boostCharge=0; updateHUD(); } };
 
-    document.getElementById('retryBtn').onclick=()=>{ resetGame(); };
+    document.getElementById('retryBtn').onclick=()=>{ 
+      // リトライはユーザー操作なのでBGM再開OK
+      resetGame(); 
+      playBGM();
+    };
 
     // 判定
     function hitConeRelax(px,py,pw,ph, c){
@@ -601,7 +626,11 @@
         showLastChance(()=>{ player.y=-120; player.vy=220; player.jumps=player.maxJumps; });
         return;
       }else{
-        gameOver=true; gameover.style.display='grid';
+        gameOver=true; 
+        gameover.style.display='grid';
+        // ▼ ゲームオーバー時にBGM停止
+        stopBGM();
+        // ▲
       }
     }
 
@@ -615,6 +644,9 @@
       const img = (SKINS && SKINS[key]) || IMG_VR || IMG_OR;
       player=makePlayer(img);
       overlay.style.display='none';
+      // ▼ スタート（= ユーザータップ直後）でBGM開始
+      playBGM();
+      // ▲
       start();
     });
 
