@@ -1,0 +1,63 @@
+:root{ --stage-w:390px; --stage-h:700px; }
+html,body{height:100%;margin:0;background:#000;color:#fff;overscroll-behavior:none}
+html,body{-webkit-user-select:none;-webkit-touch-callout:none;user-select:none}
+
+#root{position:fixed;inset:0;display:grid;place-items:center}
+#phone{
+  width:var(--stage-w);height:var(--stage-h);position:relative;overflow:hidden;
+  background:#070b12;border:1px solid #0e1522;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.45);
+  transform-origin:center center;
+}
+
+header.hud{
+  position:absolute;left:0;right:0;top:env(safe-area-inset-top);height:56px;z-index:20;
+  display:flex;gap:8px;align-items:center;justify-content:space-around;padding:8px 10px;
+  background:linear-gradient(180deg,rgba(12,18,28,.9),rgba(10,14,22,.8));
+  border-bottom:1px solid rgba(255,255,255,.06);
+  font:600 12px/1 system-ui,-apple-system,Segoe UI,Roboto,"Hiragino Sans","Yu Gothic",sans-serif;
+}
+.pill{background:#11192a;border:1px solid rgba(255,255,255,.08);padding:6px 10px;border-radius:999px;white-space:nowrap}
+.status{display:flex;gap:6px;align-items:center}
+
+main.play{position:absolute;left:0;right:0;top:56px;bottom:112px}
+canvas#game{width:100%;height:100%;display:block;image-rendering:pixelated;background:transparent}
+
+footer.ctrl{
+  position:absolute;left:0;right:0;bottom:env(safe-area-inset-bottom);height:112px;z-index:20;
+  display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:10px;padding:10px 12px;
+  background:linear-gradient(180deg,rgba(10,14,22,.8),rgba(7,10,16,.95)); border-top:1px solid rgba(255,255,255,.06);
+}
+.btn{-webkit-tap-highlight-color:transparent; user-select:none; touch-action:manipulation;
+  min-width:120px;padding:12px 16px;border-radius:14px;border:1px solid rgba(255,255,255,.1);
+  background:#182233;font-weight:800;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:16px}
+.btn:active{transform:translateY(1px)}
+.muted{opacity:.6;filter:saturate(.2)}
+
+/* ジャンプボタンを少し大きめ */
+#btnJump{ width:clamp(120px,34vw,180px); padding:14px 18px; font-size:18px; border-radius:16px; }
+
+/* アイテムスロット */
+.slots{display:flex;gap:8px;justify-content:center}
+.slot{
+  width:60px;height:60px;border-radius:12px;border:1px solid rgba(255,255,255,.12);
+  background:#0e1626; position:relative; overflow:hidden;
+}
+.slot button{position:absolute;inset:0;border:0;background:transparent;padding:0;cursor:pointer}
+.slot img{position:absolute;inset:8px;object-fit:contain;width:auto;height:auto;max-width:calc(100% - 16px);max-height:calc(100% - 16px);opacity:.95;pointer-events:none}
+.slot.empty{opacity:.35}
+.slot .badge{position:absolute;right:4px;bottom:4px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.2);font-size:10px;padding:1px 4px;border-radius:6px;pointer-events:none}
+
+/* Overlay / Loading / GameOver */
+#overlay{position:absolute;inset:56px 0 112px;display:none;place-items:center;z-index:30;background:rgba(0,0,0,.35)}
+.card{width:min(92%,360px);background:#0c121f;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:16px}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.choice{display:grid;gap:8px;justify-items:center;background:#111a2a;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;cursor:pointer}
+.choice img{width:72px;height:72px;object-fit:contain;background:#0b0f18;border-radius:10px;border:1px solid rgba(255,255,255,.06)}
+
+#loading{position:absolute;inset:56px 0 112px;display:grid;place-items:center;z-index:40;background:rgba(0,0,0,.6)}
+.bubble{padding:10px 14px;border-radius:12px;background:#111a2a;border:1px solid rgba(255,255,255,.08);font-size:13px}
+#gameover{position:absolute;inset:56px 0 112px;display:none;place-items:center;z-index:50;background:rgba(0,0,0,.6)}
+#gameover .panel{background:#0c121f;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:16px;display:grid;gap:10px;justify-items:center;color:#fff;font:800 24px/1 system-ui}
+
+/* 以前はJSで注入していたBOOSTボタンの微調整をCSSに統合（挙動は同じ） */
+#btnBoost{min-width:100px;padding:10px 14px;font-size:15px;border-radius:12px;}
