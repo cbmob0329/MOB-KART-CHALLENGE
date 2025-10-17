@@ -38,10 +38,11 @@
     load('tora.png'),
     load('tsubasa.png'), load('en.png'), load('mranp.png'),
     load('viran.png'), load('tama.png'), load('viran op.png'),
+    load('ringtap.png'), load('coin.png'),
     load('VR.png').catch(()=>null), load('orange.png').catch(()=>null),
     load('pink.png').catch(()=>null), load('chi.png').catch(()=>null),
     load('green.png').catch(()=>null), load('redblue.png').catch(()=>null),
-  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_GO, IMG_TR, IMG_TS, IMG_EN, IMG_LP, IMG_VI, IMG_TM, IMG_LOGO, IMG_VR, IMG_OR, IMG_PINK, IMG_CHI, IMG_GREEN, IMG_RB])=>{
+  ]).then(([IMG_BG, IMG_GR, IMG_CO, IMG_CT, IMG_GO, IMG_TR, IMG_TS, IMG_EN, IMG_LP, IMG_VI, IMG_TM, IMG_LOGO, IMG_RING, IMG_COIN, IMG_VR, IMG_OR, IMG_PINK, IMG_CHI, IMG_GREEN, IMG_RB])=>{
 
     // ===== Skins map =====
     const SKINS = { VR:IMG_VR, orange:IMG_OR, pink:IMG_PINK, chi:IMG_CHI, green:IMG_GREEN, redblue:IMG_RB };
@@ -111,6 +112,8 @@
 
     // ===== Trims =====
     const cornTrim=Px.tightRect(IMG_CO), contTrim=Px.tightRect(IMG_CT), gomiTrim=Px.tightRect(IMG_GO), toraTrim=Px.tightRect(IMG_TR);
+    const trimTS=Px.tightRect(IMG_TS), trimEN=Px.tightRect(IMG_EN), trimLP=Px.tightRect(IMG_LP);
+    const ringTrim=Px.tightRect(IMG_RING), coinTrim=Px.tightRect(IMG_COIN);
 
     // ===== Obstacles =====
     const obstacles=[];
@@ -137,8 +140,7 @@
       return {x:atX,y:fy-h,w,h,img:IMG_TR,trim:toraTrim,type:'tora'};
     }
 
-    // ===== Items =====
-    const trimTS=Px.tightRect(IMG_TS), trimEN=Px.tightRect(IMG_EN), trimLP=Px.tightRect(IMG_LP);
+    // ===== Supporters (items to slots) =====
     const items=[];
     function makeFloating(img,trim,type, atX, targetH=36){
       const baseY=Math.round(H*0.28+Math.random()*H*0.18);
@@ -148,6 +150,35 @@
     function makeTsubasa(atX){return makeFloating(IMG_TS,trimTS,'tsubasa',atX,36)}
     function makeEngine(atX){return makeFloating(IMG_EN,trimEN,'engine',atX,36)}
     function makeLamp(atX){return makeFloating(IMG_LP,trimLP,'lamp',atX,34)}
+
+    // ===== Collectibles: Coins & Rings =====
+    const coins=[], rings=[];
+    function makeCoin(atX){
+      // ground or air
+      const ground = Math.random() < 0.55;
+      const targetH = 22;
+      const s = targetH/coinTrim.sh; const w=Math.round(coinTrim.sw*s), h=Math.round(coinTrim.sh*s);
+      if(ground){
+        const fy = GR.floorY();
+        return {x:atX,y:fy-h,w,h,img:IMG_COIN,trim:coinTrim,type:'coin',mode:'bounce',phase:Math.random()*Math.PI*2,amp:6.0};
+      }else{
+        const baseY=Math.round(H*0.24+Math.random()*H*0.26);
+        return {x:atX,y:baseY,w,h,img:IMG_COIN,trim:coinTrim,type:'coin',mode:'float',phase:Math.random()*Math.PI*2,amp:8.0,baseY};
+      }
+    }
+    function makeRing(atX){
+      // ring is rarer, floating or hopping
+      const floating = Math.random() < 0.7;
+      const targetH = 30;
+      const s = targetH/ringTrim.sh; const w=Math.round(ringTrim.sw*s), h=Math.round(ringTrim.sh*s);
+      if(floating){
+        const baseY=Math.round(H*0.20+Math.random()*H*0.30);
+        return {x:atX,y:baseY,w,h,img:IMG_RING,trim:ringTrim,type:'ring',mode:'float',phase:Math.random()*Math.PI*2,amp:10.0,baseY,rotAmp:0.15};
+      }else{
+        const fy = GR.floorY();
+        return {x:atX,y:fy-h,w,h,img:IMG_RING,trim:ringTrim,type:'ring',mode:'bounce',phase:Math.random()*Math.PI*2,amp:9.0,rotAmp:0.15};
+      }
+    }
 
     // ===== Villain & Fireballs =====
     const viTrim=Px.tightRect(IMG_VI), tmTrim=Px.tightRect(IMG_TM);
@@ -180,13 +211,20 @@
     const minGap=90, spawnMargin=40;
     function rightmostFutureX(list){ let r=W+spawnMargin; for(const o of list){ r=Math.max(r, o.x+(o.w||0)); } return r; }
 
+    // NEW: collectibles spawn schedule
+    let nextCoinDist = 180;         // px（ゲーム距離単位）: やや頻繁
+    let nextRingDist = 700;         // リングは低頻度
+    function scheduleNextCoin(from){ nextCoinDist = from + 180 + Math.random()*240; }
+    function scheduleNextRing(from){ nextRingDist = from + 600 + Math.random()*500; }
+
     function trySpawn(totalDist){
       const meters=totalDist*0.02;
       if(!villain && meters>=nextVillainM){ spawnVillain(); nextVillainM=meters+150+Math.random()*50; }
       const villainActive=!!villain;
 
+      // --- obstacles & supporters ---
       if(totalDist>=nextAllowedDist){
-        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
+        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items), rightmostFutureX(coins), rightmostFutureX(rings))+minGap);
         if(!firstVillainOccurred){
           const k=(Math.random()<0.55)?'corn':'contena';
           if(k==='corn'){ obstacles.push(makeCorn(startX)); nextAllowedDist=totalDist+200+Math.random()*120; }
@@ -209,9 +247,36 @@
         }
       }
       if(totalDist>=nextItemDist && !villain){
-        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items))+minGap);
+        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items), rightmostFutureX(coins), rightmostFutureX(rings))+minGap);
         const r=Math.random(); if(r<0.2) items.push(makeLamp(startX)); else if(r<0.6) items.push(makeTsubasa(startX)); else items.push(makeEngine(startX));
         nextItemDist=totalDist+900+Math.random()*700;
+      }
+
+      // --- collectibles (coins / rings) ---
+      if(totalDist>=nextCoinDist){
+        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items), rightmostFutureX(coins), rightmostFutureX(rings))+minGap);
+        // 1〜3枚のライン・蛇行・段差のいずれか
+        const pattern = Math.random();
+        if(pattern < 0.5){
+          // 直線1〜3枚
+          const n = 1 + Math.floor(Math.random()*3);
+          for(let i=0;i<n;i++) coins.push(makeCoin(startX + i*28));
+        }else if(pattern < 0.75){
+          // 斜め階段3〜4枚
+          const n = 3 + Math.floor(Math.random()*2);
+          for(let i=0;i<n;i++){ const c=makeCoin(startX + i*26); if(c.mode==='float'){ c.baseY += i*12; c.y=c.baseY; } coins.push(c); }
+        }else{
+          // 蛇行5枚
+          for(let i=0;i<5;i++){ const c=makeCoin(startX + i*22); c.amp += i%2?2:0; coins.push(c); }
+        }
+        scheduleNextCoin(totalDist);
+      }
+      if(totalDist>=nextRingDist && !villain){
+        const startX=Math.max(W+spawnMargin, Math.max(rightmostFutureX(obstacles), rightmostFutureX(items), rightmostFutureX(coins), rightmostFutureX(rings))+minGap);
+        // リングは1〜2個、低頻度
+        const n = (Math.random()<0.7)?1:2;
+        for(let i=0;i<n;i++){ const r = makeRing(startX + i*36); rings.push(r); }
+        scheduleNextRing(totalDist);
       }
     }
 
@@ -226,16 +291,26 @@
     let engineTime=0, wingsTime=0;
     let gameOver=false;
 
+    // ===== Score =====
+    let coinCount=0, ringCount=0;
+    function meters(){ return Math.floor(dist*0.02); }
+    function calcScore(){
+      const base = meters()*10;
+      const coinPts = coinCount*10;
+      const ringPts = ringCount*50;
+      return { base, coinPts, ringPts, total: base+coinPts+ringPts };
+    }
+
     // ===== HUD / UI =====
     const elDist=document.getElementById('dist'), elSpeed=document.getElementById('speed'),
-          elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct');
+          elJump=document.getElementById('jump'), elBoostPct=document.getElementById('boostPct'),
+          elScore=document.getElementById('score');
     const wingsPill=document.getElementById('wings'), wingsLeftEl=document.getElementById('wingsLeft');
     const enginePill=document.getElementById('engine'), engineLeftEl=document.getElementById('engineLeft');
     const btnJump=document.getElementById('btnJump'), btnBoost=document.getElementById('btnBoost');
     const slotEls=[document.getElementById('slot0'), document.getElementById('slot1')];
+    const scoreBreakdown=document.getElementById('scoreBreakdown');
     const slots=[null,null];
-
-    // （※ 以前のJSによる #btnBoost 追加スタイル注入は CSS へ移行済み）
 
     // ===== Last chance overlay =====
     const lastChanceOverlay=document.createElement('div');
@@ -263,7 +338,7 @@
     function setWings(active){ if(active){ wingsTime=5.0; player.maxJumps=4; player.jumps=Math.max(player.jumps,4); wingsPill.style.display='inline-block'; } else { wingsTime=0; player.maxJumps=2; player.jumps=Math.min(player.jumps,2); wingsPill.style.display='none'; } }
     function setEngine(active){ if(active){ engineTime=10.0; enginePill.style.display='inline-block'; } else { engineTime=0; enginePill.style.display='none'; } }
 
-    // ===== Sparkles (lamp effect) =====
+    // ===== Sparkles (lamp/collectibles effect) =====
     const sparkles=[];
     function spawnSparkles(x,y){ for(let i=0;i<18;i++){ const ang=Math.random()*Math.PI*2, spd=60+Math.random()*140; sparkles.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,t:0,life:0.6}); } }
 
@@ -280,10 +355,12 @@
     }
 
     function updateHUD(){
-      elDist.textContent=`距離 ${Math.floor(dist*0.02)} m`;
+      const { total } = calcScore();
+      elDist.textContent=`距離 ${meters()} m`;
       elSpeed.textContent=`速度 ${Math.round(speed*0.072)} km/h`;
       elJump.textContent=`ジャンプ ${player?player.jumps:2}`;
       elBoostPct.textContent=`${Math.round(boostCharge)}%`;
+      elScore.textContent=`SCORE ${total}`;
       if(boostCharge>=100 && !burstActive){ btnBoost.textContent='BOOST!'; btnBoost.classList.remove('muted'); } else { btnBoost.textContent='充電中'; btnBoost.classList.add('muted'); }
       if(wingsTime>0){ wingsLeftEl.textContent=`${wingsTime.toFixed(1)}s`; }
       if(engineTime>0){ engineLeftEl.textContent=`${engineTime.toFixed(1)}s`; }
@@ -304,7 +381,7 @@
       playBGM();
     };
 
-    // ===== Collisions =====
+    // ===== Collisions for obstacles =====
     function hitConeRelax(px,py,pw,ph, c){
       const bh=c.h,bw=c.w;
       const lower={x:c.x,y:c.y+bh*0.45,w:bw*0.92,h:bh*0.55};
@@ -321,11 +398,14 @@
 
     function resetGame(){
       gameOver=false; dist=0; bgOff=grOff=0;
-      obstacles.length=0; items.length=0; fireballs.length=0; villain=null; sparkles.length=0;
+      obstacles.length=0; items.length=0; fireballs.length=0; coins.length=0; rings.length=0; villain=null; sparkles.length=0;
       nextAllowedDist=220; nextItemDist=650; nextVillainM=startVillainGapM; LOGO.state='idle'; LOGO.t=0; firstVillainOccurred=false;
+      scheduleNextCoin(0); scheduleNextRing(0);
       if(player){ player.y=GR.floorY(); player.prevBottom=player.y; player.vy=0; player.jumps=2; player.maxJumps=2; player.lives=2; }
       boostCharge=100; burstActive=false; burstTimer=0; setWings(false); setEngine(false);
+      coinCount=0; ringCount=0;
       slots[0]=slots[1]=null; updateSlotsUI(); gameover.style.display='none'; recovering=false;
+      updateHUD();
     }
 
     // ===== Main loop =====
@@ -361,9 +441,9 @@
         dist+=speed*dt; bgOff-=speed*0.20*dt; grOff-=speed*1.00*dt;
         trySpawn(dist);
 
-        // scroll & cleanup
+        // scroll & cleanup (obstacles & supporters)
         for(let i=obstacles.length-1;i>=0;i--){ const o=obstacles[i]; o.x-=speed*dt; if(o.phase!=null) o.phase+=dt*1.2; if(o.x+o.w<-40) obstacles.splice(i,1); }
-        for(let i=items.length-1;i>=0;i--){ const it=items[i]; it.x-=speed*dt; it.y=it.baseY+Math.sin(it.phase)*it.amp; it.phase+=dt*1.5; if(it.x+it.w<-40) items.splice(i,1); }
+        for(let i=items.length-1;i>=0;i--){ const it=items[i]; it.x-=speed*dt; if(it.baseY!=null){ it.y=it.baseY+Math.sin(it.phase)*it.amp; it.phase+=dt*1.5; } if(it.x+it.w<-40) items.splice(i,1); }
 
         // Villain
         if(villain){
@@ -384,6 +464,22 @@
             const gy=GR.floorY(); if(f.y+f.h>=gy){f.y=gy-f.h; f.vy=0; f.vx=0; f.landed=true;}
           }
           if(f.x+f.w<-60) fireballs.splice(i,1);
+        }
+
+        // ===== Collectibles movement & cleanup =====
+        for(let i=coins.length-1;i>=0;i--){
+          const c=coins[i];
+          c.x-=speed*dt;
+          if(c.mode==='float'){ c.y=c.baseY + Math.sin(c.phase)*c.amp; c.phase+=dt*1.8; }
+          else if(c.mode==='bounce'){ c.y = GR.floorY() - c.h - Math.abs(Math.sin(c.phase))*c.amp; c.phase+=dt*2.2; }
+          if(c.x+c.w<-40) coins.splice(i,1);
+        }
+        for(let i=rings.length-1;i>=0;i--){
+          const r=rings[i];
+          r.x-=speed*dt;
+          if(r.mode==='float'){ r.y=r.baseY + Math.sin(r.phase)*r.amp; r.phase+=dt*1.6; }
+          else if(r.mode==='bounce'){ r.y = GR.floorY() - r.h - Math.abs(Math.sin(r.phase))*r.amp; r.phase+=dt*2.0; }
+          if(r.x+r.w<-40) rings.splice(i,1);
         }
 
         // sparkles
@@ -409,9 +505,26 @@
         }
       });
 
-      // Items
+      // Supporter items
       items.forEach(it=>{
         ctx.drawImage(it.img,it.trim.sx,it.trim.sy,it.trim.sw,it.trim.sh,Math.floor(it.x),Math.floor(it.y),it.w,it.h);
+      });
+
+      // Collectibles: coins
+      coins.forEach(c=>{
+        ctx.drawImage(c.img,c.trim.sx,c.trim.sy,c.trim.sw,c.trim.sh,Math.floor(c.x),Math.floor(c.y),c.w,c.h);
+      });
+
+      // Collectibles: rings (軽い回転演出)
+      rings.forEach(r=>{
+        if(r.rotAmp){
+          const cx=Math.floor(r.x+r.w/2), cy=Math.floor(r.y+r.h/2);
+          ctx.save(); ctx.translate(cx,cy); ctx.rotate(Math.sin((r.phase||0))*r.rotAmp);
+          ctx.drawImage(r.img,r.trim.sx,r.trim.sy,r.trim.sw,r.trim.sh,Math.floor(-r.w/2),Math.floor(-r.h/2),r.w,r.h);
+          ctx.restore();
+        }else{
+          ctx.drawImage(r.img,r.trim.sx,r.trim.sy,r.trim.sw,r.trim.sh,Math.floor(r.x),Math.floor(r.y),r.w,r.h);
+        }
       });
 
       // Villain / Fireballs
@@ -434,7 +547,7 @@
         ctx.drawImage(player.img,px,py,player.w,player.h);
 
         if(!gameOver && !recovering){
-          // Item pickup
+          // Item pickup (slots)
           for(let i=items.length-1;i>=0;i--){
             const it=items[i];
             const aabb=(px<it.x+it.w&&px+player.w>it.x&&py<it.y+it.h&&py+player.h>it.y);
@@ -444,6 +557,22 @@
                 const icon=it.type==='tsubasa'?'tsubasa.png':(it.type==='engine'?'en.png':'mranp.png');
                 slots[sidx]={type:it.type,icon}; items.splice(i,1); updateSlotsUI();
               }
+            }
+          }
+
+          // Collectible pickup (score)
+          for(let i=coins.length-1;i>=0;i--){
+            const c=coins[i];
+            const aabb=(px<c.x+c.w&&px+player.w>c.x&&py<c.y+c.h&&py+player.h>c.y);
+            if(aabb){
+              coinCount++; spawnSparkles(c.x+c.w/2,c.y+c.h/2); coins.splice(i,1); updateHUD();
+            }
+          }
+          for(let i=rings.length-1;i>=0;i--){
+            const r=rings[i];
+            const aabb=(px<r.x+r.w&&px+player.w>r.x&&py<r.y+r.h&&py+player.h>r.y);
+            if(aabb){
+              ringCount++; spawnSparkles(r.x+r.w/2,r.y+r.h/2); rings.splice(i,1); updateHUD();
             }
           }
 
@@ -500,9 +629,16 @@
       }else{
         gameOver=true; 
         gameover.style.display='grid';
-        // ▼ ゲームオーバー時にBGM停止
+        // ▼ BGM停止
         stopBGM();
-        // ▲
+        // スコア内訳表示
+        const s = calcScore();
+        scoreBreakdown.innerHTML =
+          `距離 ${meters()}m ×10 = <b>${s.base}</b><br>`+
+          `コイン ${coinCount}枚 ×10 = <b>${s.coinPts}</b><br>`+
+          `リング ${ringCount}個 ×50 = <b>${s.ringPts}</b><br>`+
+          `<hr style="width:100%;border:0;border-top:1px solid rgba(255,255,255,.15);margin:6px 0;">`+
+          `合計 <span style="font-size:18px;">${s.total}</span>`;
       }
     }
 
