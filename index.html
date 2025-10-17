@@ -16,6 +16,7 @@
       <div class="pill" id="dist">距離 0 m</div>
       <div class="pill" id="speed">速度 0 km/h</div>
       <div class="pill" id="jump">ジャンプ 2</div>
+      <div class="pill" id="score">SCORE 0</div>
       <div class="status">
         <div class="pill">BOOST <span id="boostPct">100%</span></div>
         <div class="pill" id="wings" style="display:none;">WINGS <span id="wingsLeft">5.0s</span></div>
@@ -55,7 +56,10 @@
 
     <div id="gameover">
       <div class="panel">
-        <div>GAME OVER</div>
+        <div style="font-size:28px;">GAME OVER</div>
+        <div id="scoreBreakdown" style="font:600 14px/1.6 system-ui; opacity:.9; text-align:center;">
+          <!-- スコア内訳をJSで挿入 -->
+        </div>
         <button class="btn" id="retryBtn">リトライ</button>
       </div>
     </div>
